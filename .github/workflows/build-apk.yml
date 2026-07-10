@@ -46,16 +46,6 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
-      - name: Set app icon
-        run: |
-          SIZES="mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192"
-          for entry in $SIZES; do
-            density="${entry%%:*}"
-            size="${entry##*:}"
-            convert assets/logo.png -resize ${size}x${size} android/app/src/main/res/mipmap-${density}/ic_launcher.png
-            convert assets/logo.png -resize ${size}x${size} android/app/src/main/res/mipmap-${density}/ic_launcher_round.png
-          done
-
       - name: Configure signing
         if: ${{ env.KEYSTORE_BASE64 != '' }}
         env:
@@ -105,6 +95,16 @@ jobs:
 
       - name: Sync Capacitor
         run: npx cap sync android
+
+      - name: Set app icon
+        run: |
+          SIZES="mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192"
+          for entry in $SIZES; do
+            density="${entry%%:*}"
+            size="${entry##*:}"
+            convert assets/logo.png -resize ${size}x${size} android/app/src/main/res/mipmap-${density}/ic_launcher.png
+            convert assets/logo.png -resize ${size}x${size} android/app/src/main/res/mipmap-${density}/ic_launcher_round.png
+          done
 
       - name: Build APK
         env:
