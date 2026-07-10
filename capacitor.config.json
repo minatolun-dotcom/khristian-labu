@@ -1,0 +1,9 @@
+{
+  "appId": "org.khristianlabu.app",
+  "appName": "Khristian Labu",
+  "webDir": "www",
+  "backgroundColor": "#0f0f13",
+  "android": {
+    "backgroundColor": "#0f0f13"
+  }
+}
