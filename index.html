@@ -698,7 +698,7 @@ function showView(v) {
   const hideSearch = v === 'admin' || v === 'login';
   const searchBox = document.getElementById('searchBox');
   if (hideSearch) { searchBox.style.display = 'none'; } else { searchBox.removeAttribute('style'); }
-  searchBox.classList.remove('active');
+  if (v !== 'search') searchBox.classList.remove('active');
   document.getElementById('searchToggle').style.display = hideSearch ? 'none' : '';
   document.getElementById('adminBtn').classList.toggle('active', v === 'admin');
 }
