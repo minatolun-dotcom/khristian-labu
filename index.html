@@ -316,9 +316,9 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
   .prev-next button .label{font-size:0.7rem;}
   .prev-next button .title{font-size:0.85rem;}
   .admin-panel{padding:1rem;}
-  .admin-header{flex-direction:column;align-items:stretch;gap:0.5rem;margin-bottom:1rem;}
-  .admin-header h2{font-size:1.1rem;}
-  .admin-header > div{display:grid;grid-template-columns:1fr 1fr;gap:0.4rem;}
+  .admin-header{display:flex;align-items:center;justify-content:space-between;gap:0.5rem;margin-bottom:1rem;}
+  .admin-header h2{font-size:1.1rem;flex-shrink:0;}
+  .admin-header > div{display:flex;gap:0.4rem;flex-shrink:0;}
   .admin-header .btn{width:36px;height:36px;padding:0;display:flex;align-items:center;justify-content:center;}
   .admin-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:1.25rem;background:none;padding:0;}
   .admin-tab{padding:6px 12px;border-radius:8px;border:none;background:transparent;font-size:0.75rem;white-space:nowrap;color:var(--text2);}
