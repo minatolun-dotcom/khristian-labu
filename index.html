@@ -41,8 +41,8 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .logo img{width:40px;height:40px;border-radius:50%;object-fit:cover;transition:all 0.4s cubic-bezier(0.34,1.56,0.64,1);box-shadow:0 0 0 2px var(--accent),0 0 15px rgba(124,106,239,0.3);}
 .logo:hover img{transform:scale(1.12) rotate(8deg);box-shadow:0 0 0 2px var(--accent2),0 0 25px rgba(124,106,239,0.5);}
 .nav-actions{display:flex;align-items:center;gap:12px;}
-.search-box{position:relative;width:280px;}
-.search-box input{width:100%;padding:10px 14px 10px 38px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.875rem;outline:none;transition:all var(--transition);}
+.search-box{position:relative;width:280px;display:flex;align-items:center;}
+.search-box input{width:100%;padding:10px 14px 10px 38px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.875rem;outline:none;transition:all var(--transition);height:40px;box-sizing:border-box;}
 .search-box input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
 .search-box input::placeholder{color:var(--text3);}
 .search-box svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text3);}
@@ -52,6 +52,10 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .theme-toggle:hover,.admin-btn:hover,.back-btn:hover{background:var(--card-hover);color:var(--text);}
 .admin-btn.active{background:var(--accent-glow);color:var(--accent);border-color:var(--accent);}
 .back-btn svg{width:18px;height:18px;flex-shrink:0;}
+.search-toggle{display:none;width:40px;height:40px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);cursor:pointer;align-items:center;justify-content:center;transition:all var(--transition);}
+.search-toggle:hover{background:var(--card-hover);color:var(--text);}
+.search-close{display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;border-radius:4px;transition:color 0.2s;}
+.search-close:hover{color:var(--text);}
 
 /* ─── HERO ─── */
 .hero{max-width:1200px;margin:0 auto;padding:4rem 2rem 2rem;text-align:center;}
@@ -59,7 +63,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 [data-theme="light"] .hero h1{background:linear-gradient(135deg,#1e3a8a,#2563eb);-webkit-background-clip:text;background-clip:text;}
 .hero p{color:var(--text2);font-size:1.1rem;max-width:500px;margin:0 auto 2rem;line-height:1.6;}
 .stats{display:flex;justify-content:center;gap:2.5rem;flex-wrap:wrap;}
-.stat{text-align:center;}.stat-num{font-size:2rem;font-weight:700;color:var(--accent);}
+.stat{text-align:center;}.stat-icon{margin-bottom:6px;opacity:0.6;display:flex;justify-content:center;}.stat-icon svg{width:22px;height:22px;stroke:var(--accent);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;}.stat-num{font-size:2rem;font-weight:700;color:var(--accent);}
 .stat-label{font-size:0.8rem;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;}
 
 /* ─── CATEGORIES ─── */
@@ -73,15 +77,16 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 [data-theme="light"] .cat-card:hover{box-shadow:0 20px 60px -10px rgba(37,99,235,0.2),0 0 0 1px rgba(37,99,235,0.15),inset 0 1px 0 rgba(255,255,255,0.8);border-color:rgba(37,99,235,0.3);background:rgba(255,255,255,0.85);}
 .cat-card:hover::before{opacity:1;}
 .cat-card:hover::after{opacity:1;}
-.cat-icon{font-size:2.5rem;margin-bottom:1rem;filter:drop-shadow(0 4px 12px rgba(124,106,239,0.25));transition:all 0.4s cubic-bezier(0.34,1.56,0.64,1);}
-[data-theme="light"] .cat-icon{filter:drop-shadow(0 4px 12px rgba(37,99,235,0.2));}
-.cat-card:hover .cat-icon{transform:translateY(-4px) scale(1.1);filter:drop-shadow(0 8px 20px rgba(124,106,239,0.35));}
+.cat-icon{transition:all 0.4s cubic-bezier(0.34,1.56,0.64,1);display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;flex-shrink:0;}
+.cat-icon svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;}
+.cat-icon-svg{display:flex;color:var(--accent);}
+.cat-card:hover .cat-icon{transform:scale(1.1);}
 .cat-name{font-size:1.15rem;font-weight:700;margin-bottom:0.35rem;transition:color 0.3s ease;}
 [data-theme="light"] .cat-name{color:#1e3a8a;}
 .cat-card:hover .cat-name{color:var(--accent2);}
 .cat-desc{font-size:0.85rem;color:var(--text2);margin-bottom:1.25rem;line-height:1.5;transition:color 0.3s ease;}
 .cat-card:hover .cat-desc{color:var(--text);}
-.cat-count{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;background:var(--accent-glow);color:var(--accent);font-size:0.8rem;font-weight:600;transition:all 0.3s ease;}
+.cat-count{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;background:var(--accent-glow);color:var(--accent);font-size:0.85rem;font-weight:600;transition:all 0.3s ease;}
 [data-theme="light"] .cat-count{background:rgba(37,99,235,0.12);color:#2563eb;}
 .cat-card:hover .cat-count{background:var(--accent);color:white;box-shadow:0 4px 15px rgba(124,106,239,0.3);}
 
@@ -99,6 +104,11 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .fr-count{font-size:0.8rem;color:var(--text3);}
 .fr-arrow{flex-shrink:0;color:var(--text3);font-size:1.1rem;transition:all 0.3s ease;}
 .fr-card:hover .fr-arrow{color:var(--accent);transform:translateX(3px);}
+.fr-toggle{display:none;max-width:1200px;margin:0 auto;padding:0 1.25rem 0.75rem;}
+.fr-toggle-btn{width:100%;padding:12px 16px;background:rgba(22,22,29,0.6);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius);color:var(--text2);font-size:0.85rem;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:all 0.2s;}
+[data-theme="light"] .fr-toggle-btn{background:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.5);}
+.fr-toggle-btn svg{transition:transform 0.3s;}
+.fr-toggle-btn.open svg{transform:rotate(180deg);}
 .fr-list{display:flex;flex-direction:column;gap:4px;margin-top:4px;}
 .fr-list-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer;transition:all 0.2s ease;text-decoration:none;color:var(--text);}
 .fr-list-item:hover{background:var(--accent-glow);}
@@ -253,21 +263,30 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
   .nav-inner{height:56px;}
   .logo span{font-size:1rem;}
   .logo img{width:32px;height:32px;}
-  .search-box{width:140px;}
-  .search-box input{padding:8px 12px 8px 34px;font-size:0.8rem;}
+  .search-toggle{display:flex;}
+  .search-box{position:fixed;top:0;left:0;right:0;width:100%;height:56px;padding:0 1rem;background:rgba(15,15,19,0.95);backdrop-filter:blur(20px);z-index:200;display:flex;align-items:center;opacity:0;pointer-events:none;transform:translateY(-100%);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);}
+  [data-theme="light"] .search-box{background:rgba(248,249,252,0.97);}
+  .search-box.active{opacity:1;pointer-events:auto;transform:translateY(0);}
+  .search-box input{flex:1;padding:10px 40px 10px 38px;font-size:0.95rem;height:40px;box-sizing:border-box;}
+  .search-close{display:block;}
   .theme-toggle,.admin-btn{width:36px;height:36px;}
   .hero{padding:2rem 1rem 1rem;}
   .hero h1{font-size:1.8rem;}
   .hero p{font-size:0.95rem;}
   .stats{gap:1.5rem;}
   .stat-num{font-size:1.5rem;}
-  .categories{padding:0.5rem 1rem;gap:0.5rem;grid-template-columns:1fr;}
-  .cat-card{padding:0.9rem 1.1rem;}
-  .cat-icon{font-size:1.2rem;margin-bottom:0.4rem;}
-  .cat-name{font-size:0.95rem;margin-bottom:0.15rem;}
-  .cat-desc{font-size:0.75rem;margin-bottom:0.6rem;}
-  .cat-count{padding:4px 10px;font-size:0.7rem;}
-  .fav-recent-row{padding:0 1rem 0.75rem;gap:0.5rem;}
+  .stat-icon svg{width:18px;height:18px;}
+  .categories{padding:0.5rem 1.25rem;gap:0.5rem;grid-template-columns:1fr;}
+  .cat-card{padding:0.9rem 1.1rem;display:flex;align-items:center;gap:0.85rem;}
+  .cat-icon{width:40px;height:40px;margin-bottom:0;}
+  .cat-icon svg{width:20px;height:20px;}
+  .cat-text{flex:1;min-width:0;}
+  .cat-name{font-size:0.95rem;margin-bottom:0.1rem;}
+  .cat-desc{font-size:0.75rem;margin-bottom:0.3rem;}
+  .cat-count{padding:3px 10px;font-size:0.7rem;}
+  .fav-recent-row{padding:0 1.25rem 0.75rem;gap:0.5rem;display:none;}
+  .fav-recent-row.show{display:grid;}
+  .fr-toggle{display:block;}
   .fr-card{padding:0.85rem 1rem;}
   .fr-icon{font-size:1.3rem;}
   .fr-title{font-size:0.85rem;}
@@ -311,7 +330,6 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 }
 @media(max-width:380px){
   .logo span{display:none;}
-  .search-box{width:120px;}
   .hero h1{font-size:1.5rem;}
   .stats{gap:1rem;}
   .stat-num{font-size:1.3rem;}
@@ -331,12 +349,22 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
       <button class="back-btn" id="backBtn" onclick="goHome()" title="Home">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h1v8a1 1 0 0 0 1 1h5v-6h4v6h5a1 1 0 0 0 1-1v-8h1"/><path d="M12 3 2 12"/><path d="M12 3l10 9"/></svg>
       </button>
+      <button class="search-toggle" id="searchToggle" onclick="toggleSearch()" title="Search">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      </button>
       <div class="search-box" id="searchBox">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input type="text" id="searchInput" placeholder="Search songs..." oninput="onSearch(this.value)">
+        <button class="search-close" onclick="closeSearch()" title="Close">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
-      <button class="admin-btn" id="adminBtn" onclick="openAdmin()" title="Admin Panel">⚙️</button>
-      <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">☀️</button>
+      <button class="admin-btn" id="adminBtn" onclick="openAdmin()" title="Admin Panel">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">
+        <svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
     </div>
   </div>
 </nav>
@@ -594,7 +622,7 @@ function init() {
   renderCategories();
   if (localStorage.getItem('labu-theme') === 'light') {
     document.documentElement.setAttribute('data-theme', 'light');
-    document.querySelector('.theme-toggle').textContent = '\u{1F319}';
+    document.getElementById('themeIcon').innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
   }
   if (localStorage.getItem('labu_admin_session') === '1') {
     isAdmin = true;
@@ -636,6 +664,25 @@ function updateStats() {
   if (opt) opt.textContent = 'All Songs (' + s + ')';
 }
 
+// ─── MOBILE SEARCH ───
+function toggleSearch() {
+  const box = document.getElementById('searchBox');
+  const input = document.getElementById('searchInput');
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+  if (isMobile) {
+    box.classList.add('active');
+    input.focus();
+  }
+}
+function closeSearch() {
+  const box = document.getElementById('searchBox');
+  const input = document.getElementById('searchInput');
+  box.classList.remove('active');
+  input.value = '';
+  onSearch('');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSearch(); });
+
 // ─── NAVIGATION ───
 let currentView = 'home', currentCat = null, currentList = [], currentSongIdx = -1;
 
@@ -645,7 +692,11 @@ function showView(v) {
     document.getElementById(id).classList.toggle('active', id === v + 'View');
   });
   document.getElementById('backBtn').classList.toggle('show', !['home','admin','login'].includes(v));
-  document.getElementById('searchBox').style.display = v === 'admin' || v === 'login' ? 'none' : '';
+  const hideSearch = v === 'admin' || v === 'login';
+  const searchBox = document.getElementById('searchBox');
+  if (hideSearch) { searchBox.style.display = 'none'; } else { searchBox.removeAttribute('style'); }
+  searchBox.classList.remove('active');
+  document.getElementById('searchToggle').style.display = hideSearch ? 'none' : '';
   document.getElementById('adminBtn').classList.toggle('active', v === 'admin');
 }
 
@@ -681,6 +732,8 @@ function openFavs() {
 function renderFavRecents() {
   const existing = document.getElementById('favRecentRow');
   if (existing) existing.remove();
+  const existingToggle = document.getElementById('frToggle');
+  if (existingToggle) existingToggle.remove();
   // favorites panel
   const favCount = favorites.length;
   const favHtml = '<div class="fr-card clickable fade-in" onclick="openFavs()"><div class="fr-icon">❤️</div><div class="fr-body"><div class="fr-title">Favorites</div><div class="fr-count">'+favCount+' song'+(favCount!==1?'s':'')+'</div></div><div class="fr-arrow">→</div></div>';
@@ -709,6 +762,15 @@ function renderFavRecents() {
   row.innerHTML = favHtml + recentHtml;
   const grid = document.getElementById('categoryGrid');
   grid.parentNode.insertBefore(row, grid.nextSibling);
+  // mobile toggle
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+  if (isMobile) {
+    const toggle = document.createElement('div');
+    toggle.id = 'frToggle';
+    toggle.className = 'fr-toggle';
+    toggle.innerHTML = '<button class="fr-toggle-btn" onclick="this.classList.toggle(\'open\');document.getElementById(\'favRecentRow\').classList.toggle(\'show\')"><span>❤️ Favorites & 🕐 Recents</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>';
+    grid.parentNode.insertBefore(toggle, row);
+  }
 }
 
 function addRecent(songId) {
@@ -727,6 +789,18 @@ function clearRecents() {
 
 // ─── CATEGORIES ───
 const CAT_ORDER = ['B&P','BL','PN','SM'];
+const CAT_SVG = {
+  'B&P': '<svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
+  'BL': '<svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
+  'PN': '<svg viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="22"/><line x1="6" y1="8" x2="18" y2="8"/></svg>',
+  'SM': '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>'
+};
+const CAT_COLORS = {
+  'B&P': { dark: '#a78bfa', light: '#7c3aed' },
+  'BL': { dark: '#fb923c', light: '#ea580c' },
+  'PN': { dark: '#60a5fa', light: '#2563eb' },
+  'SM': { dark: '#34d399', light: '#059669' }
+};
 function renderCategories() {
   const grid = document.getElementById('categoryGrid');
   grid.innerHTML = '';
@@ -736,7 +810,9 @@ function renderCategories() {
     card.className = 'cat-card fade-in';
     card.style.animationDelay = (i * 0.08) + 's';
     card.onclick = () => openCategory(key);
-    card.innerHTML = '<div class="cat-icon">'+cat.info.icon+'</div><div class="cat-name">'+cat.info.name+'</div><div class="cat-desc">'+cat.info.description+'</div><div class="cat-count"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> '+cat.songs.length+' songs</div>';
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    const catColor = isLight ? CAT_COLORS[key].light : CAT_COLORS[key].dark;
+    card.innerHTML = '<div class="cat-icon" style="background:'+catColor+'20"><div class="cat-icon-svg" style="color:'+catColor+'">'+CAT_SVG[key]+'</div></div><div class="cat-text"><div class="cat-name">'+cat.info.name+'</div><div class="cat-desc">'+cat.info.description+'</div></div><div class="cat-count"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> '+cat.songs.length+' songs</div>';
     grid.appendChild(card);
   });
   renderFavRecents();
@@ -855,7 +931,9 @@ function doSearch(q) {
 function toggleTheme() {
   const isLight = document.documentElement.getAttribute('data-theme') === 'light';
   document.documentElement.setAttribute('data-theme', isLight ? '' : 'light');
-  document.querySelector('.theme-toggle').textContent = isLight ? '\u2600\uFE0F' : '\u{1F319}';
+  document.getElementById('themeIcon').innerHTML = isLight
+    ? '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'
+    : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
   localStorage.setItem('labu-theme', isLight ? 'dark' : 'light');
 }
 
