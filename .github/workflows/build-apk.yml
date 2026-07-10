@@ -37,7 +37,7 @@ jobs:
         run: npm ci
 
       - name: Generate app icons
-        run: npx @capacitor/assets generate --icon assets/logo.png
+        run: npx @capacitor/assets generate
 
       - name: Sync web assets
         run: |
