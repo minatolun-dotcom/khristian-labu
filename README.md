@@ -2,6 +2,8 @@
 
 A gospel songbook app — 1,407 hymns across 4 songbooks.
 
+Try it live: [minatolun-dotcom.github.io/khristian-labu](https://minatolun-dotcom.github.io/khristian-labu/)
+
 ## Features
 
 - Browse 4 songbooks: Biakna Leh Phatna, Biakna Late, Pathian Ngaih La, Suangmantamte
