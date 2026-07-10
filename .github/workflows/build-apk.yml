@@ -36,6 +36,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate app icons
+        run: npx @capacitor/assets generate --icon assets/logo.png
+
       - name: Sync web assets
         run: |
           mkdir -p www
