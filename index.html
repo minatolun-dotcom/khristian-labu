@@ -67,7 +67,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .stat-label{font-size:0.8rem;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;}
 
 /* ─── CATEGORIES ─── */
-.categories{max-width:1200px;margin:0 auto;padding:1rem 2rem 3rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;}
+.categories{max-width:1200px;margin:0 auto;padding:1rem 2rem 3rem;display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;}
 .cat-card{background:rgba(22,22,29,0.6);backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius);padding:1.75rem;cursor:pointer;transition:all 0.4s cubic-bezier(0.25,0.46,0.45,0.94);position:relative;overflow:hidden;}
 [data-theme="light"] .cat-card{background:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.5);box-shadow:0 4px 24px rgba(37,99,235,0.1),inset 0 1px 0 rgba(255,255,255,0.6);}
 .cat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),var(--accent2),transparent);opacity:0;transition:opacity 0.4s ease;}
@@ -117,6 +117,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .fr-list-item .info .title{font-size:0.82rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .fr-list-item .info .meta{font-size:0.7rem;color:var(--text3);}
 .fr-empty{font-size:0.8rem;color:var(--text3);padding:4px 8px;}
+@media(max-width:1024px){.categories{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:768px){.fav-recent-row{grid-template-columns:1fr;}}
 /* ─── SONG LIST ─── */
 .view{display:none;}.view.active{display:block;}

@@ -102,13 +102,13 @@ jobs:
           for entry in $SIZES; do
             density="${entry%%:*}"
             size="${entry##*:}"
-            convert assets/logo.png -resize ${size}x${size} android/app/src/main/res/mipmap-${density}/ic_launcher.png
-            convert assets/logo.png -resize ${size}x${size} android/app/src/main/res/mipmap-${density}/ic_launcher_round.png
-            convert assets/logo.png -resize ${size}x${size} android/app/src/main/res/mipmap-${density}/ic_launcher_foreground.png
+            convert assets/logo.svg -resize ${size}x${size} android/app/src/main/res/mipmap-${density}/ic_launcher.png
+            convert assets/logo.svg -resize ${size}x${size} android/app/src/main/res/mipmap-${density}/ic_launcher_round.png
+            convert assets/logo.svg -resize ${size}x${size} android/app/src/main/res/mipmap-${density}/ic_launcher_foreground.png
           done
           # Also replace adaptive icon foreground for anydpi-v26
           if [ -d android/app/src/main/res/mipmap-anydpi-v26 ]; then
-            convert assets/logo.png -resize 432x432 android/app/src/main/res/drawable/ic_launcher_foreground.png 2>/dev/null || true
+            convert assets/logo.svg -resize 432x432 android/app/src/main/res/drawable/ic_launcher_foreground.png 2>/dev/null || true
           fi
           # Remove anydpi adaptive XML so PNG icons are used directly
           rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
