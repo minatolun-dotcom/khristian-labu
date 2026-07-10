@@ -1,6 +1,6 @@
 # Khristian Labu
 
-A gospel songbook app for the Pa-O Evangelical Baptist Convention — 1,407 hymns across 4 songbooks.
+A gospel songbook app — 1,407 hymns across 4 songbooks.
 
 ## Features
 

@@ -316,7 +316,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 <div class="view active" id="homeView">
   <div class="hero fade-in">
     <h1>Khristian Labu</h1>
-    <p>1,407 hymns and songs of faith from the Pa-O Evangelical Baptist Convention</p>
+    <p>1,407 hymns and songs of faith</p>
     <div class="stats">
       <div class="stat"><div class="stat-num">1,407</div><div class="stat-label">Songs</div></div>
       <div class="stat"><div class="stat-num">4</div><div class="stat-label">Songbooks</div></div>
