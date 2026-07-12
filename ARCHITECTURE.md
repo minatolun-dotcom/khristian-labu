@@ -75,3 +75,16 @@ flowchart LR
 - **Version wiring**: the `APP_VERSION` constant in `index.html` is rewritten to the tag at build time, and `version.json` is committed to `main` so Pages serves it. Dismissal is remembered per version in `localStorage`.
 - **Free tier**: GitHub Releases + API are free; the unauthenticated API limit (60 req/hr per IP) is ample for occasional client checks.
 
+## PWA / offline support
+
+The website is installable and works offline (no backend, all static on Pages).
+
+- **`manifest.webmanifest`** — name, icons (192/512 from `assets/logo.svg`), `display: standalone`, `theme-color`. Enables "Add to Home Screen".
+- **`sw.js`** — a service worker caching strategy:
+  - App **shell** (index.html, logo, manifest, icons): precached on install; **network-first** with cache fallback, so the UI is always fresh when online and still loads offline.
+  - **Song data** (`songs.json` / `songs.json.gzip`): **cache-first** with background refresh → instant repeat loads and full offline access after the first visit.
+  - Cache name is `labu-vN` tied to `DATA_VERSION`; bump both together so data updates propagate.
+  - Only registers on the **web** (`!window.Capacitor`); the native APK already ships assets offline, so the SW is skipped there.
+- **Meta**: `theme-color`, `apple-mobile-web-app-*` tags added to `<head>`.
+
+

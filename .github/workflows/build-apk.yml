@@ -42,6 +42,7 @@ jobs:
         run: |
           mkdir -p www
           cp index.html logo.png songs.json songs.json.gzip www/
+          cp manifest.webmanifest sw.js icon-192.png icon-512.png www/
           cp -r assets www/ 2>/dev/null || true
 
       - name: Set APP_VERSION from tag

@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Khristian Labu - Gospel Songbook</title>
 <link rel="icon" type="image/png" href="logo.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0f0f13">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Khristian Labu">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Myanmar:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -687,6 +692,7 @@ Second verse line 2"></textarea>
 // ─── DATA ───
 const DATA_VERSION = 6;
 const APP_VERSION = '1.1.2'; // ponytail: bump on release so the update checker can compare
+const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 let DEFAULT_SONGS = null;
 let SONGS = {};
 let GROUPS = [];
@@ -747,6 +753,10 @@ async function init() {
   // ponytail: free update notifications via GitHub Releases (CORS-enabled API)
   checkForUpdate();
   setInterval(checkForUpdate, 6 * 60 * 60 * 1000); // re-check every 6h
+  // ponytail: PWA/offline — register SW on web only (native APK uses bundled assets)
+  if ('serviceWorker' in navigator && !window.Capacitor) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
 }
 
 // ─── UPDATE CHECKER (free: GitHub Releases via CORS-enabled API) ───
@@ -765,7 +775,7 @@ function dismissUpdate() {
 async function manualCheckUpdate() {
   toast('Checking for updates…', 'success');
   try {
-    const res = await fetch('https://api.github.com/repos/minatolun-dotcom/khristian-labu/releases/latest',
+    const res = await fetch('https://api.github.com/repos/' + REPO + '/releases/latest',
       { headers: { 'Accept': 'application/vnd.github+json' } });
     if (!res.ok) { toast('Could not check for updates', 'error'); return; }
     const d = await res.json();
@@ -788,7 +798,7 @@ async function manualCheckUpdate() {
 }
 async function checkForUpdate() {
   try {
-    const res = await fetch('https://api.github.com/repos/minatolun-dotcom/khristian-labu/releases/latest',
+    const res = await fetch('https://api.github.com/repos/' + REPO + '/releases/latest',
       { headers: { 'Accept': 'application/vnd.github+json' } });
     if (!res.ok) return;
     const d = await res.json();
