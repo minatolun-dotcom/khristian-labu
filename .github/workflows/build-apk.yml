@@ -197,4 +197,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add index.html version.json
           git commit -m "chore: bump APP_VERSION and version.json to ${VERSION}" || echo "no change"
+          # On a tag-triggered run checkout is detached HEAD; create a local main
+          # so we can push the bump back (fixes "src refspec main does not match any").
+          git checkout -B main
           git push origin main
