@@ -757,6 +757,12 @@ async function init() {
   if ('serviceWorker' in navigator && !window.Capacitor) {
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
   }
+  // ponytail: Android hardware Back has no default handler -> app closes. Mirror web behavior:
+  // single press closes overlay/search or goes back one in-app view; double press at root exits.
+  const Cap = window.Capacitor;
+  if (Cap && Cap.Plugins && Cap.Plugins.App) {
+    Cap.Plugins.App.addListener('backButton', onHardwareBack);
+  }
 }
 
 // ─── UPDATE CHECKER (free: GitHub Releases via CORS-enabled API) ───
@@ -1788,6 +1794,30 @@ function closeSidebar() {
   document.getElementById('sidebarModal').classList.remove('open');
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSidebar(); closeModal('settingsModal'); } });
+
+// ponytail: hardware Back on Android. Mirrors web: overlay/search closes first, then SPA history,
+// then double-press at root exits. (history.back() drives the existing popstate/applyState.)
+// Note: history.length does NOT shrink on back(), so we test app state (atRoot), not length.
+let _lastBack = 0;
+function atRoot() {
+  return currentView === 'home' && !currentGroup && currentHomeGrid !== 'categoryGrid';
+}
+function onHardwareBack() {
+  const overlays = ['confirmModal', 'exportModal', 'playlistModal', 'songModal', 'settingsModal', 'sidebarModal'];
+  for (const id of overlays) {
+    const el = document.getElementById(id);
+    if (el && el.classList.contains('open')) {
+      if (id === 'sidebarModal') closeSidebar(); else closeModal(id);
+      return;
+    }
+  }
+  const sb = document.getElementById('searchBox');
+  if (sb && sb.classList.contains('active')) { closeSearch(); return; }
+  if (!atRoot()) { history.back(); return; }
+  const now = Date.now();
+  if (now - _lastBack < 2000) { window.Capacitor.Plugins.App.exitApp(); }
+  else { _lastBack = now; toast('Press back again to exit', 'success'); }
+}
 function renderSidebarGroups() {
   const el = document.getElementById('sidebarGroups');
   if (!el) return;
