@@ -41,7 +41,7 @@ jobs:
       - name: Sync web assets
         run: |
           mkdir -p www
-          cp index.html logo.png songs.json songs.json.gz www/
+          cp index.html logo.png songs.json songs.json.gzip www/
           cp -r assets www/ 2>/dev/null || true
 
       - name: Add Android platform

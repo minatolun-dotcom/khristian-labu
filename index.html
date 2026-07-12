@@ -770,7 +770,7 @@ async function fetchSongsJSON() {
   const qs = DATA_VERSION ? ('?v=' + DATA_VERSION) : '';
   if (typeof DecompressionStream !== 'undefined') {
     try {
-      const res = await fetch('songs.json.gz' + qs);
+      const res = await fetch('songs.json.gzip' + qs);
       if (res.ok) {
         const ds = new DecompressionStream('gzip');
         const buf = await new Response(res.body.pipeThrough(ds)).text();
