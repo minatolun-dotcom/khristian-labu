@@ -264,6 +264,15 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .toast-container{position:fixed;bottom:2rem;right:2rem;z-index:300;display:flex;flex-direction:column;gap:0.5rem;}
 .toast{padding:12px 20px;border-radius:var(--radius-sm);background:var(--card);border:1px solid var(--border);color:var(--text);font-size:0.85rem;animation:slideUp 0.3s ease-out;box-shadow:0 8px 24px rgba(0,0,0,0.3);}
 .toast.success{border-color:var(--green);}.toast.error{border-color:var(--red);}
+.update-banner{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:300;display:flex;align-items:center;gap:0.75rem;padding:0.55rem 0.6rem 0.55rem 1rem;background:var(--card);border:1px solid var(--accent);border-radius:999px;box-shadow:0 10px 30px rgba(0,0,0,0.35);font-size:0.85rem;max-width:calc(100% - 2rem);}
+.update-banner[hidden]{display:none;}
+.upd-text{color:var(--text);white-space:nowrap;}
+.upd-text b{color:var(--accent);}
+.upd-btn{background:var(--accent);color:#fff;padding:0.4rem 0.9rem;border-radius:999px;font-size:0.8rem;font-weight:600;text-decoration:none;white-space:nowrap;transition:filter 0.2s;}
+.upd-btn:hover{filter:brightness(1.1);}
+.upd-close{background:none;border:none;color:var(--text3);font-size:1.25rem;cursor:pointer;line-height:1;padding:0 0.2rem;}
+.upd-close:hover{color:var(--text);}
+@media(max-width:768px){.update-banner{top:58px;font-size:0.8rem;}}
 
 /* ─── CONFIRM DIALOG ─── */
 .confirm-body{text-align:center;padding:1rem 0;}
@@ -399,6 +408,11 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
     </div>
   </div>
 </nav>
+<div id="updateBanner" class="update-banner" hidden>
+  <span class="upd-text">New version <b id="updVer"></b> available</span>
+  <a id="updBtn" class="upd-btn" target="_blank" rel="noopener">Update</a>
+  <button class="upd-close" onclick="dismissUpdate()" aria-label="Dismiss">×</button>
+</div>
 <div class="modal-overlay" id="sidebarModal" onclick="if(event.target===this)closeSidebar()">
   <div class="modal" style="max-width:360px;">
     <div class="modal-header">
@@ -669,6 +683,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 6;
+const APP_VERSION = '1.1.2'; // ponytail: bump on release so the update checker can compare
 let DEFAULT_SONGS = null;
 let SONGS = {};
 let GROUPS = [];
@@ -726,6 +741,39 @@ async function init() {
   // seed the History API so the browser Back/Forward buttons traverse in-app views
   history.replaceState(buildState(), '');
   window.addEventListener('popstate', e => applyState(e.state));
+  // ponytail: free update notifications via GitHub Releases (CORS-enabled API)
+  checkForUpdate();
+  setInterval(checkForUpdate, 6 * 60 * 60 * 1000); // re-check every 6h
+}
+
+// ─── UPDATE CHECKER (free: GitHub Releases via CORS-enabled API) ───
+function compareVer(a, b) {
+  const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] || 0, y = pb[i] || 0;
+    if (x > y) return 1; if (x < y) return -1;
+  }
+  return 0;
+}
+function dismissUpdate() {
+  try { localStorage.setItem('labu_update_dismissed', document.getElementById('updVer').textContent); } catch (e) {}
+  const b = document.getElementById('updateBanner'); if (b) b.hidden = true;
+}
+async function checkForUpdate() {
+  try {
+    const res = await fetch('https://api.github.com/repos/minatolun-dotcom/khristian-labu/releases/latest',
+      { headers: { 'Accept': 'application/vnd.github+json' } });
+    if (!res.ok) return;
+    const d = await res.json();
+    const latest = (d.tag_name || '').replace(/^v/, '');
+    if (!latest || compareVer(latest, APP_VERSION) <= 0) return;
+    if (localStorage.getItem('labu_update_dismissed') === latest) return;
+    const apk = (d.assets || []).find(a => a.name === 'khristian-labu.apk');
+    if (!apk) return;
+    document.getElementById('updVer').textContent = latest;
+    document.getElementById('updBtn').href = apk.browser_download_url;
+    document.getElementById('updateBanner').hidden = false;
+  } catch (e) { /* offline or rate-limited: ignore */ }
 }
 
 // ─── INDEXEDDB (replaces the localStorage full-corpus store, which has a ~5MB quota) ───

@@ -44,6 +44,15 @@ jobs:
           cp index.html logo.png songs.json songs.json.gzip www/
           cp -r assets www/ 2>/dev/null || true
 
+      - name: Set APP_VERSION from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          sed -i "s/const APP_VERSION = '[^']*';/const APP_VERSION = '${VERSION}';/" index.html
+          cp index.html www/
+
       - name: Add Android platform
         run: npx cap add android
 
@@ -133,7 +142,7 @@ jobs:
           if [ -f android/app/build/outputs/apk/release/app-release.apk ]; then
             mv android/app/build/outputs/apk/release/app-release.apk android/app/build/outputs/apk/release/khristian-labu.apk
           else
-            mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/khristian-labu.apk
+            mv android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/khristian-labu-debug.apk
           fi
 
       - name: Upload APK as artifact
@@ -142,7 +151,7 @@ jobs:
           name: khristian-labu-apk
           path: |
             android/app/build/outputs/apk/release/khristian-labu.apk
-            android/app/build/outputs/apk/debug/khristian-labu.apk
+            android/app/build/outputs/apk/debug/khristian-labu-debug.apk
 
       - name: Generate changelog
         id: changelog
@@ -166,4 +175,25 @@ jobs:
           body: ${{ steps.changelog.outputs.changelog }}
           files: |
             android/app/build/outputs/apk/release/khristian-labu.apk
-            android/app/build/outputs/apk/debug/khristian-labu.apk
+            android/app/build/outputs/apk/debug/khristian-labu-debug.apk
+
+      - name: Publish version.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          APK_URL="https://github.com/minatolun-dotcom/khristian-labu/releases/download/${TAG}/khristian-labu.apk"
+          cat > version.json <<EOF
+          {
+            "version": "${VERSION}",
+            "apkUrl": "${APK_URL}",
+            "notes": "See release notes on GitHub.",
+            "updatedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html version.json
+          git commit -m "chore: bump APP_VERSION and version.json to ${VERSION}" || echo "no change"
+          git push origin main

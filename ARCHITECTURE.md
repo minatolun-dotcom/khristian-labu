@@ -53,3 +53,25 @@ flowchart TD
 - **Gzip speedup** — web/APK fetch `songs.json.gzip` (630KB) via `DecompressionStream`, falling back to plain `songs.json` (2.2MB).
 - **Hybrid app** — the APK is a native Android shell running the web assets in a Chromium WebView: installs like a real app, works offline, but the UI is web tech (not Kotlin/native UI).
 - **Centered, responsive UI** — homepage group cards centered on desktop/tablet; menu popup is a centered modal (two-column landscape layout on desktop, single column on mobile).
+
+## App updates (free, self-hosted distribution)
+
+The website (Pages) updates automatically on every push. The APK is distributed via **GitHub Releases** (built by the workflow on each `v*` tag) and delivered to users with a free in-app update prompt — no Play Store, no backend.
+
+```mermaid
+flowchart LR
+    A[git tag vX.Y.Z] --> B[workflow builds APK]
+    B --> C[attaches APK to GitHub Release]
+    C --> D[writes version.json to main]
+    D --> E[Pages serves version.json]
+    F[app launch] --> G[fetch latest release via GitHub API]
+    G --> H{newer than APP_VERSION?}
+    H -- yes --> I[show Update banner → opens APK download]
+    H -- no --> J[no banner]
+```
+
+- **Detection**: on launch (and every 6h) the app calls the CORS-enabled GitHub Releases API (`releases/latest`), compares `tag_name` to the embedded `APP_VERSION`, and shows a dismissible banner if newer.
+- **Update action**: the banner's "Update" button opens the release APK `browser_download_url`; Android then prompts to install (no auto-install, by design).
+- **Version wiring**: the `APP_VERSION` constant in `index.html` is rewritten to the tag at build time, and `version.json` is committed to `main` so Pages serves it. Dismissal is remembered per version in `localStorage`.
+- **Free tier**: GitHub Releases + API are free; the unauthenticated API limit (60 req/hr per IP) is ample for occasional client checks.
+
