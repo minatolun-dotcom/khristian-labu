@@ -487,8 +487,8 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
         <button class="btn btn-ghost" onclick="toggleFindReplace()" title="Find & Replace"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M8 11h6"/><path d="M11 8v6"/></svg></button>
         <button class="btn btn-ghost" onclick="openExportModal()" title="Export"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
         <button class="btn btn-primary" onclick="openAddModal()" title="Add Song"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-        <button class="btn btn-ghost" onclick="openSongbookModal()" title="New Main Songbook">+ Songbook</button>
-        <button class="btn btn-ghost" onclick="openBookModal()" title="New Book">+ Book</button>
+        <button class="btn btn-ghost" onclick="openSongbookModal()" title="New Main Songbook"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Songbook</button>
+        <button class="btn btn-ghost" onclick="openBookModal()" title="New Book"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Book</button>
       </div>
     </div>
     <div class="admin-toolbar">
@@ -511,6 +511,8 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
         .sb-chev{width:14px;height:14px;color:var(--text3);transition:transform var(--transition);flex:none;}
         .sb-group.open .sb-chev{transform:rotate(90deg);}
         .sb-name{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .sb-icon{width:18px;height:18px;flex:none;color:var(--accent);display:inline-flex;align-items:center;}
+        .sb-icon svg{width:18px;height:18px;}
         .sb-total{color:var(--text3);font-size:0.8rem;white-space:nowrap;}
         .sb-kebab{width:30px;height:30px;border-radius:8px;background:transparent;border:1px solid transparent;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.1rem;line-height:1;flex:none;transition:all var(--transition);}
         .sb-kebab:hover{background:var(--bg2);border-color:var(--border);color:var(--text);}
@@ -528,6 +530,8 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
         .sb-book-row:hover{background:var(--bg2);}
         .sb-book-name{font-size:0.9rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
         .sb-count{color:var(--text3);font-size:0.8rem;white-space:nowrap;}
+        .admin-more{display:block;width:100%;margin:1rem 0;padding:0.7rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text2);font-family:inherit;font-size:0.85rem;cursor:pointer;transition:all var(--transition);}
+        .admin-more:hover{background:var(--bg2);color:var(--text);}
       </style>
       <div class="songbook-manage" id="songbookManage"></div>
       <div class="find-replace" id="findReplace">
@@ -786,8 +790,8 @@ Second verse line 2"></textarea>
 
 <script>
 // ─── DATA ───
-const DATA_VERSION = 13; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.1.7'; // ponytail: bump on release so the update checker can compare
+const DATA_VERSION = 16; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
+const APP_VERSION = '1.1.8'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 let DEFAULT_SONGS = null;
 let SONGS = {};
@@ -1311,8 +1315,9 @@ const CAT_SVG = {
   'LT':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="21"/><line x1="9" y1="21" x2="15" y2="21"/></svg>',
   'EH1': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 17V5l10-2v12"/><circle cx="6.5" cy="17" r="2.5"/><circle cx="16.5" cy="15" r="2.5"/></svg>',
   'EH2': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 20c-3 0-4-3-4-7s1-9 4-9"/><path d="M15 20c3 0 4-3 4-7s-1-9-4-9"/><path d="M9 4c2 1 4 1 6 0"/><line x1="10" y1="4" x2="10" y2="18"/><line x1="12" y1="4" x2="12" y2="18"/><line x1="14" y1="4" x2="14" y2="18"/></svg>',
-  'GK':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="3" x2="12" y2="21"/><line x1="6" y1="8" x2="18" y2="8"/></svg>',
-  'GL':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 14.5 9 22 9 16 13.5 18.5 21 12 16.5 5.5 21 8 13.5 2 9 9.5 9"/></svg>'
+   'GK':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="3" x2="12" y2="21"/><line x1="6" y1="8" x2="18" y2="8"/></svg>',
+   'GL':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 14.5 9 22 9 16 13.5 18.5 21 12 16.5 5.5 21 8 13.5 2 9 9.5 9"/></svg>',
+   'MZ':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 17V5l10-2v12"/><circle cx="6.5" cy="17" r="2.5"/><circle cx="16.5" cy="15" r="2.5"/></svg>'
 };
 const CAT_COLORS = {
   'B&P': { dark: '#a78bfa', light: '#7c3aed' },
@@ -1330,21 +1335,24 @@ const CAT_COLORS = {
   'EH1': { dark: '#2dd4bf', light: '#0d9488' },
   'EH2': { dark: '#818cf8', light: '#4f46e5' },
   'GK':  { dark: '#fb7185', light: '#e11d48' },
-  'GL':  { dark: '#e879f9', light: '#c026d3' }
+  'GL':  { dark: '#e879f9', light: '#c026d3' },
+  'MZ':  { dark: '#2dd4bf', light: '#0d9488' }
 };
 const GROUP_SVGS = {
   kl:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2c0 4-4 6-4 10a4 4 0 0 0 8 0c0-4-4-6-4-10z"/><path d="M12 18v3"/><path d="M8 22h8"/></svg>',
   kbc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18v14H3z" rx="1"/><path d="M3 6l3-4h12l3 4"/><path d="M7 10h4"/><path d="M7 14h8"/></svg>',
   zomi:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="10" cy="12" rx="8" ry="5"/><path d="M18 12l4-3v6z"/><circle cx="7" cy="10" r="1" fill="currentColor"/></svg>',
   la:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 17V5l10-2v12"/><circle cx="6.5" cy="17" r="2.5"/><circle cx="16.5" cy="15" r="2.5"/></svg>',
-  geh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="3" x2="12" y2="21"/><line x1="6" y1="8" x2="18" y2="8"/></svg>'
+  geh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="3" x2="12" y2="21"/><line x1="6" y1="8" x2="18" y2="8"/></svg>',
+  mz:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V6l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg>'
 };
 const GROUP_COLORS = {
   kl:  { dark: '#fbbf24', light: '#d97706' },
   kbc: { dark: '#60a5fa', light: '#2563eb' },
   zomi:{ dark: '#f472b6', light: '#db2777' },
   la:  { dark: '#34d399', light: '#059669' },
-  geh: { dark: '#a78bfa', light: '#7c3aed' }
+  geh: { dark: '#a78bfa', light: '#7c3aed' },
+  mz:  { dark: '#2dd4bf', light: '#0d9488' }
 };
 function renderGroups() {
   currentHomeGrid = 'groupGrid';
@@ -1372,6 +1380,7 @@ function renderGroups() {
 function openGroup(id) {
   const g = GROUPS.find(x => x.id === id);
   if (!g) return;
+  if (g.books.length === 1) { currentGroup = g.id; openCategory(g.books[0]); return; }
   showView('home');
   currentHomeGrid = 'categoryGrid';
   currentGroup = g.id; currentListKind = 'group';
@@ -1677,14 +1686,38 @@ function renderAdminSongs() {
   document.getElementById('adminCount').textContent = songs.length + ' songs';
   list.innerHTML = '';
   if (!songs.length) { list.innerHTML = '<div class="no-results"><div class="icon">'+SVG.music+'</div><p>No songs found</p></div>'; return; }
-  songs.forEach((song, i) => {
+  // ponytail: never build all 5k+ rows at once — render in 200-row chunks; "Load more" appends the next.
+  const CHUNK = 200, big = songs.length > CHUNK;
+  let rendered = 0;
+  const buildRow = (song, i) => {
     const row = document.createElement('div');
-    row.className = 'admin-song-row fade-in';
-    row.style.animationDelay = Math.min(i*0.015, 0.4)+'s';
+    row.className = 'admin-song-row' + (big ? '' : ' fade-in');
+    if (!big) row.style.animationDelay = Math.min(i*0.015, 0.4)+'s';
     const meta = [song.author, song.key?'Key: '+song.key:''].filter(Boolean).join(' · ');
     row.innerHTML = '<div class="song-num">'+(song.number||'')+'</div><div class="song-info"><div class="song-title">'+esc(song.title)+'</div><div class="song-meta">'+esc(meta)+'</div></div><div class="admin-actions"><button onclick="openExportModal(\''+song.id+'\')" title="Export">'+SVG.download+'</button><button onclick="openEditModal(\''+song.id+'\')" title="Edit">'+SVG.edit+'</button><button class="del" onclick="confirmDelete(\''+song.id+'\')" title="Delete">'+SVG.trash+'</button></div>';
-    list.appendChild(row);
-  });
+    return row;
+  };
+  const renderChunk = (n) => {
+    const frag = document.createDocumentFragment();
+    const end = Math.min(rendered + n, songs.length);
+    for (; rendered < end; rendered++) frag.appendChild(buildRow(songs[rendered], rendered));
+    list.appendChild(frag);
+  };
+  renderChunk(CHUNK);
+  if (songs.length > CHUNK) {
+    const more = document.createElement('button');
+    more.className = 'admin-more';
+    more.textContent = 'Load more — showing ' + Math.min(CHUNK, songs.length) + ' of ' + songs.length;
+    more.onclick = () => {
+      const frag = document.createDocumentFragment();
+      const end = Math.min(rendered + CHUNK, songs.length);
+      for (; rendered < end; rendered++) frag.appendChild(buildRow(songs[rendered], rendered));
+      list.insertBefore(frag, more);
+      if (rendered >= songs.length) more.remove();
+      else more.textContent = 'Load more — showing ' + rendered + ' of ' + songs.length;
+    };
+    list.appendChild(more);
+  }
 }
 
 // ─── EXPORT ───
@@ -2153,7 +2186,8 @@ function renderSongbookManage() {
     html += '<div class="sb-group' + (open ? ' open' : '') + '" data-id="' + g.id + '">';
     html += '<div class="sb-head" onclick="toggleCollapse(\'' + g.id + '\')">';
     html += '<svg class="sb-chev" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l5 4-5 4z"/></svg>';
-    html += '<span class="sb-name">' + (g.icon ? esc(g.icon) + ' ' : '') + esc(g.name) + '</span>';
+    html += '<span class="sb-icon">' + (GROUP_SVGS[g.id] || SVG.book) + '</span>';
+    html += '<span class="sb-name">' + esc(g.name) + '</span>';
     html += '<span class="sb-total">' + total + ' songs</span>';
     html += '<button type="button" class="sb-kebab" onclick="toggleKebab(event,this)" aria-label="Options">⋮</button>';
     html += '</div>';
@@ -2163,6 +2197,7 @@ function renderSongbookManage() {
       const info = SONGS[code] ? SONGS[code].info : { name: code };
       const cnt = SONGS[code] ? SONGS[code].songs.length : 0;
       html += '<div class="sb-book-row">';
+      html += '<span class="sb-icon">' + catSvgOf(code) + '</span>';
       html += '<span class="sb-book-name">' + esc(info.name) + ' <span class="sb-count">' + cnt + '</span></span>';
       html += '<button type="button" class="sb-kebab" onclick="toggleKebab(event,this)" aria-label="Options">⋮</button>';
       html += '<div class="sb-menu"><div class="sb-menu-item" onclick="openBookModal(\'' + g.id + '\',\'' + code + '\')">Rename</div><div class="sb-menu-item danger" onclick="confirmDeleteBook(\'' + code + '\')">Delete</div></div>';

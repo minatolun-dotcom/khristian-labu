@@ -322,6 +322,42 @@ def klab_book(dirpath, code, name, desc):
         s['id'] = f"{code}_{i + 1}"
     return code, {'info': {'name': name, 'description': desc, 'icon': ''}, 'songs': songs}
 
+# ─── Mizo Khristian Labu (Zofate): SQLCipher DB exported to sources/mizo/hlabu.json.
+#     Songs have no verse/chorus markers; lyrics are run-on text. Imported as ONE
+#     flat book (no key-based sub-books); each song keeps its 'key' as metadata. ───
+MIZO_SENT_RE = re.compile(r'(?<=[.!?])\s+')
+
+def mizo_verses(text):
+    text = (text or '').strip()
+    if not text:
+        return []
+    lines = [s.strip() for s in MIZO_SENT_RE.split(text) if s.strip()]
+    return [{'type': 'v', 'lines': lines}]
+
+def mizo_book(path, code, name, desc):
+    # ponytail: flat single book; sentence-split lyrics, pull "Lettu <composer>" into author.
+    data = load(path)
+    songs = []
+    for s in data:
+        k = (s.get('keys') or '').strip()
+        thu = s.get('thu') or ''
+        author = s.get('author') or ''
+        m = re.search(r'\s*Let(?:t)?u(?:te)?\s*(.*)$', thu, re.I)
+        if m:
+            author = (author + ' ' + m.group(1).strip()).strip()
+            thu = thu[:m.start()].strip()
+        num = str(s.get('page_no'))
+        songs.append({
+            'id': f"{code}_{num}",
+            'title': (s.get('title') or '').strip(),
+            'author': author,
+            'number': num,
+            'key': k,
+            'verses': mizo_verses(thu),
+        })
+    songs.sort(key=lambda x: int(x['number']) if x['number'].isdigit() else 9999)
+    return code, {'info': {'name': name, 'description': desc, 'icon': ''}, 'songs': songs}
+
 def main():
     songs = load('songs.json')
     groups = [
@@ -330,6 +366,7 @@ def main():
         {'id': 'zomi', 'name': 'Zomi Labu',                      'icon': '', 'desc': 'Galhiam, Tedim, Worship, Phatna', 'books': ['ZG', 'ZT', 'ZW', 'ZP']},
         {'id': 'la',   'name': 'La Thiangtho Vaiphei Labu',     'icon': '', 'desc': 'La, Thiangtho, Vaiphei',      'books': ['LT']},
         {'id': 'geh',  'name': 'Gangte',                        'icon': '', 'desc': 'Gangte hymn collections',     'books': ['EH1', 'EH2', 'GK', 'GL']},
+        {'id': 'mz',   'name': 'Khristian Hla Bu (Mizo)',      'icon': '', 'desc': 'Mizo hymnal (Zofate)',        'books': ['MZ']},
     ]
 
     # KBC books
@@ -358,6 +395,10 @@ def main():
     songs[c] = book
     # Gangte LA LAKKHAWM — scraped from the same songbook (book 01)
     c, book = klab_book('sources/lakkhawm', 'GL', 'La Lakkhawm', 'Gangte')
+    songs[c] = book
+
+    # Mizo Khristian Labu (Zofate) — one flat book (no key sub-books)
+    c, book = mizo_book('sources/mizo/hlabu.json', 'MZ', 'Khristian Hla Bu (Mizo)', 'Mizo (Zofate)')
     songs[c] = book
 
     songs['groups'] = groups

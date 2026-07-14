@@ -1,6 +1,6 @@
 // Khristian Labu service worker — app shell + offline support (free, no backend).
 // ponytail: cache name is tied to DATA_VERSION; bump both together so data updates propagate.
-const CACHE = 'labu-v6';
+const CACHE = 'labu-v16';
 const SHELL = ['./', 'index.html', 'logo.png', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
