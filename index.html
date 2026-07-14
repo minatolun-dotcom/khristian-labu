@@ -764,7 +764,10 @@ Second verse line 2"></textarea>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem;background:var(--bg3);border-radius:8px;">
         <span style="display:flex;align-items:center;gap:0.6rem;font-size:0.9rem;color:var(--text);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg> Keep screen on</span>
-        <button class="btn btn-ghost" onclick="toggleWakeLockSetting()" id="wakeLockBtn" style="font-size:0.85rem;">Off</button>
+        <div style="display:flex;gap:6px;">
+          <button id="wakeOff" onclick="setWakeLock(false)" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.85rem;cursor:pointer;font-family:inherit;transition:all 0.15s;">Off</button>
+          <button id="wakeOn" onclick="setWakeLock(true)" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.85rem;cursor:pointer;font-family:inherit;transition:all 0.15s;">On</button>
+        </div>
       </div>
       <button class="sidebar-item" onclick="closeModal('settingsModal');closeSidebar();openAdmin()" style="background:var(--bg3);border-radius:8px;padding:0.75rem 1rem;border:1px solid var(--border);">
         <span class="si-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span><span class="si-label">Manage Songs</span>
@@ -783,14 +786,31 @@ Second verse line 2"></textarea>
 
 <script>
 // ─── DATA ───
-const DATA_VERSION = 7; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.1.5'; // ponytail: bump on release so the update checker can compare
+const DATA_VERSION = 13; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
+const APP_VERSION = '1.1.7'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 let DEFAULT_SONGS = null;
 let SONGS = {};
 let GROUPS = [];
 let BOOK_GROUP = {};
 let currentHomeGrid = 'groupGrid';
+// ponytail: track what's actually in the DOM so back/forward can just re-show it
+// instead of rebuilding (which replays the fade-in and looks like a refresh).
+let _rv = { grid: 'group', group: null, cat: null, listKind: 'home', pid: null };
+function showHomeRoot() {
+  currentHomeGrid = 'groupGrid';
+  document.getElementById('categoryGrid').style.display = 'none';
+  document.getElementById('groupBack').style.display = 'none';
+  document.getElementById('groupGrid').style.display = '';
+  showView('home');
+}
+function enterCategoryGrid() {
+  currentHomeGrid = 'categoryGrid';
+  document.getElementById('groupGrid').style.display = 'none';
+  document.getElementById('categoryGrid').style.display = '';
+  document.getElementById('groupBack').style.display = '';
+  showView('home');
+}
 // ponytail: admin gating removed — all users can add/edit/delete songs
 let adminCat = 'B&P';
 let favorites = JSON.parse(localStorage.getItem('labu_favs') || '[]');
@@ -1140,15 +1160,21 @@ function applyState(s) {
   searchQuery = s.q || '';
   switch (s.view) {
     case 'home':
-      if (s.homeGrid === 'categoryGrid' && s.group) { showView('home'); openGroup(s.group); }
-      else { showView('home'); renderGroups(); }
+      if (s.homeGrid === 'categoryGrid' && s.group) {
+        if (_rv.grid === 'category' && _rv.group === s.group && document.getElementById('categoryGrid').children.length) enterCategoryGrid();
+        else { showView('home'); openGroup(s.group); }
+      } else {
+        if (_rv.grid === 'group') showView('home');
+        else if (document.getElementById('groupGrid').children.length) showHomeRoot();
+        else { showView('home'); renderGroups(); }
+      }
       break;
     case 'list':
-      if (s.listKind === 'cat' && s.cat) openCategory(s.cat);
-      else if (s.listKind === 'fav') openFavs();
-      else if (s.listKind === 'recent') openRecents();
-      else if (s.listKind === 'playlists') openPlaylists();
-      else if (s.listKind === 'playlist' && s.pid) openPlaylist(s.pid);
+      if (s.listKind === 'cat' && s.cat) { if (_rv.listKind === 'cat' && _rv.cat === s.cat && currentList.length) showView('list'); else openCategory(s.cat); }
+      else if (s.listKind === 'fav') { if (_rv.listKind === 'fav' && currentList.length) showView('list'); else openFavs(); }
+      else if (s.listKind === 'recent') { if (_rv.listKind === 'recent' && currentList.length) showView('list'); else openRecents(); }
+      else if (s.listKind === 'playlists') { if (_rv.listKind === 'playlists') showView('list'); else openPlaylists(); }
+      else if (s.listKind === 'playlist' && s.pid) { if (_rv.listKind === 'playlist' && _rv.pid === s.pid) showView('list'); else openPlaylist(s.pid); }
       else { showView('home'); renderGroups(); }
       break;
     case 'detail': {
@@ -1170,7 +1196,15 @@ function applyState(s) {
   _restoring = false;
 }
 
-function goHome() { showView('home'); currentCat = null; currentGroup = null; currentListKind = 'home'; currentList = []; document.getElementById('searchInput').value = ''; renderGroups(); navPush(); }
+function goHome() {
+  currentCat = null; currentGroup = null; currentListKind = 'home'; currentList = [];
+  document.getElementById('searchInput').value = '';
+  if (_rv.grid === 'group') showView('home');
+  else if (document.getElementById('groupGrid').children.length) showHomeRoot();
+  else { showView('home'); renderGroups(); }
+  _rv = { grid: 'group', group: null, cat: null, listKind: 'home', pid: null };
+  navPush();
+}
 
 // ─── FAVORITES & RECENTS ───
 function toggleFav(songId) {
@@ -1197,6 +1231,7 @@ function openFavs() {
   document.getElementById('listHeader').innerHTML = '<h2>Favorites</h2><p>'+songs.length+' favorited songs</p>';
   renderSongList(songs);
   document.getElementById('searchInput').value = '';
+  _rv.listKind = 'fav'; _rv.cat = null; _rv.pid = null;
   navPush();
 }
 
@@ -1272,7 +1307,12 @@ const CAT_SVG = {
   'ZG':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 8a3 3 0 0 0-3 3"/><path d="M9 14a6 6 0 0 1-6-6"/><path d="M9 14c0 4 2 6 3 7"/><path d="M15 14c0 4-2 6-3 7"/><circle cx="9" cy="8" r="4"/><line x1="18" y1="8" x2="18" y2="22"/></svg>',
   'ZT':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="14" rx="8" ry="5"/><path d="M4 14v-2c0-2.2 3.6-4 8-4s8 1.8 8 4v2"/><line x1="12" y1="9" x2="12" y2="4"/><line x1="10" y1="4" x2="14" y2="4"/></svg>',
   'ZW':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 11V7a5 5 0 0 1 10 0v4"/><path d="M12 15v4"/><path d="M5 11h14c0 4-3 7-7 7s-7-3-7-7z"/></svg>',
-  'ZP':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>'
+  'ZP':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+  'LT':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="21"/><line x1="9" y1="21" x2="15" y2="21"/></svg>',
+  'EH1': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 17V5l10-2v12"/><circle cx="6.5" cy="17" r="2.5"/><circle cx="16.5" cy="15" r="2.5"/></svg>',
+  'EH2': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 20c-3 0-4-3-4-7s1-9 4-9"/><path d="M15 20c3 0 4-3 4-7s-1-9-4-9"/><path d="M9 4c2 1 4 1 6 0"/><line x1="10" y1="4" x2="10" y2="18"/><line x1="12" y1="4" x2="12" y2="18"/><line x1="14" y1="4" x2="14" y2="18"/></svg>',
+  'GK':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="3" x2="12" y2="21"/><line x1="6" y1="8" x2="18" y2="8"/></svg>',
+  'GL':  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 14.5 9 22 9 16 13.5 18.5 21 12 16.5 5.5 21 8 13.5 2 9 9.5 9"/></svg>'
 };
 const CAT_COLORS = {
   'B&P': { dark: '#a78bfa', light: '#7c3aed' },
@@ -1285,17 +1325,26 @@ const CAT_COLORS = {
   'ZG': { dark: '#22d3ee', light: '#0891b2' },
   'ZT': { dark: '#a3e635', light: '#65a30d' },
   'ZW': { dark: '#c084fc', light: '#9333ea' },
-  'ZP': { dark: '#fcd34d', light: '#d97706' }
+  'ZP': { dark: '#fcd34d', light: '#d97706' },
+  'LT':  { dark: '#4ade80', light: '#16a34a' },
+  'EH1': { dark: '#2dd4bf', light: '#0d9488' },
+  'EH2': { dark: '#818cf8', light: '#4f46e5' },
+  'GK':  { dark: '#fb7185', light: '#e11d48' },
+  'GL':  { dark: '#e879f9', light: '#c026d3' }
 };
 const GROUP_SVGS = {
-  kl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2c0 4-4 6-4 10a4 4 0 0 0 8 0c0-4-4-6-4-10z"/><path d="M12 18v3"/><path d="M8 22h8"/></svg>',
+  kl:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2c0 4-4 6-4 10a4 4 0 0 0 8 0c0-4-4-6-4-10z"/><path d="M12 18v3"/><path d="M8 22h8"/></svg>',
   kbc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18v14H3z" rx="1"/><path d="M3 6l3-4h12l3 4"/><path d="M7 10h4"/><path d="M7 14h8"/></svg>',
-  zomi:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 8a6 6 0 0 1-12 0"/><path d="M6 14c0 3 2.7 6 6 6s6-3 6-6"/><path d="M12 2v4"/><path d="M9 4h6"/></svg>'
+  zomi:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="10" cy="12" rx="8" ry="5"/><path d="M18 12l4-3v6z"/><circle cx="7" cy="10" r="1" fill="currentColor"/></svg>',
+  la:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 17V5l10-2v12"/><circle cx="6.5" cy="17" r="2.5"/><circle cx="16.5" cy="15" r="2.5"/></svg>',
+  geh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="3" x2="12" y2="21"/><line x1="6" y1="8" x2="18" y2="8"/></svg>'
 };
 const GROUP_COLORS = {
   kl:  { dark: '#fbbf24', light: '#d97706' },
   kbc: { dark: '#60a5fa', light: '#2563eb' },
-  zomi:{ dark: '#f472b6', light: '#db2777' }
+  zomi:{ dark: '#f472b6', light: '#db2777' },
+  la:  { dark: '#34d399', light: '#059669' },
+  geh: { dark: '#a78bfa', light: '#7c3aed' }
 };
 function renderGroups() {
   currentHomeGrid = 'groupGrid';
@@ -1317,6 +1366,7 @@ function renderGroups() {
     card.innerHTML = '<div class="cat-icon" style="background:'+col+'18"><div class="cat-icon-svg" style="color:'+col+'">'+icon+'</div></div><div class="cat-text"><div class="cat-name">'+esc(g.name)+'</div><div class="cat-desc">'+(g.desc||'')+'</div></div><div class="cat-count">'+total+' songs</div>';
     grid.appendChild(card);
   });
+  _rv = { grid: 'group', group: null, cat: null, listKind: 'home', pid: null };
 }
 
 function openGroup(id) {
@@ -1330,6 +1380,7 @@ function openGroup(id) {
   grid.style.display = '';
   document.getElementById('groupBack').style.display = '';
   renderCategories(g.books);
+  _rv = { grid: 'category', group: g.id, cat: null, listKind: 'group', pid: null };
   navPush();
 }
 
@@ -1381,6 +1432,7 @@ function openCategory(key) {
   document.getElementById('listHeader').innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;"><div style="display:flex;align-items:center;gap:8px;"><span style="display:flex;width:28px;height:28px;color:'+catColor+'">'+catSvgOf(key)+'</span><h2>'+SONGS[key].info.name+'</h2></div><button onclick="toggleSort()" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-size:0.8rem;font-family:inherit;cursor:pointer;transition:all 0.15s;">'+sortSvg+' Sort: '+(listSortMode==='num'?'Number':'Name')+'</button></div><p style="margin-top:4px;">'+(SONGS[key].info.description||'')+' · '+currentList.length+' songs</p>';
   renderSongList(currentList);
   document.getElementById('searchInput').value = '';
+  _rv.cat = key; _rv.listKind = 'cat'; _rv.pid = null;
   navPush();
 }
 
@@ -2243,12 +2295,14 @@ function openRecents() {
   if (songs.length) { renderSongList(songs); }
   else { document.getElementById('songGrid').innerHTML = '<div class="no-results"><div class="icon">'+SVG.clock+'</div><p>No songs viewed yet</p></div>'; }
   document.getElementById('searchInput').value = '';
+  _rv.listKind = 'recent'; _rv.cat = null; _rv.pid = null;
   navPush();
 }
 
 // ─── CUSTOM LISTS (PLAYLISTS) ───
 function openPlaylists() {
   currentCat = null; currentList = []; currentListKind = 'playlists'; currentGroup = null; currentPlaylistId = null;
+  _rv.listKind = 'playlists'; _rv.cat = null; _rv.pid = null;
   showView('list');
   document.getElementById('listHeader').innerHTML = '<h2>Custom Lists</h2><p>'+playlists.length+' playlist'+(playlists.length!==1?'s':'')+'</p>';
   const grid = document.getElementById('songGrid');
@@ -2276,6 +2330,7 @@ function openPlaylist(pid) {
     });
   });
   currentCat = null; currentList = songs; currentListKind = 'playlist'; currentGroup = null; currentPlaylistId = pid;
+  _rv.listKind = 'playlist'; _rv.pid = pid; _rv.cat = null;
   showView('list');
   document.getElementById('listHeader').innerHTML = '<h2>'+esc(pl.name)+'</h2><p>'+songs.length+' song'+(songs.length!==1?'s':'')+' · <a onclick="renamePlaylist(\''+pid+'\')" style="color:var(--accent);cursor:pointer;font-size:0.8rem;">Rename</a> · <a onclick="deletePlaylist(\''+pid+'\')" style="color:var(--red);cursor:pointer;font-size:0.8rem;">Delete</a></p>';
   renderSongList(songs);
@@ -2348,13 +2403,19 @@ function openSettings() {
   updateSettingsUI();
 }
 function updateSettingsUI() {
-  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-  document.getElementById('settingsThemeBtn').textContent = isLight ? 'Dark' : 'Light';
-  document.getElementById('wakeLockBtn').textContent = _wakeOn ? 'On' : 'Off';
-  document.getElementById('wakeLockBtn').style.color = _wakeOn ? 'var(--green)' : 'var(--text3)';
+  updateThemeButtons(localStorage.getItem('labu-theme') || 'system');
+  const off = document.getElementById('wakeOff'), on = document.getElementById('wakeOn');
+  if (off && on) {
+    off.style.background = _wakeOn ? 'var(--bg)' : 'var(--accent)';
+    off.style.color = _wakeOn ? 'var(--text)' : '#fff';
+    off.style.borderColor = _wakeOn ? 'var(--border)' : 'var(--accent)';
+    on.style.background = _wakeOn ? 'var(--accent)' : 'var(--bg)';
+    on.style.color = _wakeOn ? '#fff' : 'var(--text)';
+    on.style.borderColor = _wakeOn ? 'var(--accent)' : 'var(--border)';
+  }
 }
-function toggleWakeLockSetting() {
-  _wakeOn = !_wakeOn;
+function setWakeLock(on) {
+  _wakeOn = !!on;
   localStorage.setItem('labu_wake', _wakeOn ? '1' : '0');
   if (_wakeOn) requestWakeLock(); else releaseWakeLock();
   updateSettingsUI();
