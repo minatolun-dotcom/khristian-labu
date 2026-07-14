@@ -218,8 +218,18 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .admin-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem;flex-wrap:wrap;gap:1rem;}
 .admin-header h2{font-size:1.5rem;font-weight:700;}
 .admin-toolbar{display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap;align-items:center;}
-.admin-filter{width:auto;padding:10px 36px 10px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.9rem;font-family:inherit;cursor:pointer;outline:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%236a6a7a' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;transition:all var(--transition);}
-.admin-filter:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
+.admin-filter{display:none;}
+.dd{position:relative;width:auto;min-width:200px;font-size:0.9rem;font-family:inherit;}
+.dd-btn{display:flex;align-items:center;justify-content:space-between;gap:0.75rem;width:100%;padding:10px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.9rem;font-family:inherit;cursor:pointer;outline:none;transition:all var(--transition);}
+.dd-btn:hover{border-color:var(--accent);}
+.dd-btn.open{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
+.dd-btn .chev{width:14px;height:14px;color:var(--text3);transition:transform var(--transition);flex:none;}
+.dd-btn.open .chev{transform:rotate(180deg);}
+.dd-menu{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:60;max-height:320px;overflow-y:auto;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px;box-shadow:0 12px 30px rgba(0,0,0,0.25);display:none;animation:slideUp 0.15s ease-out;}
+.dd-menu.open{display:block;}
+.dd-item{padding:9px 12px;border-radius:var(--radius-sm);color:var(--text2);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all var(--transition);}
+.dd-item:hover{background:var(--bg3);color:var(--text);}
+.dd-item.sel{background:var(--accent-glow);color:var(--accent);font-weight:600;}
 .admin-song-list{display:flex;flex-direction:column;gap:0.5rem;}
 .admin-song-row{display:flex;align-items:center;gap:1rem;padding:0.85rem 1rem;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);transition:all var(--transition);}
 .admin-song-row:hover{border-color:var(--accent);background:var(--card-hover);}
@@ -477,16 +487,50 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
         <button class="btn btn-ghost" onclick="toggleFindReplace()" title="Find & Replace"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M8 11h6"/><path d="M11 8v6"/></svg></button>
         <button class="btn btn-ghost" onclick="openExportModal()" title="Export"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
         <button class="btn btn-primary" onclick="openAddModal()" title="Add Song"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <button class="btn btn-ghost" onclick="openSongbookModal()" title="New Main Songbook">+ Songbook</button>
+        <button class="btn btn-ghost" onclick="openBookModal()" title="New Book">+ Book</button>
       </div>
     </div>
     <div class="admin-toolbar">
       <select class="admin-filter" id="adminFilterSelect" onchange="filterAdminByBook(this.value)">
         <option value="all">All Songbooks</option>
       </select>
+      <div class="dd" id="adminFilterDD">
+        <button type="button" class="dd-btn" id="adminFilterBtn"><span id="adminFilterLabel">All Songbooks</span><svg class="chev" viewBox="0 0 16 16" fill="currentColor"><path d="M8 11L3 6h10z"/></svg></button>
+        <div class="dd-menu" id="adminFilterMenu"></div>
+      </div>
       <input type="text" id="adminSearchInput" placeholder="Search songs..." oninput="filterAdminSearch(this.value)" style="flex:1;min-width:150px;padding:10px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.9rem;font-family:inherit;outline:none;transition:all var(--transition);">
       <span style="color:var(--text3);font-size:0.8rem;white-space:nowrap;" id="adminCount"></span>
     </div>
-    <div class="find-replace" id="findReplace">
+      <style>
+        .songbook-manage{margin:0.5rem 0 1rem;display:flex;flex-direction:column;gap:0.4rem;}
+        .sb-manage-header{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text3);}
+        .sb-group{border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);position:relative;}
+        .sb-head{position:relative;display:flex;align-items:center;gap:0.6rem;padding:0.55rem 0.75rem;cursor:pointer;user-select:none;transition:background var(--transition);}
+        .sb-head:hover{background:var(--card-hover);}
+        .sb-chev{width:14px;height:14px;color:var(--text3);transition:transform var(--transition);flex:none;}
+        .sb-group.open .sb-chev{transform:rotate(90deg);}
+        .sb-name{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .sb-total{color:var(--text3);font-size:0.8rem;white-space:nowrap;}
+        .sb-kebab{width:30px;height:30px;border-radius:8px;background:transparent;border:1px solid transparent;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.1rem;line-height:1;flex:none;transition:all var(--transition);}
+        .sb-kebab:hover{background:var(--bg2);border-color:var(--border);color:var(--text);}
+        .sb-menu{position:absolute;z-index:60;min-width:150px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px;box-shadow:0 12px 30px rgba(0,0,0,0.25);display:none;animation:slideUp 0.15s ease-out;}
+        .sb-group > .sb-menu{top:2.7rem;right:0.5rem;}
+        .sb-book-row > .sb-menu{top:calc(100% + 2px);right:0;}
+        .sb-menu.open{display:block;}
+        .sb-menu-item{padding:8px 10px;border-radius:var(--radius-sm);color:var(--text2);cursor:pointer;font-size:0.85rem;white-space:nowrap;transition:all var(--transition);}
+        .sb-menu-item:hover{background:var(--bg3);color:var(--text);}
+        .sb-menu-item.danger{color:var(--rose);}
+        .sb-menu-item.danger:hover{background:var(--rose);color:#fff;}
+        .sb-books{margin:0 0.75rem 0.6rem;padding-left:0.6rem;display:flex;flex-direction:column;gap:0.25rem;border-left:2px solid var(--border);}
+        .sb-books.collapsed{display:none;}
+        .sb-book-row{position:relative;display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0.4rem;border-radius:var(--radius-sm);}
+        .sb-book-row:hover{background:var(--bg2);}
+        .sb-book-name{font-size:0.9rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .sb-count{color:var(--text3);font-size:0.8rem;white-space:nowrap;}
+      </style>
+      <div class="songbook-manage" id="songbookManage"></div>
+      <div class="find-replace" id="findReplace">
       <h3>Find & Replace</h3>
       <div class="find-replace-row">
         <div class="form-group">
@@ -518,6 +562,67 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 
 
 <!-- MODALS -->
+<div class="modal-overlay" id="songbookModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="sbModalTitle">New Main Songbook</h3>
+      <button class="modal-close" onclick="closeModal('songbookModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="sbEditId">
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="sbName" placeholder="e.g. Khristian Labu">
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <input type="text" id="sbDesc" placeholder="optional">
+      </div>
+      <div class="form-group">
+        <label>Icon (emoji/text)</label>
+        <input type="text" id="sbIcon" placeholder="optional">
+      </div>
+      <div class="form-group" id="sbBooksRow">
+        <label>Books (one per line)</label>
+        <textarea id="sbBooks" rows="4" placeholder="Houbungla&#10;Ladeilhen"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('songbookModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSongbook()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="bookModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="bkModalTitle">New Book</h3>
+      <button class="modal-close" onclick="closeModal('bookModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="bkEditCode">
+      <input type="hidden" id="bkEditGroup">
+      <div class="form-group">
+        <label>Songbook</label>
+        <select id="bkGroup"></select>
+      </div>
+      <div class="form-group">
+        <label>Book Name</label>
+        <input type="text" id="bkName" placeholder="e.g. Houbungla">
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <input type="text" id="bkDesc" placeholder="optional">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('bookModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveBook()">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="songModal">
   <div class="modal">
     <div class="modal-header">
@@ -528,19 +633,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
       <input type="hidden" id="editSongId">
       <div class="form-group">
         <label>Category</label>
-        <select id="formCat">
-          <option value="B&P">Biakna Leh Phatna</option>
-          <option value="BL">Biakna Late</option>
-          <option value="PN">Pathian Ngaih La</option>
-          <option value="SM">Suangmantamte</option>
-          <option value="HB">Houbungla (KBC)</option>
-          <option value="LD">Ladeilhen (KBC)</option>
-          <option value="LC">La Chom (KBC)</option>
-          <option value="ZG">Galhiam (Zomi)</option>
-          <option value="ZT">Tedim (Zomi)</option>
-          <option value="ZW">Worship Songs (Zomi)</option>
-          <option value="ZP">Phatna Luangkhawm (Zomi)</option>
-        </select>
+        <select id="formCat"></select>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -853,15 +946,62 @@ function idbGetAll(store) {
 // ponytail: localStorage's 5MB ceiling would break at this corpus size; IndexedDB has no practical cap.
 
 function applyEdit(e) {
+  // Structural edits (user-made songbooks/books) are stored with cat === null.
+  if (e.cat === null) { applyStruct(e); return; }
   const arr = SONGS[e.cat] && SONGS[e.cat].songs;
   if (!arr) return;
   const i = arr.findIndex(s => s.id === e.id);
   if (e.op === 'delete') { if (i >= 0) arr.splice(i, 1); }
   else { if (i >= 0) arr[i] = e.song; else arr.push(e.song); }
 }
+// Rebuild CAT_ORDER / BOOK_GROUP from the (possibly user-extended) groups.
+function reindexBooks() {
+  CAT_ORDER = GROUPS.flatMap(g => g.books);
+  BOOK_GROUP = {};
+  GROUPS.forEach(g => g.books.forEach(b => BOOK_GROUP[b] = g.id));
+}
+// Apply a structural edit (create/rename/delete songbooks and books).
+function applyStruct(e) {
+  const g = SONGS.groups || (SONGS.groups = []);
+  if (e.op === 'addGroup') {
+    const grp = e.song;
+    if (!g.find(x => x.id === grp.id)) g.push({ id: grp.id, name: grp.name, desc: grp.desc || '', icon: grp.icon || '', books: grp.books.slice() });
+    (grp.bookDefs || []).forEach(b => { if (!SONGS[b.code]) SONGS[b.code] = { info: { name: b.name, description: b.desc || '', icon: b.icon || '' }, songs: [] }; });
+  } else if (e.op === 'addBook') {
+    const b = e.song;
+    if (!SONGS[b.code]) SONGS[b.code] = { info: { name: b.name, description: b.desc || '', icon: b.icon || '' }, songs: [] };
+    const grp = (SONGS.groups || []).find(x => x.id === b.group);
+    if (grp && !grp.books.includes(b.code)) grp.books.push(b.code);
+  } else if (e.op === 'renameGroup') {
+    const grp = (SONGS.groups || []).find(x => x.id === e.id);
+    if (grp) { grp.name = e.song.name; grp.desc = e.song.desc || ''; grp.icon = e.song.icon || ''; }
+  } else if (e.op === 'renameBook') {
+    if (SONGS[e.id]) { SONGS[e.id].info.name = e.song.name; SONGS[e.id].info.description = e.song.desc || ''; SONGS[e.id].info.icon = e.song.icon || ''; }
+  } else if (e.op === 'deleteBook') {
+    const code = e.id;
+    delete SONGS[code];
+    (SONGS.groups || []).forEach(g => { const i = g.books.indexOf(code); if (i >= 0) g.books.splice(i, 1); });
+    purgeEdits(code);
+  } else if (e.op === 'deleteGroup') {
+    const grp = (SONGS.groups || []).find(x => x.id === e.id);
+    if (grp) { grp.books.slice().forEach(c => { delete SONGS[c]; purgeEdits(c); }); SONGS.groups = SONGS.groups.filter(x => x.id !== e.id); }
+  }
+}
+// Drop song-level edits belonging to a deleted book (they'd be orphaned on replay).
+function purgeEdits(cat) {
+  _idbh().then(db => {
+    const tx = db.transaction('edits', 'readwrite');
+    const st = tx.objectStore('edits');
+    st.openCursor().onsuccess = ev => { const cur = ev.target.result; if (cur) { if (cur.value.cat === cat) cur.delete(); cur.continue(); } };
+  }).catch(() => {});
+}
 // Record a user edit separately so it survives an app update (the base corpus is replaced on version bump).
 function recordEdit(cat, song, op) {
   idbPut('edits', { id: song.id, cat: cat, op: op, song: song }, song.id).catch(() => {});
+}
+// Record a structural edit (songbook/book create/rename/delete) the same way.
+function recordStruct(id, op, payload) {
+  idbPut('edits', { id: id, cat: null, op: op, song: payload }, id).catch(() => {});
 }
 
 // ponytail: fetch the gzipped corpus (630KB vs 2.2MB); fall back to plain JSON if unavailable
@@ -892,11 +1032,11 @@ async function loadSongs() {
       SONGS = await fetchSongsJSON();
       idbPut('cache', { version: DATA_VERSION, data: SONGS }, 'songs').catch(() => {});
     }
-    GROUPS = SONGS.groups || [];
-    CAT_ORDER = GROUPS.flatMap(g => g.books);
-    BOOK_GROUP = {};
-    GROUPS.forEach(g => g.books.forEach(b => BOOK_GROUP[b] = g.id));
+    // Replay user edits (songs AND user-made structure) BEFORE deriving indexes,
+    // so created songbooks/books exist when CAT_ORDER/BOOK_GROUP are built.
     try { (await idbGetAll('edits')).forEach(applyEdit); } catch (e) {}
+    GROUPS = SONGS.groups || [];
+    reindexBooks();
     updateStats();
   } catch (err) {
     showLoadError(err);
@@ -1193,6 +1333,23 @@ function openGroup(id) {
   navPush();
 }
 
+const SB_FALLBACK_COLORS = [
+  {light:'#6d28d9',dark:'#a78bfa'},
+  {light:'#0e7490',dark:'#22d3ee'},
+  {light:'#b45309',dark:'#fbbf24'},
+  {light:'#15803d',dark:'#4ade80'},
+  {light:'#be123c',dark:'#fb7185'},
+  {light:'#1d4ed8',dark:'#60a5fa'},
+];
+function hashStr(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return h;}
+function catColorOf(key,isLight){
+  const c = CAT_COLORS[key];
+  if(c) return c;
+  return SB_FALLBACK_COLORS[hashStr(key)%SB_FALLBACK_COLORS.length];
+}
+const DEFAULT_CAT_SVG='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>';
+function catSvgOf(key){return CAT_SVG[key]||DEFAULT_CAT_SVG;}
+
 function renderCategories(books) {
   if (!books) books = CAT_ORDER;
   const grid = document.getElementById('categoryGrid');
@@ -1205,8 +1362,9 @@ function renderCategories(books) {
     card.style.animationDelay = (i * 0.08) + 's';
     card.onclick = () => openCategory(key);
     const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-    const catColor = isLight ? CAT_COLORS[key].light : CAT_COLORS[key].dark;
-    card.innerHTML = '<div class="cat-icon" style="background:'+catColor+'20"><div class="cat-icon-svg" style="color:'+catColor+'">'+CAT_SVG[key]+'</div></div><div class="cat-text"><div class="cat-name">'+cat.info.name+'</div><div class="cat-desc">'+cat.info.description+'</div></div><div class="cat-count"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> '+cat.songs.length+' songs</div>';
+    const cc = catColorOf(key, isLight);
+    const catColor = isLight ? cc.light : cc.dark;
+    card.innerHTML = '<div class="cat-icon" style="background:'+catColor+'20"><div class="cat-icon-svg" style="color:'+catColor+'">'+catSvgOf(key)+'</div></div><div class="cat-text"><div class="cat-name">'+cat.info.name+'</div><div class="cat-desc">'+(cat.info.description||'')+'</div></div><div class="cat-count"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> '+cat.songs.length+' songs</div>';
     grid.appendChild(card);
   });
 }
@@ -1215,11 +1373,12 @@ function openCategory(key) {
   currentCat = key; currentList = SONGS[key].songs; currentListKind = 'cat';
   showView('list');
   const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-  const catColor = CAT_COLORS[key] ? (isLight ? CAT_COLORS[key].light : CAT_COLORS[key].dark) : 'var(--accent)';
+  const cc = catColorOf(key, isLight);
+  const catColor = isLight ? cc.light : cc.dark;
   const sortSvg = listSortMode === 'num'
     ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>'
     : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>';
-  document.getElementById('listHeader').innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;"><div style="display:flex;align-items:center;gap:8px;"><span style="display:flex;width:28px;height:28px;color:'+catColor+'">'+CAT_SVG[key]+'</span><h2>'+SONGS[key].info.name+'</h2></div><button onclick="toggleSort()" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-size:0.8rem;font-family:inherit;cursor:pointer;transition:all 0.15s;">'+sortSvg+' Sort: '+(listSortMode==='num'?'Number':'Name')+'</button></div><p style="margin-top:4px;">'+SONGS[key].info.description+' · '+currentList.length+' songs</p>';
+  document.getElementById('listHeader').innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;"><div style="display:flex;align-items:center;gap:8px;"><span style="display:flex;width:28px;height:28px;color:'+catColor+'">'+catSvgOf(key)+'</span><h2>'+SONGS[key].info.name+'</h2></div><button onclick="toggleSort()" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-size:0.8rem;font-family:inherit;cursor:pointer;transition:all 0.15s;">'+sortSvg+' Sort: '+(listSortMode==='num'?'Number':'Name')+'</button></div><p style="margin-top:4px;">'+(SONGS[key].info.description||'')+' · '+currentList.length+' songs</p>';
   renderSongList(currentList);
   document.getElementById('searchInput').value = '';
   navPush();
@@ -1407,10 +1566,49 @@ function renderAdminPanel() {
     sel.appendChild(opt);
   });
   renderAdminSongs();
+  renderSongbookManage();
+  buildFilterDropdown();
 }
 
 function filterAdminByBook(val) { adminBookFilter = val; renderAdminSongs(); }
 function filterAdminSearch(val) { adminSearchQuery = val; renderAdminSongs(); }
+
+// ponytail: native <select> popup can't be CSS-themed in Chrome; custom themed dropdown for the All-Songbooks filter
+function buildFilterDropdown() {
+  const sel = document.getElementById('adminFilterSelect');
+  const menu = document.getElementById('adminFilterMenu');
+  const label = document.getElementById('adminFilterLabel');
+  const btn = document.getElementById('adminFilterBtn');
+  if (!sel || !menu || !label || !btn) return;
+  menu.innerHTML = '';
+  [...sel.options].forEach(opt => {
+    const item = document.createElement('div');
+    item.className = 'dd-item' + (opt.value === sel.value ? ' sel' : '');
+    item.textContent = opt.textContent;
+    item.onclick = () => {
+      sel.value = opt.value;
+      label.textContent = opt.textContent;
+      [...menu.children].forEach(c => c.classList.remove('sel'));
+      item.classList.add('sel');
+      filterAdminByBook(opt.value);
+      closeFilterDropdown();
+    };
+    menu.appendChild(item);
+  });
+  const cur = [...sel.options].find(o => o.value === sel.value);
+  label.textContent = cur ? cur.textContent : (sel.options[0] ? sel.options[0].textContent : '');
+  btn.onclick = (e) => { e.stopPropagation(); toggleFilterDropdown(); };
+  if (!window.__ddBound) {
+    window.__ddBound = true;
+    document.addEventListener('click', e => { if (document.getElementById('adminFilterDD') && !document.getElementById('adminFilterDD').contains(e.target)) closeFilterDropdown(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeFilterDropdown(); });
+    document.addEventListener('click', () => closeAllKebab());
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAllKebab(); });
+  }
+}
+function openFilterDropdown(){ const b=document.getElementById('adminFilterBtn'), m=document.getElementById('adminFilterMenu'); if(b)m&&b.classList.add('open'); if(m)m.classList.add('open'); }
+function closeFilterDropdown(){ const b=document.getElementById('adminFilterBtn'), m=document.getElementById('adminFilterMenu'); if(b)b.classList.remove('open'); if(m)m.classList.remove('open'); }
+function toggleFilterDropdown(){ const m=document.getElementById('adminFilterMenu'); if(!m)return; m.classList.contains('open')?closeFilterDropdown():openFilterDropdown(); }
 
 function renderAdminSongs() {
   const list = document.getElementById('adminSongList');
@@ -1638,6 +1836,7 @@ function clearFindReplace() {
 function openAddModal() {
   document.getElementById('modalTitle').textContent = 'Add Song';
   document.getElementById('editSongId').value = '';
+  populateFormCat();
   document.getElementById('formCat').value = adminCat;
   document.getElementById('formNum').value = '';
   document.getElementById('formKey').value = '';
@@ -1656,6 +1855,7 @@ function openEditModal(id) {
   if (!song) return;
   document.getElementById('modalTitle').textContent = 'Edit Song';
   document.getElementById('editSongId').value = id;
+  populateFormCat();
   document.getElementById('formCat').value = songCat;
   document.getElementById('formNum').value = song.number || '';
   document.getElementById('formKey').value = song.key || '';
@@ -1739,6 +1939,14 @@ function saveSong() {
 // ─── DELETE ───
 let pendingDeleteId = null;
 let pendingDeleteCat = null;
+// Generic confirm used by song delete AND songbook/book delete.
+function confirmDangerous(msg, btnText, fn) {
+  document.getElementById('confirmMsg').textContent = msg;
+  const b = document.getElementById('confirmBtn');
+  b.textContent = btnText;
+  b.onclick = () => { closeModal('confirmModal'); fn(); };
+  openModal('confirmModal');
+}
 function confirmDelete(id) {
   pendingDeleteId = id;
   pendingDeleteCat = null;
@@ -1747,10 +1955,193 @@ function confirmDelete(id) {
     const found = SONGS[k].songs.find(s => s.id === id);
     if (found) { song = found; pendingDeleteCat = k; }
   });
-  document.getElementById('confirmMsg').textContent = 'Delete "' + (song ? song.title : 'this song') + '"? This cannot be undone.';
-  document.getElementById('confirmBtn').textContent = 'Delete';
-  openModal('confirmModal');
-  document.getElementById('confirmBtn').onclick = () => doDelete();
+  confirmDangerous('Delete "' + (song ? song.title : 'this song') + '"? This cannot be undone.', 'Delete', doDelete);
+}
+
+// ─── CREATE / MANAGE SONGBOOKS & BOOKS ───
+// ponytail: users can create + manage main songbooks (groups) and sub-books;
+// structural edits ride the same IndexedDB 'edits' store as songs so they survive corpus bumps.
+function nextCode(prefix) {
+  let n = 1;
+  while (SONGS[prefix + n] || (SONGS.groups || []).some(g => g.id === prefix + n)) n++;
+  return prefix + n;
+}
+function populateFormCat() {
+  const sel = document.getElementById('formCat');
+  if (!sel) return;
+  sel.innerHTML = '';
+  Object.keys(SONGS).filter(k => SONGS[k] && SONGS[k].songs).forEach(k => {
+    const o = document.createElement('option');
+    o.value = k;
+    o.textContent = (SONGS[k].info ? SONGS[k].info.name : k) + ' (' + SONGS[k].songs.length + ')';
+    sel.appendChild(o);
+  });
+}
+function openSongbookModal(editId) {
+  const isEdit = !!editId;
+  document.getElementById('sbModalTitle').textContent = isEdit ? 'Rename Main Songbook' : 'New Main Songbook';
+  document.getElementById('sbEditId').value = editId || '';
+  const g = isEdit ? (SONGS.groups || []).find(x => x.id === editId) : null;
+  document.getElementById('sbName').value = g ? g.name : '';
+  document.getElementById('sbDesc').value = g ? (g.desc || '') : '';
+  document.getElementById('sbIcon').value = g ? (g.icon || '') : '';
+  document.getElementById('sbBooks').value = '';
+  document.getElementById('sbBooksRow').style.display = isEdit ? 'none' : '';
+  openModal('songbookModal');
+}
+function saveSongbook() {
+  const name = document.getElementById('sbName').value.trim();
+  const desc = document.getElementById('sbDesc').value.trim();
+  const icon = document.getElementById('sbIcon').value.trim();
+  if (!name) { toast('Name is required', 'error'); return; }
+  const editId = document.getElementById('sbEditId').value;
+  if (editId) {
+    const payload = { name, desc, icon };
+    recordStruct(editId, 'renameGroup', payload);
+    applyStruct({ id: editId, cat: null, op: 'renameGroup', song: payload });
+    toast('Songbook renamed', 'success');
+  } else {
+    const id = nextCode('ug');
+    const names = document.getElementById('sbBooks').value.split('\n').map(s => s.trim()).filter(Boolean);
+    const bookNames = names.length ? names : ['Songs'];
+    const used = new Set();
+    const codes = [], bookDefs = [];
+    bookNames.forEach(nm => {
+      let m = 1;
+      while (used.has('U' + m) || SONGS['U' + m] || (SONGS.groups || []).some(g => g.id === 'U' + m)) m++;
+      used.add('U' + m);
+      codes.push('U' + m);
+      bookDefs.push({ code: 'U' + m, name: nm, desc: '', icon: '' });
+    });
+    const payload = { id, name, desc, icon, books: codes, bookDefs };
+    recordStruct(id, 'addGroup', payload);
+    applyStruct({ id, cat: null, op: 'addGroup', song: payload });
+    toast('Main songbook created', 'success');
+  }
+  reindexBooks(); saveSongs(); closeModal('songbookModal');
+  renderSongbookManage(); renderGroups(); renderAdminPanel(); populateFormCat();
+}
+function openBookModal(groupId, editCode) {
+  const sel = document.getElementById('bkGroup');
+  sel.innerHTML = '';
+  (SONGS.groups || []).forEach(g => {
+    const o = document.createElement('option'); o.value = g.id; o.textContent = g.name; sel.appendChild(o);
+  });
+  if (editCode) {
+    const info = SONGS[editCode] ? SONGS[editCode].info : {};
+    document.getElementById('bkModalTitle').textContent = 'Rename Book';
+    document.getElementById('bkEditCode').value = editCode;
+    document.getElementById('bkEditGroup').value = groupId || '';
+    document.getElementById('bkName').value = info.name || '';
+    document.getElementById('bkDesc').value = info.description || '';
+    sel.value = groupId || (BOOK_GROUP[editCode] || '');
+    sel.disabled = true;
+  } else {
+    document.getElementById('bkModalTitle').textContent = 'New Book';
+    document.getElementById('bkEditCode').value = '';
+    document.getElementById('bkEditGroup').value = '';
+    document.getElementById('bkName').value = '';
+    document.getElementById('bkDesc').value = '';
+    sel.disabled = false;
+    if (groupId) sel.value = groupId;
+  }
+  openModal('bookModal');
+}
+function saveBook() {
+  const name = document.getElementById('bkName').value.trim();
+  const desc = document.getElementById('bkDesc').value.trim();
+  if (!name) { toast('Name is required', 'error'); return; }
+  const editCode = document.getElementById('bkEditCode').value;
+  if (editCode) {
+    const payload = { name, desc, icon: '' };
+    recordStruct(editCode, 'renameBook', payload);
+    applyStruct({ id: editCode, cat: null, op: 'renameBook', song: payload });
+    toast('Book renamed', 'success');
+  } else {
+    const groupId = document.getElementById('bkGroup').value;
+    const code = nextCode('U');
+    const payload = { group: groupId, code, name, desc, icon: '' };
+    recordStruct(code, 'addBook', payload);
+    applyStruct({ id: code, cat: null, op: 'addBook', song: payload });
+    toast('Book created', 'success');
+  }
+  reindexBooks(); saveSongs(); closeModal('bookModal');
+  renderSongbookManage(); renderGroups(); renderAdminPanel(); populateFormCat();
+}
+let expandedGroups = new Set();
+function toggleCollapse(id) {
+  const grp = document.querySelector('.sb-group[data-id="' + id + '"]');
+  if (!grp) return;
+  const open = grp.classList.toggle('open');
+  if (open) expandedGroups.add(id); else expandedGroups.delete(id);
+  const books = grp.querySelector(':scope > .sb-books');
+  if (books) books.classList.toggle('collapsed', !open);
+}
+function toggleKebab(e, btn) {
+  e.stopPropagation();
+  const wrap = btn.closest('.sb-group, .sb-book-row');
+  const menu = wrap ? wrap.querySelector(':scope > .sb-menu') : null;
+  if (!menu) return;
+  const isOpen = menu.classList.contains('open');
+  closeAllKebab();
+  if (!isOpen) menu.classList.add('open');
+}
+function closeAllKebab() {
+  document.querySelectorAll('.sb-menu.open').forEach(m => m.classList.remove('open'));
+}
+function renderSongbookManage() {
+  const el = document.getElementById('songbookManage');
+  if (!el) return;
+  let html = '<div class="sb-manage-header"><h3>Songbooks</h3></div>';
+  (SONGS.groups || []).forEach(g => {
+    const books = g.books || [];
+    let total = 0;
+    books.forEach(code => { total += SONGS[code] ? SONGS[code].songs.length : 0; });
+    const open = expandedGroups.has(g.id);
+    html += '<div class="sb-group' + (open ? ' open' : '') + '" data-id="' + g.id + '">';
+    html += '<div class="sb-head" onclick="toggleCollapse(\'' + g.id + '\')">';
+    html += '<svg class="sb-chev" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l5 4-5 4z"/></svg>';
+    html += '<span class="sb-name">' + (g.icon ? esc(g.icon) + ' ' : '') + esc(g.name) + '</span>';
+    html += '<span class="sb-total">' + total + ' songs</span>';
+    html += '<button type="button" class="sb-kebab" onclick="toggleKebab(event,this)" aria-label="Options">⋮</button>';
+    html += '</div>';
+    html += '<div class="sb-menu"><div class="sb-menu-item" onclick="openSongbookModal(\'' + g.id + '\')">Rename</div><div class="sb-menu-item" onclick="openBookModal(\'' + g.id + '\')">Add Book</div><div class="sb-menu-item danger" onclick="confirmDeleteGroup(\'' + g.id + '\')">Delete</div></div>';
+    html += '<div class="sb-books' + (open ? '' : ' collapsed') + '">';
+    books.forEach(code => {
+      const info = SONGS[code] ? SONGS[code].info : { name: code };
+      const cnt = SONGS[code] ? SONGS[code].songs.length : 0;
+      html += '<div class="sb-book-row">';
+      html += '<span class="sb-book-name">' + esc(info.name) + ' <span class="sb-count">' + cnt + '</span></span>';
+      html += '<button type="button" class="sb-kebab" onclick="toggleKebab(event,this)" aria-label="Options">⋮</button>';
+      html += '<div class="sb-menu"><div class="sb-menu-item" onclick="openBookModal(\'' + g.id + '\',\'' + code + '\')">Rename</div><div class="sb-menu-item danger" onclick="confirmDeleteBook(\'' + code + '\')">Delete</div></div>';
+      html += '</div>';
+    });
+    html += '</div></div>';
+  });
+  el.innerHTML = html;
+}
+function confirmDeleteGroup(id) {
+  const g = (SONGS.groups || []).find(x => x.id === id);
+  confirmDangerous('Delete songbook "' + (g ? g.name : '') + '" and ALL its books and songs? This cannot be undone.', 'Delete', () => deleteGroup(id));
+}
+function deleteGroup(id) {
+  recordStruct(id, 'deleteGroup', {});
+  applyStruct({ id, cat: null, op: 'deleteGroup', song: {} });
+  reindexBooks(); saveSongs();
+  renderSongbookManage(); renderGroups(); renderAdminPanel(); populateFormCat();
+  toast('Songbook deleted', 'success');
+}
+function confirmDeleteBook(code) {
+  const info = SONGS[code] ? SONGS[code].info : { name: code };
+  const cnt = SONGS[code] ? SONGS[code].songs.length : 0;
+  confirmDangerous('Delete book "' + (info.name || code) + '" and its ' + cnt + ' songs? This cannot be undone.', 'Delete', () => deleteBook(code));
+}
+function deleteBook(code) {
+  recordStruct(code, 'deleteBook', {});
+  applyStruct({ id: code, cat: null, op: 'deleteBook', song: {} });
+  reindexBooks(); saveSongs();
+  renderSongbookManage(); renderGroups(); renderAdminPanel(); populateFormCat();
+  toast('Book deleted', 'success');
 }
 
 function doDelete() {
