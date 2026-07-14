@@ -13,15 +13,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Myanmar:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root {
-  --bg:#0f0f13;--bg2:#16161d;--bg3:#1e1e28;--card:#1a1a24;--card-hover:#22222e;
+ :root {
+   color-scheme: dark;
+   --bg:#0f0f13;--bg2:#16161d;--bg3:#1e1e28;--card:#1a1a24;--card-hover:#22222e;
   --border:#2a2a3a;--text:#e8e8ed;--text2:#9898a8;--text3:#6a6a7a;
   --accent:#7c6aef;--accent2:#a78bfa;--accent-glow:rgba(124,106,239,0.15);
   --green:#34d399;--rose:#fb7185;--amber:#fbbf24;--blue:#60a5fa;
   --red:#ef4444;--radius:16px;--radius-sm:10px;--transition:0.25s cubic-bezier(0.4,0,0.2,1);
 }
-[data-theme="light"] {
-  --bg:#f8f9fc;--bg2:#ffffff;--bg3:#eef0f5;--card:#ffffff;--card-hover:#f4f5fa;
+ [data-theme="light"] {
+   color-scheme: light;
+   --bg:#f8f9fc;--bg2:#ffffff;--bg3:#eef0f5;--card:#ffffff;--card-hover:#f4f5fa;
   --border:#d8dce6;--text:#1a1a2e;--text2:#5a5a6e;--text3:#8a8a9e;
   --accent:#2563eb;--accent2:#3b82f6;--accent-glow:rgba(37,99,235,0.1);
   --green:#10b981;--rose:#f43f5e;--amber:#f59e0b;--blue:#3b82f6;
@@ -486,9 +488,14 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
       <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
         <button class="btn btn-ghost" onclick="toggleFindReplace()" title="Find & Replace"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M8 11h6"/><path d="M11 8v6"/></svg></button>
         <button class="btn btn-ghost" onclick="openExportModal()" title="Export"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
-        <button class="btn btn-primary" onclick="openAddModal()" title="Add Song"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-        <button class="btn btn-ghost" onclick="openSongbookModal()" title="New Main Songbook"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Songbook</button>
-        <button class="btn btn-ghost" onclick="openBookModal()" title="New Book"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Book</button>
+        <div style="position:relative;">
+          <button class="btn btn-primary" id="adminAddBtn" type="button" onclick="toggleAdminAdd(event)" title="Add"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><svg class="chev" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 11L3 6h10z"/></svg></button>
+          <div class="dd-menu" id="adminAddMenu" style="left:auto;right:0;min-width:220px;">
+            <div class="dd-item" onclick="adminAdd('song')">Add Song</div>
+            <div class="dd-item" onclick="adminAdd('main')">Add Main Songbook</div>
+            <div class="dd-item" onclick="adminAdd('book')">Add Songbook</div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="admin-toolbar">
@@ -607,10 +614,13 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
     <div class="modal-body">
       <input type="hidden" id="bkEditCode">
       <input type="hidden" id="bkEditGroup">
-      <div class="form-group">
-        <label>Songbook</label>
-        <select id="bkGroup"></select>
-      </div>
+        <div class="form-group">
+          <label>Songbook</label>
+          <div class="dd" id="bkGroupDD" style="width:100%;">
+            <button type="button" class="dd-btn" id="bkGroupBtn"><span class="dd-label"></span><svg class="chev" viewBox="0 0 16 16" fill="currentColor"><path d="M8 11L3 6h10z"/></svg></button>
+            <div class="dd-menu" id="bkGroupMenu"></div>
+          </div>
+        </div>
       <div class="form-group">
         <label>Book Name</label>
         <input type="text" id="bkName" placeholder="e.g. Houbungla">
@@ -635,10 +645,13 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
     </div>
     <div class="modal-body">
       <input type="hidden" id="editSongId">
-      <div class="form-group">
-        <label>Category</label>
-        <select id="formCat"></select>
-      </div>
+        <div class="form-group">
+          <label>Category</label>
+          <div class="dd" id="formCatDD" style="width:100%;">
+            <button type="button" class="dd-btn" id="formCatBtn"><span class="dd-label"></span><svg class="chev" viewBox="0 0 16 16" fill="currentColor"><path d="M8 11L3 6h10z"/></svg></button>
+            <div class="dd-menu" id="formCatMenu"></div>
+          </div>
+        </div>
       <div class="form-row">
         <div class="form-group">
           <label>Song Number</label>
@@ -790,13 +803,16 @@ Second verse line 2"></textarea>
 
 <script>
 // ─── DATA ───
-const DATA_VERSION = 16; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.1.8'; // ponytail: bump on release so the update checker can compare
+const DATA_VERSION = 17; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
+const APP_VERSION = '1.1.9'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 let DEFAULT_SONGS = null;
 let SONGS = {};
 let GROUPS = [];
 let BOOK_GROUP = {};
+// ponytail: tiny groups.json lets the home grid paint before the full corpus is parsed.
+let songsReady = false, songsDone = null;
+const BOOK_META = {}, BOOK_META_NAME = {};
 let currentHomeGrid = 'groupGrid';
 // ponytail: track what's actually in the DOM so back/forward can just re-show it
 // instead of rebuilding (which replays the fade-in and looks like a refresh).
@@ -858,11 +874,12 @@ const SVG = {
 async function init() {
   const ld = document.getElementById('heroDesc');
   if (ld) ld.textContent = 'Loading songs…';
-  await loadSongs();
+  await loadMeta();
   renderGroups();
   applyTheme();
   // ponytail: admin login removed — all users can manage songs
   renderSidebarGroups();
+  songsDone = loadSongs().catch(e => console.error('[Khristian Labu]', e));
   if (_wakeOn) requestWakeLock();
   // seed the History API so the browser Back/Forward buttons traverse in-app views
   history.replaceState(buildState(), '');
@@ -1062,11 +1079,25 @@ async function loadSongs() {
     GROUPS = SONGS.groups || [];
     reindexBooks();
     updateStats();
+    songsReady = true;
+    renderGroups();
   } catch (err) {
     showLoadError(err);
     throw err;
   }
 }
+
+// ponytail: paint home from a tiny groups.json so the full corpus parse doesn't block the grid.
+async function loadMeta() {
+  try {
+    const m = await (await fetch('groups.json' + (DATA_VERSION ? ('?v=' + DATA_VERSION) : ''))).json();
+    GROUPS = (m.groups || []).slice();
+    (m.groups || []).forEach(g => (g.books || []).forEach(b => { BOOK_META[b.code] = b.count || 0; BOOK_META_NAME[b.code] = b.name || b.code; }));
+  } catch (e) { /* full load below surfaces errors */ }
+}
+function bookCount(code) { return (SONGS[code] && SONGS[code].songs) ? SONGS[code].songs.length : (BOOK_META[code] || 0); }
+function bookName(code) { return (SONGS[code] && SONGS[code].info && SONGS[code].info.name) ? SONGS[code].info.name : (BOOK_META_NAME[code] || code); }
+async function ensureSongs() { if (songsReady) return; if (songsDone) { try { await songsDone; } catch (e) {} } }
 
 function showLoadError(err) {
   console.error('[Khristian Labu] failed to load songs:', err);
@@ -1228,7 +1259,8 @@ function getFavSongs() {
   return result;
 }
 
-function openFavs() {
+async function openFavs() {
+  await ensureSongs();
   const songs = getFavSongs();
   currentCat = null; currentList = songs; currentListKind = 'fav';
   showView('list');
@@ -1366,7 +1398,7 @@ function renderGroups() {
     card.className = 'cat-card fade-in';
     card.style.animationDelay = (i * 0.08) + 's';
     card.onclick = () => openGroup(g.id);
-    const total = g.books.reduce((n, b) => n + (SONGS[b]?.songs?.length || 0), 0);
+    const total = g.books.reduce((n, b) => n + bookCount(b), 0);
     const icon = GROUP_SVGS[g.id] || SVG.book;
     const gc = GROUP_COLORS[g.id] || { dark: 'var(--accent)', light: 'var(--accent)' };
     const isLight = document.documentElement.getAttribute('data-theme') === 'light';
@@ -1415,8 +1447,7 @@ function renderCategories(books) {
   const grid = document.getElementById('categoryGrid');
   grid.innerHTML = '';
   books.forEach((key, i) => {
-    const cat = SONGS[key];
-    if (!cat) return;
+    const cat = SONGS[key] || null;
     const card = document.createElement('div');
     card.className = 'cat-card fade-in';
     card.style.animationDelay = (i * 0.08) + 's';
@@ -1424,12 +1455,13 @@ function renderCategories(books) {
     const isLight = document.documentElement.getAttribute('data-theme') === 'light';
     const cc = catColorOf(key, isLight);
     const catColor = isLight ? cc.light : cc.dark;
-    card.innerHTML = '<div class="cat-icon" style="background:'+catColor+'20"><div class="cat-icon-svg" style="color:'+catColor+'">'+catSvgOf(key)+'</div></div><div class="cat-text"><div class="cat-name">'+cat.info.name+'</div><div class="cat-desc">'+(cat.info.description||'')+'</div></div><div class="cat-count"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> '+cat.songs.length+' songs</div>';
+    card.innerHTML = '<div class="cat-icon" style="background:'+catColor+'20"><div class="cat-icon-svg" style="color:'+catColor+'">'+catSvgOf(key)+'</div></div><div class="cat-text"><div class="cat-name">'+bookName(key)+'</div><div class="cat-desc">'+(cat&&cat.info&&cat.info.description||'')+'</div></div><div class="cat-count"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> '+bookCount(key)+' songs</div>';
     grid.appendChild(card);
   });
 }
 
-function openCategory(key) {
+async function openCategory(key) {
+  await ensureSongs();
   currentCat = key; currentList = SONGS[key].songs; currentListKind = 'cat';
   showView('list');
   const isLight = document.documentElement.getAttribute('data-theme') === 'light';
@@ -1516,7 +1548,8 @@ function renderSongDetail(song) {
 // ─── SEARCH ───
 let searchTimeout;
 function onSearch(q) { clearTimeout(searchTimeout); searchTimeout = setTimeout(() => doSearch(q), 200); }
-function doSearch(q) {
+async function doSearch(q) {
+  await ensureSongs();
   q = q.trim().toLowerCase();
   searchQuery = q;
   if (!q) { goHome(); return; }
@@ -1671,6 +1704,48 @@ function openFilterDropdown(){ const b=document.getElementById('adminFilterBtn')
 function closeFilterDropdown(){ const b=document.getElementById('adminFilterBtn'), m=document.getElementById('adminFilterMenu'); if(b)b.classList.remove('open'); if(m)m.classList.remove('open'); }
 function toggleFilterDropdown(){ const m=document.getElementById('adminFilterMenu'); if(!m)return; m.classList.contains('open')?closeFilterDropdown():openFilterDropdown(); }
 
+// ponytail: generic themed dropdown (mirrors the All-Songbooks .dd) so Add/Book selects match the theme.
+function buildDropdown(ddId, items, onSelect) {
+  const dd = document.getElementById(ddId);
+  if (!dd) return;
+  const menu = dd.querySelector('.dd-menu'), btn = dd.querySelector('.dd-btn'), label = dd.querySelector('.dd-label');
+  menu.innerHTML = '';
+  items.forEach(it => {
+    const el = document.createElement('div');
+    el.className = 'dd-item' + (it.selected ? ' sel' : '');
+    el.textContent = it.text;
+    el.onclick = () => {
+      dd.querySelectorAll('.dd-item').forEach(c => c.classList.remove('sel'));
+      el.classList.add('sel');
+      if (label) label.textContent = it.text;
+      closeAllDD();
+      if (onSelect) onSelect(it.value);
+    };
+    menu.appendChild(el);
+  });
+  const cur = items.find(i => i.selected) || items[0];
+  if (label) label.textContent = cur ? cur.text : '';
+  btn.onclick = e => { e.stopPropagation(); toggleDD(ddId); };
+  btn.disabled = false;
+}
+function toggleDD(ddId) {
+  const dd = document.getElementById(ddId), menu = dd.querySelector('.dd-menu');
+  const willOpen = !menu.classList.contains('open');
+  closeAllDD();
+  if (willOpen) { menu.classList.add('open'); dd.querySelector('.dd-btn').classList.add('open'); }
+}
+function closeAllDD() {
+  document.querySelectorAll('.dd').forEach(dd => {
+    const m = dd.querySelector('.dd-menu'); if (m) m.classList.remove('open');
+    const b = dd.querySelector('.dd-btn'); if (b) b.classList.remove('open');
+  });
+}
+if (!window.__dd2Bound) {
+  window.__dd2Bound = true;
+  document.addEventListener('click', e => { if (!e.target.closest('.dd')) closeAllDD(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAllDD(); });
+}
+
 function renderAdminSongs() {
   const list = document.getElementById('adminSongList');
   let songs = [];
@@ -1720,10 +1795,35 @@ function renderAdminSongs() {
   }
 }
 
+// ponytail: one "+ Add" button opens a small menu (Add Song / Main Songbook / Songbook).
+function toggleAdminAdd(e) {
+  e.stopPropagation();
+  const m = document.getElementById('adminAddMenu'), b = document.getElementById('adminAddBtn');
+  const open = m.classList.toggle('open');
+  b.classList.toggle('open', open);
+  if (open && !window.__addBound) {
+    window.__addBound = true;
+    document.addEventListener('click', ev => {
+      const m = document.getElementById('adminAddMenu'), b = document.getElementById('adminAddBtn');
+      if (m && !m.contains(ev.target) && b && !b.contains(ev.target)) { m.classList.remove('open'); b.classList.remove('open'); }
+    });
+    document.addEventListener('keydown', ev => { if (ev.key === 'Escape') { const m = document.getElementById('adminAddMenu'), b = document.getElementById('adminAddBtn'); if (m) m.classList.remove('open'); if (b) b.classList.remove('open'); } });
+  }
+}
+function adminAdd(kind) {
+  const m = document.getElementById('adminAddMenu'), b = document.getElementById('adminAddBtn');
+  if (m) m.classList.remove('open');
+  if (b) b.classList.remove('open');
+  if (kind === 'song') openAddModal();
+  else if (kind === 'main') openSongbookModal();
+  else if (kind === 'book') openBookModal();
+}
+
 // ─── EXPORT ───
 let exportSongId = null;
 
-function openExportModal(songId) {
+async function openExportModal(songId) {
+  await ensureSongs();
   exportSongId = songId || null;
   if (songId) {
     document.getElementById('exportScope').value = 'single';
@@ -1918,11 +2018,12 @@ function clearFindReplace() {
 }
 
 // ─── ADD / EDIT MODAL ───
-function openAddModal() {
+async function openAddModal() {
+  await ensureSongs();
   document.getElementById('modalTitle').textContent = 'Add Song';
   document.getElementById('editSongId').value = '';
+  formCatValue = adminCat;
   populateFormCat();
-  document.getElementById('formCat').value = adminCat;
   document.getElementById('formNum').value = '';
   document.getElementById('formKey').value = '';
   document.getElementById('formTitle').value = '';
@@ -1931,7 +2032,8 @@ function openAddModal() {
   openModal('songModal');
 }
 
-function openEditModal(id) {
+async function openEditModal(id) {
+  await ensureSongs();
   let song = null, songCat = null;
   CAT_ORDER.forEach(k => {
     const found = SONGS[k].songs.find(s => s.id === id);
@@ -1940,8 +2042,8 @@ function openEditModal(id) {
   if (!song) return;
   document.getElementById('modalTitle').textContent = 'Edit Song';
   document.getElementById('editSongId').value = id;
+  formCatValue = songCat;
   populateFormCat();
-  document.getElementById('formCat').value = songCat;
   document.getElementById('formNum').value = song.number || '';
   document.getElementById('formKey').value = song.key || '';
   document.getElementById('formTitle').value = song.title || '';
@@ -1973,7 +2075,7 @@ function parseVerses(text) {
 
 function saveSong() {
   const editId = document.getElementById('editSongId').value;
-  const cat = document.getElementById('formCat').value;
+  const cat = formCatValue;
   const num = document.getElementById('formNum').value.trim();
   const key = document.getElementById('formKey').value.trim();
   const title = document.getElementById('formTitle').value.trim();
@@ -2051,16 +2153,14 @@ function nextCode(prefix) {
   while (SONGS[prefix + n] || (SONGS.groups || []).some(g => g.id === prefix + n)) n++;
   return prefix + n;
 }
+let formCatValue = 'B&P';
 function populateFormCat() {
-  const sel = document.getElementById('formCat');
-  if (!sel) return;
-  sel.innerHTML = '';
-  Object.keys(SONGS).filter(k => SONGS[k] && SONGS[k].songs).forEach(k => {
-    const o = document.createElement('option');
-    o.value = k;
-    o.textContent = (SONGS[k].info ? SONGS[k].info.name : k) + ' (' + SONGS[k].songs.length + ')';
-    sel.appendChild(o);
-  });
+  const items = Object.keys(SONGS).filter(k => SONGS[k] && SONGS[k].songs).map(k => ({
+    value: k,
+    text: (SONGS[k].info ? SONGS[k].info.name : k) + ' (' + SONGS[k].songs.length + ')',
+    selected: k === formCatValue
+  }));
+  buildDropdown('formCatDD', items, v => { formCatValue = v; });
 }
 function openSongbookModal(editId) {
   const isEdit = !!editId;
@@ -2106,12 +2206,9 @@ function saveSongbook() {
   reindexBooks(); saveSongs(); closeModal('songbookModal');
   renderSongbookManage(); renderGroups(); renderAdminPanel(); populateFormCat();
 }
-function openBookModal(groupId, editCode) {
-  const sel = document.getElementById('bkGroup');
-  sel.innerHTML = '';
-  (SONGS.groups || []).forEach(g => {
-    const o = document.createElement('option'); o.value = g.id; o.textContent = g.name; sel.appendChild(o);
-  });
+let bkGroupValue = '';
+async function openBookModal(groupId, editCode) {
+  await ensureSongs();
   if (editCode) {
     const info = SONGS[editCode] ? SONGS[editCode].info : {};
     document.getElementById('bkModalTitle').textContent = 'Rename Book';
@@ -2119,17 +2216,20 @@ function openBookModal(groupId, editCode) {
     document.getElementById('bkEditGroup').value = groupId || '';
     document.getElementById('bkName').value = info.name || '';
     document.getElementById('bkDesc').value = info.description || '';
-    sel.value = groupId || (BOOK_GROUP[editCode] || '');
-    sel.disabled = true;
-  } else {
-    document.getElementById('bkModalTitle').textContent = 'New Book';
-    document.getElementById('bkEditCode').value = '';
-    document.getElementById('bkEditGroup').value = '';
-    document.getElementById('bkName').value = '';
-    document.getElementById('bkDesc').value = '';
-    sel.disabled = false;
-    if (groupId) sel.value = groupId;
+    bkGroupValue = groupId || (BOOK_GROUP[editCode] || ((SONGS.groups || [])[0] || {}).id || '');
+    buildDropdown('bkGroupDD', (SONGS.groups || []).map(g => ({ value: g.id, text: g.name, selected: g.id === bkGroupValue })));
+    const bbtn = document.getElementById('bkGroupBtn'); if (bbtn) bbtn.disabled = true;
+    openModal('bookModal');
+    return;
   }
+  document.getElementById('bkModalTitle').textContent = 'New Book';
+  document.getElementById('bkEditCode').value = '';
+  document.getElementById('bkEditGroup').value = '';
+  document.getElementById('bkName').value = '';
+  document.getElementById('bkDesc').value = '';
+  bkGroupValue = groupId || ((SONGS.groups || [])[0] || {}).id || '';
+  buildDropdown('bkGroupDD', (SONGS.groups || []).map(g => ({ value: g.id, text: g.name, selected: g.id === bkGroupValue })));
+  const bbtn = document.getElementById('bkGroupBtn'); if (bbtn) bbtn.disabled = false;
   openModal('bookModal');
 }
 function saveBook() {
@@ -2143,7 +2243,7 @@ function saveBook() {
     applyStruct({ id: editCode, cat: null, op: 'renameBook', song: payload });
     toast('Book renamed', 'success');
   } else {
-    const groupId = document.getElementById('bkGroup').value;
+    const groupId = bkGroupValue;
     const code = nextCode('U');
     const payload = { group: groupId, code, name, desc, icon: '' };
     recordStruct(code, 'addBook', payload);
@@ -2174,7 +2274,8 @@ function toggleKebab(e, btn) {
 function closeAllKebab() {
   document.querySelectorAll('.sb-menu.open').forEach(m => m.classList.remove('open'));
 }
-function renderSongbookManage() {
+async function renderSongbookManage() {
+  await ensureSongs();
   const el = document.getElementById('songbookManage');
   if (!el) return;
   let html = '<div class="sb-manage-header"><h3>Songbooks</h3></div>';
@@ -2302,7 +2403,7 @@ function renderSidebarGroups() {
   el.innerHTML = '';
   const isLight = document.documentElement.getAttribute('data-theme') === 'light';
   GROUPS.forEach(g => {
-    const total = g.books.reduce((n, b) => n + (SONGS[b]?.songs?.length || 0), 0);
+    const total = g.books.reduce((n, b) => n + bookCount(b), 0);
     const gc = GROUP_COLORS[g.id] || { dark: 'var(--accent)', light: 'var(--accent)' };
     const col = isLight ? gc.light : gc.dark;
     const icon = GROUP_SVGS[g.id] || SVG.book;
@@ -2316,7 +2417,8 @@ function renderSidebarGroups() {
 function jumpToGroup(id) { showView('home'); openGroup(id); }
 
 // ─── HISTORY (RECENTS VIEW) ───
-function openRecents() {
+async function openRecents() {
+  await ensureSongs();
   const songs = [];
   recents.forEach(id => {
     CAT_ORDER.forEach(k => {
@@ -2354,7 +2456,8 @@ function openPlaylists() {
   document.getElementById('searchInput').value = '';
   navPush();
 }
-function openPlaylist(pid) {
+async function openPlaylist(pid) {
+  await ensureSongs();
   const pl = playlists.find(p => p.id === pid);
   if (!pl) { openPlaylists(); return; }
   const songs = [];

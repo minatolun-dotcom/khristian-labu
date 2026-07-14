@@ -403,6 +403,17 @@ def main():
 
     songs['groups'] = groups
 
+    # ponytail: tiny metadata so the home grid paints instantly without parsing the full corpus.
+    meta = []
+    for g in groups:
+        books = []
+        for code in g['books']:
+            bk = songs.get(code, {})
+            books.append({'code': code, 'name': (bk.get('info') or {}).get('name', code), 'count': len(bk.get('songs', []))})
+        meta.append({'id': g['id'], 'name': g['name'], 'desc': g.get('desc', ''), 'icon': g.get('icon', ''), 'books': books})
+    with open(os.path.join(ROOT, 'groups.json'), 'w', encoding='utf-8') as f:
+        json.dump({'groups': meta}, f, ensure_ascii=False, separators=(',', ':'))
+
     # ponytail: emit both plain and gzipped corpus; app fetches .gzip when supported.
     # Use .gzip (not .gz) so Android's asset merger doesn't treat it as a duplicate of songs.json.
     payload = json.dumps(songs, ensure_ascii=False, separators=(',', ':'))
