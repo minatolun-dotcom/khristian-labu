@@ -178,26 +178,6 @@ jobs:
             android/app/build/outputs/apk/release/khristian-labu.apk
             android/app/build/outputs/apk/debug/khristian-labu-debug.apk
 
-      - name: Publish version.json
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          VERSION="${TAG#v}"
-          APK_URL="https://github.com/minatolun-dotcom/khristian-labu/releases/download/${TAG}/khristian-labu.apk"
-          cat > version.json <<EOF
-          {
-            "version": "${VERSION}",
-            "apkUrl": "${APK_URL}",
-            "notes": "See release notes on GitHub.",
-            "updatedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          }
-          EOF
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add index.html version.json
-          git commit -m "chore: bump APP_VERSION and version.json to ${VERSION}" || echo "no change"
-          # On a tag-triggered run checkout is detached HEAD; create a local main
-          # so we can push the bump back (fixes "src refspec main does not match any").
-          git checkout -B main
-          git push origin main
+      # Note: version.json and APP_VERSION are committed directly in the repo
+      # (see index.html). We do NOT push back to main from CI — that reset main
+      # to the tag checkout and broke on any divergence.
