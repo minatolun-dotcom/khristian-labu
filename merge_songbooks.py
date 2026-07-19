@@ -18,7 +18,18 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 # reference like "2 Kor. 5:14" (which belongs in the preface and must stay).
 VERSE_START = re.compile(r'^\s*\d+[\.\)]?\s+\S')
 BIBLE_REF   = re.compile(r'^\s*\d+\s*[A-Za-z]{2,}\.?\s*\d+:\d+')
-LEAD_NUM    = re.compile(r'^\s*\d+[\.\)]?\s*')
+# strip a leading verse marker from a line: "N." / "N)" / "(N)" / "N " (incl.
+# N<space> before a voice label like "All:"). Bible references ("2 Kor. 5:14")
+# are NOT verse numbers and must be kept, so callers use strip_lead() which
+# short-circuits on BIBLE_REF.
+LEAD_NUM = re.compile(r'^\s*(?:\(\d+\)\s*|\d+[\.\)]\s*|\d+\s+)')
+
+
+def strip_lead(line):
+    line = line.strip()
+    if BIBLE_REF.match(line):
+        return line
+    return LEAD_NUM.sub('', line).strip()
 
 def load(path):
     with open(os.path.join(ROOT, path), encoding='utf-8') as f:
@@ -34,7 +45,8 @@ def kbc_verses(lyrics, reference=None):
         if part == 'CHORUS_END':
             mode = 'v'; continue
         for stanza in re.split(r'\n\s*\n', part):
-            lines = [l.strip() for l in stanza.split('\n') if l.strip()]
+            lines = [strip_lead(l) for l in stanza.split('\n')]
+            lines = [l for l in lines if l]
             if lines:
                 verses.append({'type': mode, 'lines': lines})
     if reference:
@@ -71,7 +83,7 @@ def zomi_verses(body):
     b = html.unescape(b)
     verses, cur = [], []
     for ln in b.split('\n'):
-        ln = ln.strip()
+        ln = strip_lead(ln)
         if ln == '':
             if cur:
                 verses.append(cur); cur = []
@@ -156,7 +168,7 @@ def la_verses(lyrics):
             text = re.sub(r'</i>.*', '', text, flags=re.S)
             in_chorus = False
         for ln in text.split('\n'):
-            ln = ln.strip()
+            ln = strip_lead(ln)
             if not ln:
                 if cur:
                     flush(); cur_type = None
@@ -208,11 +220,12 @@ def ehymn_song(path):
             continue
         is_vstart = bool(VERSE_START.match(bl[0])) and not BIBLE_REF.match(bl[0])
         if not seen and not is_vstart:
-            preface.extend(bl)            # tune / ref metadata line
+            # tune / ref metadata line — still strip a stray leading verse marker
+            preface.extend([strip_lead(x) for x in bl])
             continue
         seen = True
-        if is_vstart:
-            bl = [LEAD_NUM.sub('', bl[0])] + bl[1:]
+        # strip a leading verse marker (N. / N) / N ) from every line
+        bl = [strip_lead(x) for x in bl]
         verses.append({'type': 'v', 'lines': bl})
     if preface:
         verses.insert(0, {'type': 'p', 'lines': preface})
@@ -285,11 +298,9 @@ def klab_book(dirpath, code, name, desc):
         def flush():
             nonlocal cur_v, cur_c
             if cur_v:
-                cur_v[0] = LEAD_NUM.sub('', cur_v[0])
-                verses.append({'type': 'v', 'lines': cur_v}); cur_v = []
+                verses.append({'type': 'v', 'lines': [strip_lead(x) for x in cur_v]}); cur_v = []
             if cur_c:
-                cur_c[0] = LEAD_NUM.sub('', cur_c[0])
-                verses.append({'type': 'c', 'lines': cur_c}); cur_c = []
+                verses.append({'type': 'c', 'lines': [strip_lead(x) for x in cur_c]}); cur_c = []
 
         for cls, inner in p.divs:
             t = _re.sub(r'\s+', ' ', inner.replace('\xa0', ' ')).strip()
@@ -302,14 +313,14 @@ def klab_book(dirpath, code, name, desc):
             if cls == 'q3':                       # chorus line
                 if cur_v:
                     flush()
-                cur_c.append(t); in_verse = False; continue
+                cur_c.append(strip_lead(t)); in_verse = False; continue
             is_vstart = bool(VERSE_START.match(t)) and not BIBLE_REF.match(t)
             if is_vstart:                         # numbered verse start
                 flush()
-                cur_v = [t]; in_verse = True; continue
+                cur_v = [strip_lead(t)]; in_verse = True; continue
             if in_verse:                          # continuation of current verse
-                cur_v.append(t); continue
-            preface.append(t)                     # before first verse: scripture ref / tune / meter
+                cur_v.append(strip_lead(t)); continue
+            preface.append(strip_lead(t))   # scripture ref / tune / meter
         flush()
         if preface:
             verses.insert(0, {'type': 'p', 'lines': preface})
@@ -331,7 +342,7 @@ def mizo_verses(text):
     text = (text or '').strip()
     if not text:
         return []
-    lines = [s.strip() for s in MIZO_SENT_RE.split(text) if s.strip()]
+    lines = [strip_lead(s) for s in MIZO_SENT_RE.split(text) if s.strip()]
     return [{'type': 'v', 'lines': lines}]
 
 def mizo_book(path, code, name, desc):

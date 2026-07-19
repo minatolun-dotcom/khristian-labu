@@ -1,7 +1,8 @@
 // Khristian Labu service worker — app shell + offline support (free, no backend).
 // ponytail: cache name is tied to DATA_VERSION; bump both together so data updates propagate.
-const CACHE = 'labu-v18';
-const SHELL = ['./', 'index.html', 'groups.json', 'logo.png', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'labu-v44';
+const SHELL = ['./', 'index.html', 'groups.json', 'logo.png', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
+  'assets/fonts/outfit-400.woff2', 'assets/fonts/inter-400.woff2', 'assets/fonts/noto-400.woff2'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -22,14 +23,18 @@ self.addEventListener('fetch', e => {
   // Only handle same-origin; let the browser deal with cross-origin (update API, fonts).
   if (url.origin !== self.location.origin) return;
 
-  // Song data: cache-first, refresh in background (instant repeat loads + offline).
+  // Song data: cache-first (instant repeat loads + offline). Keyed by pathname only
+  // (query stripped) so each DATA_VERSION replaces the prior entry instead of leaking.
+  // ponytail: background-refresh runs on cache miss only — version bumps bump CACHE,
+  // which purges the old corpus on activate, so we never silently re-fetch every visit.
   if (url.pathname.endsWith('songs.json.gzip') || url.pathname.endsWith('songs.json')) {
     e.respondWith((async () => {
       const c = await caches.open(CACHE);
-      const cached = await c.match(req);
-      if (cached) { fetch(req).then(r => c.put(req, r.clone())).catch(() => {}); return cached; }
+      const key = url.origin + url.pathname;
+      const cached = await c.match(key);
+      if (cached) return cached;
       const net = await fetch(req);
-      c.put(req, net.clone());
+      c.put(key, net.clone());
       return net;
     })());
     return;

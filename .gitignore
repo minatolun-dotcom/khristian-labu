@@ -2,3 +2,17 @@ node_modules/
 android/
 www/
 khristian-labu.keystore
+
+# ─── build/deploy artifacts (not served by GitHub Pages) ───
+release-assets/
+apk/
+*.xapk
+*.zip
+
+# ─── raw ingestion sources (only sources/mizo is tracked) ───
+sources/ehymn/
+sources/kbc/
+sources/klab/
+sources/la/
+sources/lakkhawm/
+sources/zomi/

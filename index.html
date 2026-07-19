@@ -10,9 +10,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Khristian Labu">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Myanmar:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
+/* ponytail: fonts self-hosted (no render-blocking external request, works offline). */
+@font-face{font-family:'Outfit';font-style:normal;font-weight:400 800;font-display:swap;src:url('assets/fonts/outfit-400.woff2') format('woff2');}
+@font-face{font-family:'Inter';font-style:normal;font-weight:300 700;font-display:swap;src:url('assets/fonts/inter-400.woff2') format('woff2');}
+@font-face{font-family:'Noto Sans Myanmar';font-style:normal;font-weight:300 700;font-display:swap;src:url('assets/fonts/noto-400.woff2') format('woff2');unicode-range:U+1000-109F,U+AA60-AA7F,U+A9E0-A9FE,U+AA00-AA3F;}
+
  :root {
    color-scheme: dark;
    --bg:#0f0f13;--bg2:#16161d;--bg3:#1e1e28;--card:#1a1a24;--card-hover:#22222e;
@@ -50,10 +53,10 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .logo:hover img{transform:scale(1.12) rotate(8deg);box-shadow:0 0 0 2px var(--accent2),0 0 25px rgba(124,106,239,0.5);}
 .nav-actions{display:flex;align-items:center;gap:12px;}
 .search-box{position:relative;width:280px;display:flex;align-items:center;}
-.search-box input{width:100%;padding:10px 14px 10px 38px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.875rem;outline:none;transition:all var(--transition);height:40px;box-sizing:border-box;}
+.search-box input{width:100%;padding:10px 12px 10px 38px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:0.875rem;outline:none;transition:all var(--transition);height:40px;box-sizing:border-box;}
 .search-box input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
 .search-box input::placeholder{color:var(--text3);}
-.search-box svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--text3);}
+.search-box svg.search-icon{position:static;flex-shrink:0;width:16px;height:16px;color:var(--text3);margin:0 8px 0 4px;}
 .theme-toggle,.admin-btn{width:40px;height:40px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all var(--transition);font-size:1.1rem;}
 .back-btn{width:40px;height:40px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:none;align-items:center;justify-content:center;transition:all var(--transition);}
 .back-btn.show{display:flex;}
@@ -62,8 +65,9 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .back-btn svg{width:18px;height:18px;flex-shrink:0;}
 .search-toggle{display:none;width:40px;height:40px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);cursor:pointer;align-items:center;justify-content:center;transition:all var(--transition);}
 .search-toggle:hover{background:var(--card-hover);color:var(--text);}
-.search-close{display:none;position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;border-radius:4px;transition:color 0.2s;}
-.search-close:hover{color:var(--text);}
+.search-clear{display:none;background:none;border:none;color:var(--text2);cursor:pointer;padding:6px;margin-left:4px;border-radius:6px;transition:all 0.2s;align-items:center;justify-content:center;flex-shrink:0;}
+.search-clear:hover{color:var(--accent);}
+.search-clear.show{display:flex;}
 
 /* ─── HERO ─── */
 .hero{max-width:1200px;margin:0 auto;padding:4rem 2rem 2rem;text-align:center;}
@@ -148,6 +152,37 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .song-meta{font-size:0.8rem;color:var(--text3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .song-match{font-size:0.8rem;color:var(--accent2);margin-top:6px;padding:6px 10px;background:var(--accent-glow);border-radius:6px;border-left:2px solid var(--accent);line-height:1.5;white-space:pre-line;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word;word-break:break-word;}
 
+/* ─── SEARCH RESULTS (polished) ─── */
+.search-results{padding-bottom:3rem;}
+.search-results .song-grid{grid-template-columns:1fr;gap:0.5rem;padding:0 1rem 2rem;}
+.search-results .song-item.search-item{display:block;padding:0.85rem 1rem;border-left:3px solid transparent;transition:all var(--transition);}
+.search-results .song-item.search-item:hover{border-color:var(--border);border-left-color:var(--accent);background:var(--card-hover);transform:none;}
+.search-results .si-top{display:flex;align-items:baseline;gap:0.5rem;min-width:0;}
+.search-results .si-num{font-size:0.8rem;font-weight:600;color:var(--accent);flex-shrink:0;}
+.search-results .si-title{font-weight:600;font-size:1rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;}
+.search-results .si-meta{font-size:0.78rem;color:var(--text3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.search-results .si-snippet{position:relative;font-size:0.82rem;color:var(--text2);margin-top:6px;line-height:1.45;max-height:2.6em;overflow:hidden;overflow-wrap:break-word;word-break:break-word;}
+.search-results .si-snippet::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1em;background:linear-gradient(transparent,var(--card));}
+.search-results .si-badges{display:flex;flex-wrap:wrap;gap:0.35rem;margin-top:7px;}
+.search-results .si-badge{font-size:0.68rem;padding:2px 8px;border-radius:20px;background:var(--bg3);color:var(--text3);border:1px solid var(--border);}
+.search-results .si-match{font-size:0.7rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:0.03em;margin-top:6px;}
+.search-results mark{background:var(--accent-glow);color:var(--accent);border-radius:3px;padding:0 1px;font-weight:600;}
+[data-theme="light"] .search-results .si-snippet::after{background:linear-gradient(transparent,var(--card));}
+/* search toolbar: sticky filter chips + sort */
+.search-results .si-toolbar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:0.5rem;padding:0.75rem 1rem;background:var(--bg);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.search-results .si-chips{display:flex;gap:0.35rem;flex:1;overflow-x:auto;scrollbar-width:none;}
+.search-results .si-chips::-webkit-scrollbar{display:none;}
+.search-results .si-chip{font-size:0.75rem;padding:5px 12px;border-radius:20px;background:var(--bg3);color:var(--text2);border:1px solid var(--border);cursor:pointer;white-space:nowrap;transition:all 0.15s;font-family:inherit;}
+.search-results .si-chip:hover{color:var(--text);}
+.search-results .si-chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.search-results .si-sort{font-size:0.75rem;padding:5px 8px;border-radius:8px;background:var(--bg3);color:var(--text2);border:1px solid var(--border);cursor:pointer;font-family:inherit;flex-shrink:0;}
+.search-results .si-recent{display:flex;flex-wrap:wrap;gap:0.5rem;padding:1rem;}
+.search-results .si-rec{font-size:0.85rem;padding:8px 14px;border-radius:20px;background:var(--card);color:var(--text);border:1px solid var(--border);cursor:pointer;font-family:inherit;transition:all 0.15s;}
+.search-results .si-rec:hover{border-color:var(--accent);color:var(--accent);}
+.search-results .si-rec-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;}
+.search-results .si-clear-hist{background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.8rem;font-family:inherit;padding:4px 8px;border-radius:6px;transition:color 0.15s;}
+.search-results .si-clear-hist:hover{color:var(--red);}
+
 /* ─── SONG DETAIL ─── */
 .song-detail{max-width:700px;margin:0 auto;padding:2rem;}
 .song-actions-row{display:flex;justify-content:center;gap:0.5rem;margin-bottom:1rem;}
@@ -172,11 +207,12 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .song-breadcrumb .current{color:var(--text2);font-weight:400;}
 .song-header-center .song-detail-meta{display:flex;justify-content:center;gap:1.5rem;flex-wrap:wrap;color:var(--text2);font-size:0.85rem;}
 .song-header-center .song-detail-meta span{display:flex;align-items:center;gap:4px;}
-.verse{margin-bottom:2rem;}.verse-type{display:inline-block;padding:3px 10px;border-radius:6px;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.75rem;}
+.verse{margin-bottom:1rem;}.verse-type{display:inline-block;padding:3px 10px;border-radius:6px;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.35rem;}
 .verse-type.v{background:var(--accent-glow);color:var(--accent);}.verse-type.c{background:rgba(52,211,153,0.12);color:var(--green);}
 .verse.c p{font-weight:600;font-style:italic;padding-left:1.5rem;}
 .verse-type.b{background:rgba(251,191,36,0.12);color:var(--amber);}.verse-type.p{background:rgba(251,113,133,0.12);color:var(--rose);}.verse-type.pc{background:rgba(167,139,250,0.12);color:#a78bfa;}
-.verse p{font-size:1.05rem;line-height:1.85;color:var(--text);margin:0;white-space:pre-line;}
+.verse p{font-size:var(--reader-font,1.05rem);line-height:var(--reader-lh,1.6);color:var(--text);margin:0;white-space:pre-line;}
+.verse{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
 .no-results{text-align:center;padding:4rem 2rem;color:var(--text3);}.no-results .icon{margin-bottom:1rem;display:flex;justify-content:center;}.no-results .icon svg{width:48px;height:48px;}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 .fade-in{animation:fadeIn 0.35s ease-out forwards;}
@@ -185,7 +221,20 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .hero h1{animation:fadeIn 0.5s ease-out;}
 .song-detail-header{animation:fadeIn 0.4s ease-out;}
 .verse{transition:all var(--transition);padding:0.5rem;border-radius:var(--radius-sm);}
-.verse:hover{transform:translateX(4px);background:var(--bg3);}
+@media (hover:hover) and (pointer:fine){
+  .verse:hover{transform:translateX(4px);background:var(--bg3);}
+}
+/* ponytail: per-song reader controls in one bottom row (font size + line spacing).
+   Both persist via localStorage. */
+.reader-controls{position:fixed;left:50%;transform:translateX(-50%);bottom:12px;z-index:40;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:8px 16px;box-shadow:var(--shadow);backdrop-filter:blur(8px);max-width:calc(100vw - 24px);flex-wrap:nowrap;justify-content:center;overflow-x:auto;}
+.reader-controls .rc-sep{width:1px;height:20px;background:var(--border);flex:none;}
+.reader-controls svg{width:16px;height:16px;color:var(--text3);flex:none;}
+.reader-controls input[type=range]{width:110px;accent-color:var(--accent);flex:none;}
+.reader-controls .rc-val{font-size:0.75rem;color:var(--text3);min-width:34px;text-align:right;flex:none;}
+@media (max-width:768px){
+  .reader-controls{width:calc(100vw - 24px);gap:10px;padding:8px 12px;}
+  .reader-controls input[type=range]{width:30vw;}
+}
 .song-breadcrumb a{position:relative;overflow:hidden;}
 .song-breadcrumb a::after{content:'';position:absolute;bottom:-1px;left:0;width:0;height:1px;background:var(--accent);transition:width 0.3s ease;}
 .song-breadcrumb a:hover::after{width:100%;}
@@ -302,12 +351,12 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
   .logo span{font-size:1rem;}
   .logo img{width:32px;height:32px;}
   .search-toggle{display:flex;}
-  .search-box{position:fixed;top:0;left:0;right:0;width:100%;height:56px;padding:0 1rem;background:rgba(15,15,19,0.95);backdrop-filter:blur(20px);z-index:200;display:flex;align-items:center;opacity:0;pointer-events:none;transform:translateY(-100%);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);}
+  .search-box{position:fixed;top:0;left:0;right:0;width:100%;height:54px;padding:0 0.5rem;background:var(--bg);border-bottom:1px solid var(--border);z-index:200;display:flex;align-items:center;opacity:0;pointer-events:none;transform:translateY(-100%);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);}
   [data-theme="light"] .search-box{background:rgba(248,249,252,0.97);}
   .search-box.active{opacity:1;pointer-events:auto;transform:translateY(0);}
   .search-box .search-icon{position:static !important;flex-shrink:0;width:20px;height:20px;margin-left:12px;margin-right:8px;transform:none !important;left:auto !important;top:auto !important;}
-  .search-box input{flex:1;padding:10px 40px 10px 8px;font-size:0.95rem;height:40px;box-sizing:border-box;}
-  .search-close{display:block;}
+  .search-box input{flex:1;padding:10px 12px 10px 8px;font-size:0.95rem;height:40px;box-sizing:border-box;}
+  .search-results .si-toolbar{top:54px;padding-top:0.6rem;padding-bottom:0.6rem;}
   .theme-toggle,.admin-btn{width:36px;height:36px;}
   .hero{padding:2rem 1rem 1rem;}
   .hero h1{font-size:1.8rem;}
@@ -348,7 +397,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
   .song-header-center .song-detail-meta{gap:1rem;font-size:0.8rem;}
   .song-breadcrumb{font-size:0.8rem;gap:6px;}
   .song-detail-back button{padding:6px 12px;font-size:0.8rem;}
-  .verse p{font-size:0.95rem;line-height:1.7;}
+  .verse p{line-height:var(--reader-lh,1.7);}
   .prev-next{flex-direction:column;gap:0.75rem;}
   .prev-next button{padding:10px 12px;}
   .prev-next button .label{font-size:0.7rem;}
@@ -414,8 +463,8 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
       </button>
       <div class="search-box" id="searchBox">
         <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="text" id="searchInput" placeholder="Search songs..." oninput="onSearch(this.value)">
-        <button class="search-close" onclick="closeSearch()" title="Close">
+        <input type="text" id="searchInput" placeholder="Search title, lyrics, author..." oninput="onSearch(this.value)">
+        <button class="search-clear" id="searchClear" onclick="clearSearchInput()" title="Clear">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -803,8 +852,8 @@ Second verse line 2"></textarea>
 
 <script>
 // ─── DATA ───
-const DATA_VERSION = 17; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.1.9'; // ponytail: bump on release so the update checker can compare
+const DATA_VERSION = 18; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
+const APP_VERSION = '1.2.0'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 let DEFAULT_SONGS = null;
 let SONGS = {};
@@ -1141,13 +1190,30 @@ function closeSearch() {
   const input = document.getElementById('searchInput');
   box.classList.remove('active');
   input.value = '';
+  const clr = document.getElementById('searchClear'); if (clr) clr.classList.remove('show');
   onSearch('');
+}
+function clearSearchInput() {
+  const input = document.getElementById('searchInput');
+  input.value = '';
+  const clr = document.getElementById('searchClear'); if (clr) clr.classList.remove('show');
+  onSearch('');
+  input.focus();
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSearch(); });
 
 // ─── NAVIGATION ───
 let currentView = 'home', currentCat = null, currentList = [], currentSongIdx = -1;
 let currentGroup = null, currentListKind = 'home', searchQuery = '', _restoring = false;
+// ponytail: remember per-list scroll so back-navigation lands where the user was.
+let _scrollPos = {};
+// ponytail: cache rendered list DOM so back-nav shows it instantly (no rebuild/re-fade).
+let _listCache = {};
+// ponytail: per-song reader sizing, persisted across sessions.
+let readerFont = parseInt(localStorage.getItem('labu-reader-font') || '17', 10);
+let readerLH = parseFloat(localStorage.getItem('labu-reader-lh') || '1.6');
+function setReaderFont(v){ readerFont = parseInt(v,10); localStorage.setItem('labu-reader-font', v); document.documentElement.style.setProperty('--reader-font', v+'px'); const d=document.getElementById('songDetail'); if(d) d.style.setProperty('--reader-font', v+'px'); const t=document.getElementById('readerFontVal'); if(t) t.textContent=v+'px'; }
+function setReaderLH(v){ readerLH = parseFloat(v); localStorage.setItem('labu-reader-lh', v); document.documentElement.style.setProperty('--reader-lh', v); const d=document.getElementById('songDetail'); if(d) d.style.setProperty('--reader-lh', v); }
 
 function showView(v) {
   currentView = v;
@@ -1160,8 +1226,16 @@ function showView(v) {
   if (hideSearch) { searchBox.style.display = 'none'; } else { searchBox.removeAttribute('style'); }
   if (v !== 'search') searchBox.classList.remove('active');
   document.getElementById('searchToggle').style.display = hideSearch ? 'none' : '';
+  // ponytail: reader controls belong only to the detail view.
+  document.querySelectorAll('.reader-controls').forEach(e => e.style.display = (v === 'detail' ? '' : 'none'));
   // ponytail: adminBtn removed — accessible via sidebar Settings
-}
+  // ponytail: entering the search view without an active query means we came back
+  // to it — clear any leftover text so the previous search doesn't linger.
+  if (v === 'search' && !searchQuery) {
+    const si = document.getElementById('searchInput');
+    if (si) si.value = '';
+  }
+  }
 
 // ponytail: wire the SPA into the History API so the browser Back/Forward buttons
 // traverse in-app views instead of closing the tab. List views are rebuilt on restore;
@@ -1204,14 +1278,18 @@ function applyState(s) {
         else { showView('home'); renderGroups(); }
       }
       break;
-    case 'list':
-      if (s.listKind === 'cat' && s.cat) { if (_rv.listKind === 'cat' && _rv.cat === s.cat && currentList.length) showView('list'); else openCategory(s.cat); }
-      else if (s.listKind === 'fav') { if (_rv.listKind === 'fav' && currentList.length) showView('list'); else openFavs(); }
-      else if (s.listKind === 'recent') { if (_rv.listKind === 'recent' && currentList.length) showView('list'); else openRecents(); }
-      else if (s.listKind === 'playlists') { if (_rv.listKind === 'playlists') showView('list'); else openPlaylists(); }
-      else if (s.listKind === 'playlist' && s.pid) { if (_rv.listKind === 'playlist' && _rv.pid === s.pid) showView('list'); else openPlaylist(s.pid); }
+    case 'list': {
+      const lkey = (s.listKind === 'cat') ? s.cat : (s.listKind === 'playlist' ? 'playlist:' + s.pid : s.listKind);
+      // ponytail: re-show cached list DOM instead of rebuilding (instant, no re-fade).
+      if (restoreList(lkey)) break;
+      if (s.listKind === 'cat' && s.cat) openCategory(s.cat);
+      else if (s.listKind === 'fav') openFavs();
+      else if (s.listKind === 'recent') openRecents();
+      else if (s.listKind === 'playlists') openPlaylists();
+      else if (s.listKind === 'playlist' && s.pid) openPlaylist(s.pid);
       else { showView('home'); renderGroups(); }
       break;
+    }
     case 'detail': {
       const list = s.list || [];
       const song = list.find(x => x.id === s.songId);
@@ -1224,7 +1302,10 @@ function applyState(s) {
       } else { showView('home'); renderGroups(); }
       break;
     }
-    case 'search': doSearch(s.q || ''); break;
+    case 'search':
+      // ponytail: replay the stored query on back-nav (shows results); empty means recent searches.
+      doSearch(s.q || '');
+      break;
     case 'admin': openAdmin(); break;
     default: { showView('home'); renderGroups(); }
   }
@@ -1246,6 +1327,7 @@ function toggleFav(songId) {
   const idx = favorites.indexOf(songId);
   if (idx === -1) favorites.push(songId); else favorites.splice(idx, 1);
   localStorage.setItem('labu_favs', JSON.stringify(favorites));
+  delete _listCache['fav'];
   renderCategories();
 }
 
@@ -1266,6 +1348,8 @@ async function openFavs() {
   showView('list');
   document.getElementById('listHeader').innerHTML = '<h2>Favorites</h2><p>'+songs.length+' favorited songs</p>';
   renderSongList(songs);
+  restoreScroll('fav');
+  saveListCache('fav');
   document.getElementById('searchInput').value = '';
   _rv.listKind = 'fav'; _rv.cat = null; _rv.pid = null;
   navPush();
@@ -1472,6 +1556,8 @@ async function openCategory(key) {
     : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>';
   document.getElementById('listHeader').innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;"><div style="display:flex;align-items:center;gap:8px;"><span style="display:flex;width:28px;height:28px;color:'+catColor+'">'+catSvgOf(key)+'</span><h2>'+SONGS[key].info.name+'</h2></div><button onclick="toggleSort()" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-size:0.8rem;font-family:inherit;cursor:pointer;transition:all 0.15s;">'+sortSvg+' Sort: '+(listSortMode==='num'?'Number':'Name')+'</button></div><p style="margin-top:4px;">'+(SONGS[key].info.description||'')+' · '+currentList.length+' songs</p>';
   renderSongList(currentList);
+  restoreScroll(key);
+  saveListCache(key);
   document.getElementById('searchInput').value = '';
   _rv.cat = key; _rv.listKind = 'cat'; _rv.pid = null;
   navPush();
@@ -1492,6 +1578,7 @@ function renderSongList(songs) {
   sorted.forEach((song, i) => {
     const item = document.createElement('div');
     item.className = 'song-item fade-in';
+    item.dataset.sid = song.id;
     item.style.animationDelay = Math.min(i * 0.02, 0.5) + 's';
     item.onclick = () => openSong(song);
     const meta = [bookName, song.author, song.key ? 'Key: ' + song.key : ''].filter(Boolean).join(' · ');
@@ -1501,7 +1588,21 @@ function renderSongList(songs) {
   });
 }
 
+// ponytail: delegate song-item clicks so cached/restored lists (whose innerHTML
+// round-trip drops the onclick closure) stay clickable.
+document.getElementById('songGrid').addEventListener('click', e => {
+  const item = e.target.closest('.song-item');
+  if (!item || !item.dataset.sid) return;
+  const song = currentList.find(s => s.id === item.dataset.sid);
+  if (song) openSong(song);
+});
+
 function openSong(song) {
+  // ponytail: capture scroll only when leaving a list view (not prev/next in detail).
+  if (currentView !== 'detail') {
+    const key = currentCat || currentListKind || 'home';
+    _scrollPos[key] = window.scrollY;
+  }
   currentSongIdx = currentList.findIndex(s => s.id === song.id);
   showView('detail');
   renderSongDetail(song);
@@ -1509,12 +1610,43 @@ function openSong(song) {
   navPush();
 }
 
+// ponytail: after a list is re-rendered, jump back to the saved scroll position.
+function restoreScroll(key) {
+  const y = _scrollPos[key];
+  if (y == null) return;
+  delete _scrollPos[key];
+  requestAnimationFrame(() => window.scrollTo(0, y));
+}
+
+// ponytail: cache the rendered list so back-nav re-shows it without a rebuild/re-fade.
+function saveListCache(key) {
+  const grid = document.getElementById('songGrid');
+  const header = document.getElementById('listHeader');
+  if (grid && header) _listCache[key] = { header: header.innerHTML, grid: grid.innerHTML };
+}
+function restoreList(key) {
+  const c = _listCache[key];
+  if (!c) return false;
+  showView('list');
+  document.getElementById('listHeader').innerHTML = c.header;
+  const grid = document.getElementById('songGrid');
+  grid.innerHTML = c.grid;
+  // drop the fade-in class so the restored list doesn't re-animate.
+  grid.querySelectorAll('.fade-in').forEach(e => e.classList.remove('fade-in'));
+  restoreScroll(key);
+  return true;
+}
+
 function renderSongDetail(song) {
   const el = document.getElementById('songDetail');
   const vt = {v:'Verse',c:'Chorus',b:'Bridge',p:'Reference',pc:'Pre-Chorus'};
   const vc = {v:0,c:0,b:0,p:0};
+  // ponytail: a 'p' reference verse containing "Doh is" (often prefixed with
+  // "Reference:") is the song's key/metre, shown under the title — skip rendering it.
+  const isDohRef = v => (v.type||'v') === 'p' && v.lines.some(l => /\bdoh\s+is\b/i.test(l));
   let vh = '';
   (song.verses||[]).forEach(v => {
+    if (isDohRef(v)) return;
     const cls = v.type||'v';
     vc[cls] = (vc[cls]||0) + 1;
     const label = vt[cls]||'Verse';
@@ -1525,7 +1657,14 @@ function renderSongDetail(song) {
   });
   const meta = [];
   if (song.author) meta.push('<span>'+esc(song.author)+'</span>');
-  if (song.key) meta.push('<span>Key: '+esc(song.key)+'</span>');
+  let dohKey = song.key || '';
+  // ponytail: a 'p' reference verse containing "Doh is" is the song's key/metre.
+  const dohVerse = (song.verses||[]).find(v => (v.type||'v') === 'p' && v.lines.some(l => /\bdoh\s+is\b/i.test(l)));
+  if (dohVerse) {
+    const line = dohVerse.lines.find(l => /\bdoh\s+is\b/i.test(l));
+    dohKey = line.replace(/^reference:\s*/i, '').trim();
+  }
+  if (dohKey) meta.push('<span>Key: '+esc(dohKey)+'</span>');
   const numBadge = song.number ? '<div class="song-number">No. '+esc(song.number)+'</div>' : '';
   const prev = currentList[currentSongIdx-1], next = currentList[currentSongIdx+1];
   const prevSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>';
@@ -1533,45 +1672,163 @@ function renderSongDetail(song) {
   const editSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
   const delSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
   const listSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>';
-  const favSvg = isFav(song.id) ? '<svg viewBox="0 0 24 24" fill="var(--red)" stroke="var(--red)" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+  const plusSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>';
+  const favSvg = isFav(song.id) ? '<svg viewBox="0 0 24 24" fill="var(--red)" stroke="var(--red)" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+  const copySvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const shareSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
   const actions = '<div class="song-actions-row fade-in">'
     + '<button class="song-action-btn" onclick="openEditModal(\''+song.id+'\')" title="Edit">'+editSvg+'</button>'
     + '<button class="song-action-btn" onclick="confirmDelete(\''+song.id+'\')" title="Delete">'+delSvg+'</button>'
-    + '<button class="song-action-btn" onclick="_playlistModalSongId=\''+song.id+'\';openPlaylistChooser(\''+song.id+'\')" title="Add to playlist">'+listSvg+'</button>'
+    + '<button class="song-action-btn" onclick="_playlistModalSongId=\''+song.id+'\';openPlaylistChooser(\''+song.id+'\')" title="Add to playlist">'+plusSvg+'</button>'
     + '<button class="song-action-btn" onclick="toggleFav(\''+song.id+'\');renderSongDetail(currentList[currentSongIdx])" title="Favorite">'+favSvg+'</button>'
+    + '<button class="song-action-btn" onclick="copySong(\''+song.id+'\')" title="Copy song">'+copySvg+'</button>'
+    + '<button class="song-action-btn" onclick="shareSong(\''+song.id+'\')" title="Share song">'+shareSvg+'</button>'
     + '</div>';
   const header = '<div class="song-detail-header fade-in"><button class="song-nav-btn" '+(prev?'onclick="openSong(currentList[currentSongIdx-1])"':'disabled')+'>'+prevSvg+'</button><div class="song-header-center">'+numBadge+'<h1>'+esc(song.title)+'</h1><div class="song-detail-meta">'+meta.join(' · ')+'</div></div><button class="song-nav-btn" '+(next?'onclick="openSong(currentList[currentSongIdx+1])"':'disabled')+'>'+nextSvg+'</button></div>';
-  el.innerHTML = actions+header+vh;
+  const fontIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V5h16v2"/><path d="M9 19h6M12 5v14"/></svg>';
+  const spaceIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h16M4 12h16M4 16h16"/></svg>';
+  const controls = '<div class="reader-controls" id="readerFontCtrl">'
+    + fontIcon + '<input type="range" min="14" max="28" step="1" value="'+readerFont+'" oninput="setReaderFont(this.value)"><span id="readerFontVal" class="rc-val">'+readerFont+'px</span>'
+    + '<span class="rc-sep"></span>'
+    + spaceIcon + '<input type="range" min="1.2" max="2.4" step="0.1" value="'+readerLH+'" oninput="setReaderLH(this.value)">'
+    + '</div>';
+  el.innerHTML = actions+header+vh+controls;
+  // ponytail: apply persisted reader sizing to the verses only (not header).
+  el.style.setProperty('--reader-font', readerFont+'px');
+  el.style.setProperty('--reader-lh', readerLH);
+  document.documentElement.style.setProperty('--reader-font', readerFont+'px');
+  document.documentElement.style.setProperty('--reader-lh', readerLH);
   window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// ponytail: build a plain-text copy of a song (title + verses), used by copy/share.
+// Skip the 'p' Doh reference verse — it is shown as the Key line instead.
+function songToText(id) {
+  const song = currentList.find(s => s.id === id);
+  if (!song) return '';
+  const lines = [song.title || ''];
+  if (song.key) lines.push('Key: ' + song.key);
+  (song.verses || []).forEach(v => {
+    if ((v.type || 'v') === 'p' && (v.lines || []).some(l => /\bdoh\s+is\b/i.test(l))) return;
+    const indent = (v.type === 'c' || v.type === 'b') ? '    ' : '';
+    const label = (v.type === 'c') ? '[Chorus]\n' : (v.type === 'b') ? '[Bridge]\n' : (v.type === 'pc') ? '[Pre-Chorus]\n' : '';
+    lines.push(label + (v.lines || []).map(l => indent + l).join('\n'));
+  });
+  return lines.join('\n\n');
+}
+
+async function copySong(id) {
+  const text = songToText(id);
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Song copied', 'success');
+  } catch (e) {
+    // ponytail: clipboard API can fail on insecure contexts — fallback to a textarea.
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast('Song copied', 'success'); }
+    catch (_) { toast('Copy failed', 'error'); }
+    document.body.removeChild(ta);
+  }
+}
+
+async function shareSong(id) {
+  const song = currentList.find(s => s.id === id);
+  const text = songToText(id);
+  const shareData = { title: song ? (song.title || 'Song') : 'Song', text };
+  if (navigator.share) {
+    try { await navigator.share(shareData); } catch (_) {}
+  } else if (navigator.clipboard) {
+    try { await navigator.clipboard.writeText(text); toast('Link copied to clipboard', 'success'); }
+    catch (e) { toast('Sharing not supported', 'error'); }
+  } else {
+    toast('Sharing not supported', 'error');
+  }
 }
 
 // ─── SEARCH ───
 let searchTimeout;
-function onSearch(q) { clearTimeout(searchTimeout); searchTimeout = setTimeout(() => doSearch(q), 200); }
+// ponytail: filter chips + sort are session UI state; recent searches persist.
+let searchFilter = 'all';   // all | title | lyrics | author | number
+let searchSort = 'relevance'; // relevance | number | alpha | recent
+let searchHistory = JSON.parse(localStorage.getItem('labu_search_history') || '[]');
+function onSearch(q) {
+  const clr = document.getElementById('searchClear');
+  if (clr) clr.classList.toggle('show', !!q);
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => doSearch(q), 200);
+}
+function setSearchFilter(f) {
+  searchFilter = f;
+  const q = document.getElementById('searchInput').value.trim();
+  doSearch(q);
+}
+function setSearchSort(s) {
+  searchSort = s;
+  const q = document.getElementById('searchInput').value.trim();
+  doSearch(q);
+}
+function pushSearchHistory(q) {
+  q = q.trim();
+  if (!q) return;
+  searchHistory = searchHistory.filter(x => x !== q);
+  searchHistory.unshift(q);
+  if (searchHistory.length > 8) searchHistory = searchHistory.slice(0, 8);
+  localStorage.setItem('labu_search_history', JSON.stringify(searchHistory));
+}
+function runRecentSearch(q) {
+  const input = document.getElementById('searchInput');
+  input.value = q;
+  const clr = document.getElementById('searchClear'); if (clr) clr.classList.add('show');
+  doSearch(q);
+}
 async function doSearch(q) {
   await ensureSongs();
-  q = q.trim().toLowerCase();
+  q = (q || '').trim().toLowerCase();
   searchQuery = q;
-  if (!q) { goHome(); return; }
+  const el = document.getElementById('searchResults');
+  if (!q) { renderRecentSearch(); return; }
+  pushSearchHistory(q);
   const wasSearch = currentListKind === 'search';
+  const prevKind = currentListKind;
   showView('search');
   currentListKind = 'search';
+  // ponytail: scope search to the open songbook, or to all sub-books of the
+  // open main songbook (group), else search everything.
+  let keys = CAT_ORDER, scopeName = '';
+  if (prevKind === 'cat' && currentCat) { keys = [currentCat]; scopeName = SONGS[currentCat].info.name; }
+  else if (currentGroup) {
+    const g = GROUPS.find(x => x.id === currentGroup);
+    if (g && g.books.length) { keys = g.books; scopeName = g.name; }
+  }
   const results = [];
-  CAT_ORDER.forEach(key => {
+  keys.forEach(key => {
+    if (!SONGS[key] || !SONGS[key].songs) return;
     SONGS[key].songs.forEach(song => {
-      const hay = (song.title+' '+song.author+' '+song.key+' '+song.number).toLowerCase();
-      if (hay.includes(q)) { results.push({...song, cat: key, catName: SONGS[key].info.name, matchField: 'title'}); return; }
-      if (song.verses) {
+      const titleHit = (song.title || '').toLowerCase().includes(q);
+      const authorHit = (song.author || '').toLowerCase().includes(q);
+      const keyHit = (song.key || '').toLowerCase().includes(q);
+      const numHit = (song.number || '').toLowerCase().includes(q);
+      // ponytail: filter chips narrow the match domain.
+      let pass = false, label = null;
+      if (searchFilter === 'title') pass = titleHit;
+      else if (searchFilter === 'author') pass = authorHit;
+      else if (searchFilter === 'number') pass = numHit;
+      else if (searchFilter === 'lyrics') pass = false;
+      else pass = (titleHit || authorHit || keyHit || numHit);
+      if (pass) { results.push({...song, cat: key, catName: SONGS[key].info.name, matchField: 'title', matchLabel: 'Title'}); return; }
+      if (song.verses && (searchFilter === 'all' || searchFilter === 'lyrics')) {
         for (let vi = 0; vi < song.verses.length; vi++) {
           for (let li = 0; li < song.verses[vi].lines.length; li++) {
             if (song.verses[vi].lines[li].toLowerCase().includes(q)) {
   const vt = {v:'Verse',c:'Chorus',b:'Bridge',p:'Reference',pc:'Pre-Chorus'};
               const vtype = vt[song.verses[vi].type||'v'] || 'Verse';
+              const vlabel = vtype + (song.verses[vi].type === 'v' ? ' ' + (vi+1) : '');
               const allLines = song.verses[vi].lines;
               const start = Math.max(0, li - 1);
               const end = Math.min(allLines.length, li + 3);
               const context = allLines.slice(start, end).join('\n');
-              results.push({...song, cat: key, catName: SONGS[key].info.name, matchField: 'verse', snippet: vtype + ':\n' + context});
+              results.push({...song, cat: key, catName: SONGS[key].info.name, matchField: 'verse', matchLabel: vlabel, snippet: context});
               return;
             }
           }
@@ -1579,23 +1836,71 @@ async function doSearch(q) {
       }
     });
   });
-  const el = document.getElementById('searchResults');
-  el.innerHTML = '<div class="song-list-header"><h2>Search Results</h2><p>'+results.length+' result'+(results.length!==1?'s':'')+' for "'+esc(q)+'"</p></div>';
+  // ponytail: sort results (relevance = insertion order, which is book order).
+  if (searchSort === 'number') results.sort((a, b) => (parseInt(a.number)||0) - (parseInt(b.number)||0));
+  else if (searchSort === 'alpha') results.sort((a, b) => (a.title||'').localeCompare(b.title||'', undefined, {sensitivity:'base'}));
+  else if (searchSort === 'recent') { const ri = id => recents.indexOf(id); results.sort((a, b) => (ri(a.id)>=0?ri(a.id):1e9) - (ri(b.id)>=0?ri(b.id):1e9)); }
+  const scope = scopeName ? ' in '+esc(scopeName) : '';
+  el.innerHTML =
+    renderSearchToolbar() +
+    '<div class="song-list-header"><h2>Search Results</h2><p>'+results.length+' result'+(results.length!==1?'s':'')+' for "'+esc(q)+'"'+scope+'</p></div>';
   if (!results.length) { el.innerHTML += '<div class="no-results"><div class="icon">'+SVG.search+'</div><p>No songs match your search</p></div>'; if (!wasSearch) navPush(); return; }
   const grid = document.createElement('div');
   grid.className = 'song-grid';
   results.forEach((song, i) => {
     const item = document.createElement('div');
-    item.className = 'song-item fade-in';
+    item.className = 'song-item search-item fade-in';
     item.style.animationDelay = Math.min(i*0.02,0.5)+'s';
     item.onclick = () => { currentCat = song.cat; currentList = SONGS[song.cat].songs; openSong(song); };
-    const meta = [song.author, song.catName, song.key?'Key: '+song.key:''].filter(Boolean).join(' · ');
-    const snippet = song.snippet ? '<div class="song-match">'+esc(song.snippet)+'</div>' : '';
-    item.innerHTML = '<div class="song-num">'+(song.number||'')+'</div><div class="song-info"><div class="song-title">'+esc(song.title)+'</div><div class="song-meta">'+esc(meta)+'</div>'+snippet+'</div>';
+    const meta = [song.author, song.catName].filter(Boolean).join(' • ');
+    const num = song.number ? '#'+song.number : '';
+    const snippet = song.snippet
+      ? '<div class="si-snippet">'+hl(song.snippet, q)+'</div>'
+      : '';
+    const badges = [song.catName, song.key ? 'Key: '+song.key : ''].filter(Boolean)
+      .map(b => '<span class="si-badge">'+esc(b)+'</span>').join('');
+    const match = song.matchLabel ? '<div class="si-match">Matched in '+esc(song.matchLabel)+'</div>' : '';
+    item.innerHTML =
+      '<div class="si-top"><span class="si-num">'+esc(num)+'</span><span class="si-title">'+hl(song.title, q)+'</span></div>'+
+      '<div class="si-meta">'+hl(meta, q)+'</div>'+
+      snippet + (badges ? '<div class="si-badges">'+badges+'</div>' : '') + match;
     grid.appendChild(item);
   });
   el.appendChild(grid);
   if (!wasSearch) navPush();
+}
+
+// ponytail: sticky toolbar with filter chips + sort dropdown, shown above results.
+function renderSearchToolbar() {
+  const filters = [['all','All'],['title','Title'],['lyrics','Lyrics'],['author','Author'],['number','Number']];
+  const chips = filters.map(([v,l]) => '<button class="si-chip'+(searchFilter===v?' active':'')+'" onclick="setSearchFilter(\''+v+'\')">'+l+'</button>').join('');
+  const sorts = [['relevance','Relevance'],['number','Number'],['alpha','A–Z'],['recent','Recent']];
+  const opts = sorts.map(([v,l]) => '<option value="'+v+'"'+(searchSort===v?' selected':'')+'>'+l+'</option>').join('');
+  return '<div class="si-toolbar">'+
+    '<div class="si-chips">'+chips+'</div>'+
+    '<select class="si-sort" onchange="setSearchSort(this.value)">'+opts+'</select>'+
+    '</div>';
+}
+
+// ponytail: empty search shows recent queries as tappable chips.
+function clearSearchHistory() {
+  searchHistory = [];
+  localStorage.removeItem('labu_search_history');
+  renderRecentSearch();
+}
+function renderRecentSearch() {
+  currentListKind = 'search';
+  searchQuery = '';
+  showView('search');
+  const el = document.getElementById('searchResults');
+  document.getElementById('searchInput').value = '';
+  const clr = document.getElementById('searchClear'); if (clr) clr.classList.remove('show');
+  if (!searchHistory.length) {
+    el.innerHTML = '<div class="no-results"><div class="icon">'+SVG.search+'</div><p>Search songs by title, lyrics, author, or number</p></div>';
+    return;
+  }
+  const chips = searchHistory.map(h => '<button class="si-rec" onclick="runRecentSearch('+JSON.stringify(h)+')">'+esc(h)+'</button>').join('');
+  el.innerHTML = '<div class="song-list-header si-rec-head"><h2>Recent Searches</h2><button class="si-clear-hist" onclick="clearSearchHistory()">Clear</button></div><div class="si-recent">'+chips+'</div>';
 }
 
 // ─── THEME ───
@@ -2364,6 +2669,13 @@ function toast(msg, type) {
 
 // ─── UTILS ───
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function hl(text, q) {
+  if (!text) return '';
+  let h = esc(text);
+  if (!q) return h;
+  const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+  return h.replace(re, '<mark>$1</mark>');
+}
 
 // ─── SIDEBAR ───
 function toggleSidebar() {
@@ -2429,7 +2741,7 @@ async function openRecents() {
   currentCat = null; currentList = songs; currentListKind = 'recent'; currentGroup = null;
   showView('list');
   document.getElementById('listHeader').innerHTML = '<h2>History</h2><p>'+songs.length+' recently viewed song'+(songs.length!==1?'s':'')+'</p>';
-  if (songs.length) { renderSongList(songs); }
+  if (songs.length) { renderSongList(songs); restoreScroll('recent'); saveListCache('recent'); }
   else { document.getElementById('songGrid').innerHTML = '<div class="no-results"><div class="icon">'+SVG.clock+'</div><p>No songs viewed yet</p></div>'; }
   document.getElementById('searchInput').value = '';
   _rv.listKind = 'recent'; _rv.cat = null; _rv.pid = null;
@@ -2472,6 +2784,8 @@ async function openPlaylist(pid) {
   showView('list');
   document.getElementById('listHeader').innerHTML = '<h2>'+esc(pl.name)+'</h2><p>'+songs.length+' song'+(songs.length!==1?'s':'')+' · <a onclick="renamePlaylist(\''+pid+'\')" style="color:var(--accent);cursor:pointer;font-size:0.8rem;">Rename</a> · <a onclick="deletePlaylist(\''+pid+'\')" style="color:var(--red);cursor:pointer;font-size:0.8rem;">Delete</a></p>';
   renderSongList(songs);
+  restoreScroll('playlist:'+pid);
+  saveListCache('playlist:'+pid);
   document.getElementById('searchInput').value = '';
   navPush();
 }
