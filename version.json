@@ -1,6 +1,6 @@
 {
-  "version": "1.2.2",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.2.2/khristian-labu.apk",
-  "notes": "Sticky bottom reader sliders always visible; slider drag no longer triggers song swipe. See release notes on GitHub.",
-  "updatedAt": "2026-07-19T07:00:00Z"
+  "version": "1.2.3",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.2.3/khristian-labu.apk",
+  "notes": "Edge-swipe back to song list; swiping between songs no longer stacks history (one back returns to list). See release notes on GitHub.",
+  "updatedAt": "2026-07-19T08:00:00Z"
 }

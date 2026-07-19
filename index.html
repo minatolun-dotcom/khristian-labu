@@ -866,7 +866,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 18; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.2.2'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.2.3'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 let DEFAULT_SONGS = null;
 let SONGS = {};
@@ -1620,16 +1620,24 @@ document.getElementById('songGrid').addEventListener('click', e => {
   const view = document.getElementById('detailView');
   if (!el || !ghost || !view) return;
   let x0 = 0, y0 = 0, locked = false, dir = null, target = null, W = 0, lastX = 0, lastT = 0, ignoring = false;
+  let backMode = false; // ponytail: left-edge inward drag = back to list (not a song swipe)
+  const EDGE = 24; // px reserved at each screen edge
   function reset() {
-    el.style.transition = ''; el.style.transform = '';
+    el.style.transition = ''; el.style.transform = ''; el.style.opacity = '';
     ghost.style.transition = ''; ghost.style.transform = ''; ghost.style.opacity = '0';
     view.classList.remove('swiping');
-    locked = false; dir = null; target = null;
+    locked = false; dir = null; target = null; backMode = false;
   }
   el.addEventListener('touchstart', e => {
     if (currentView !== 'detail') return;
     // ponytail: don't hijack swipes that start on the reader sliders / their controls.
     if (e.target.closest('.reader-controls')) { ignoring = true; return; }
+    const sx = e.targetTouches[0].clientX;
+    // ponytail: right edge stays for the OS back gesture.
+    if (sx > window.innerWidth - EDGE) { ignoring = true; return; }
+    // ponytail: left edge inward = back to the song list.
+    if (sx < EDGE) { ignoring = false; backMode = true; }
+    else { backMode = false; }
     ignoring = false;
     const t = e.changedTouches[0];
     x0 = t.clientX; y0 = t.clientY; locked = false; dir = null; target = null;
@@ -1638,6 +1646,15 @@ document.getElementById('songGrid').addEventListener('click', e => {
     if (currentView !== 'detail' || ignoring) return;
     const t = e.changedTouches[0];
     const dx = t.clientX - x0, dy = t.clientY - y0;
+    if (backMode) {
+      if (dx < 12 || Math.abs(dx) < Math.abs(dy) * 1.2) return; // need a clear rightward drag
+      e.preventDefault();
+      el.style.transition = 'none';
+      // ponytail: slide out + fade as the user drags inward from the left edge.
+      el.style.transform = 'translateX(' + dx + 'px)';
+      el.style.opacity = String(Math.max(0.2, 1 - dx / (W || window.innerWidth)));
+      return;
+    }
     if (!locked) {
       // engage only on a clear horizontal intent; otherwise let the page scroll.
       if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
@@ -1664,6 +1681,22 @@ document.getElementById('songGrid').addEventListener('click', e => {
     ghost.style.transform = 'translateX(' + (dir === 'next' ? tx + W : tx - W) + 'px)';
   }, { passive: false });
   function finish() {
+    if (backMode) {
+      const dx = lastX - x0;
+      const dt = Date.now() - lastT;
+      const v = dt > 0 ? dx / dt : 0;
+      const commit = dx > (W || window.innerWidth) * 0.32 || v > 0.4;
+      el.style.transition = 'transform 0.25s cubic-bezier(0.22,0.61,0.36,1),opacity 0.25s';
+      if (commit) {
+        el.style.transform = 'translateX(100%)'; el.style.opacity = '0';
+        setTimeout(() => { history.back(); reset(); }, 230);
+      } else {
+        el.style.transform = 'translateX(0)'; el.style.opacity = '1';
+        setTimeout(() => { el.style.transition = ''; el.style.transform = ''; el.style.opacity = ''; }, 260);
+      }
+      backMode = false;
+      return;
+    }
     if (!locked) return;
     const dx = lastX - x0;
     const dt = Date.now() - lastT;
@@ -1686,10 +1719,10 @@ document.getElementById('songGrid').addEventListener('click', e => {
   }
   el.addEventListener('touchend', e => {
     if (ignoring) { ignoring = false; return; }
-    if (locked) { lastX = e.changedTouches[0].clientX; finish(); }
+    if (locked || backMode) { lastX = e.changedTouches[0].clientX; finish(); }
   }, { passive: true });
   // ponytail: browser may cancel the gesture (scroll interrupt, context switch) — always snap back.
-  el.addEventListener('touchcancel', () => { ignoring = false; if (locked) finish(); }, { passive: true });
+  el.addEventListener('touchcancel', () => { ignoring = false; if (locked || backMode) finish(); }, { passive: true });
 })();
 
 function openSong(song, dir) {
@@ -1698,11 +1731,14 @@ function openSong(song, dir) {
     const key = currentCat || currentListKind || 'home';
     _scrollPos[key] = window.scrollY;
   }
+  const enteredFromList = currentView !== 'detail';
   currentSongIdx = currentList.findIndex(s => s.id === song.id);
   showView('detail');
   renderSongDetail(song, dir);
   addRecent(song.id);
-  navPush();
+  // ponytail: only push history when entering detail from a list/search, NOT when
+  // swiping/arrow-navigating between songs — so one back returns to the list, not song-by-song.
+  if (enteredFromList) navPush();
 }
 
 // ponytail: after a list is re-rendered, jump back to the saved scroll position.
