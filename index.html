@@ -182,9 +182,16 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .search-results .si-rec-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;}
 .search-results .si-clear-hist{background:none;border:none;color:var(--text3);cursor:pointer;font-size:0.8rem;font-family:inherit;padding:4px 8px;border-radius:6px;transition:color 0.15s;}
 .search-results .si-clear-hist:hover{color:var(--red);}
+.search-results .si-more{padding:1rem;text-align:center;color:var(--text3);font-size:0.8rem;}
 
 /* ─── SONG DETAIL ─── */
-.song-detail{max-width:700px;margin:0 auto;padding:2rem;}
+.song-detail{max-width:700px;margin:0 auto;padding:2rem;padding-bottom:96px;position:relative;z-index:1;will-change:transform;}
+/* ponytail: ghost neighbor layer behind the detail card for live swipe preview. */
+.song-detail-ghost{position:absolute;top:0;left:0;right:0;z-index:0;opacity:0;pointer-events:none;will-change:transform;max-width:700px;margin:0 auto;padding:2rem;}
+#detailView{position:relative;}
+#detailView.swiping{overflow:hidden;}
+/* ponytail: depth cue while dragging — front card lifts with a shadow + slight scale. */
+#detailView.swiping .song-detail{box-shadow:0 18px 50px rgba(0,0,0,0.45);border-radius:var(--radius-sm);}
 .song-actions-row{display:flex;justify-content:center;gap:0.5rem;margin-bottom:1rem;}
 .song-action-btn{width:36px;height:36px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all var(--transition);}
 .song-action-btn svg{width:16px;height:16px;}
@@ -220,6 +227,11 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .hero{position:relative;z-index:1;}
 .hero h1{animation:fadeIn 0.5s ease-out;}
 .song-detail-header{animation:fadeIn 0.4s ease-out;}
+/* ponytail: gallery-style slide when swiping/arrowing between songs. */
+@keyframes slideInRight{from{opacity:0;transform:translateX(36px);}to{opacity:1;transform:translateX(0);}}
+@keyframes slideInLeft{from{opacity:0;transform:translateX(-36px);}to{opacity:1;transform:translateX(0);}}
+.song-detail.slide-next{animation:slideInRight 0.28s cubic-bezier(0.22,0.61,0.36,1);}
+.song-detail.slide-prev{animation:slideInLeft 0.28s cubic-bezier(0.22,0.61,0.36,1);}
 .verse{transition:all var(--transition);padding:0.5rem;border-radius:var(--radius-sm);}
 @media (hover:hover) and (pointer:fine){
   .verse:hover{transform:translateX(4px);background:var(--bg3);}
@@ -389,7 +401,8 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
   .song-num{min-width:32px;height:32px;font-size:0.75rem;}
   .song-info{min-width:0;overflow:hidden;}
   .song-title{overflow-wrap:break-word;word-break:break-word;white-space:normal;}
-  .song-detail{padding:1.25rem 1rem;}
+  .song-detail{padding:1.25rem 1rem;padding-bottom:96px;}
+  .song-detail-ghost{padding:1.25rem 1rem;padding-bottom:96px;}
   .song-detail-header{gap:0.5rem;}
   .song-nav-btn{width:38px;height:38px;}
   .song-nav-btn svg{width:18px;height:18px;}
@@ -524,7 +537,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 </div>
 
 <!-- SONG DETAIL -->
-<div class="view" id="detailView"><div class="song-detail" id="songDetail"></div></div>
+<div class="view" id="detailView"><div class="song-detail-ghost" id="songDetailGhost"></div><div class="song-detail" id="songDetail"></div><div id="readerControlsHost"></div></div>
 
 <!-- SEARCH -->
 <div class="view" id="searchView"><div class="search-results" id="searchResults"></div></div>
@@ -853,7 +866,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 18; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.2.1'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.2.2'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 let DEFAULT_SONGS = null;
 let SONGS = {};
@@ -1127,6 +1140,7 @@ async function loadSongs() {
     try { (await idbGetAll('edits')).forEach(applyEdit); } catch (e) {}
     GROUPS = SONGS.groups || [];
     reindexBooks();
+    buildSearchIndex();
     updateStats();
     songsReady = true;
     renderGroups();
@@ -1226,8 +1240,9 @@ function showView(v) {
   if (hideSearch) { searchBox.style.display = 'none'; } else { searchBox.removeAttribute('style'); }
   if (v !== 'search') searchBox.classList.remove('active');
   document.getElementById('searchToggle').style.display = hideSearch ? 'none' : '';
-  // ponytail: reader controls belong only to the detail view.
-  document.querySelectorAll('.reader-controls').forEach(e => e.style.display = (v === 'detail' ? '' : 'none'));
+  // ponytail: reader controls belong only to the detail view. Toggle the host
+  // (it lives outside #songDetail so position:fixed anchors to the viewport).
+  document.getElementById('readerControlsHost').style.display = (v === 'detail' ? '' : 'none');
   // ponytail: adminBtn removed — accessible via sidebar Settings
   // ponytail: entering the search view without an active query means we came back
   // to it — clear any leftover text so the previous search doesn't linger.
@@ -1597,7 +1612,87 @@ document.getElementById('songGrid').addEventListener('click', e => {
   if (song) openSong(song);
 });
 
-function openSong(song) {
+// ponytail: Android-style predictive swipe — the current card follows the finger and
+// the neighbor is revealed behind it; commits past a threshold, else snaps back.
+(function attachSongSwipe() {
+  const el = document.getElementById('songDetail');
+  const ghost = document.getElementById('songDetailGhost');
+  const view = document.getElementById('detailView');
+  if (!el || !ghost || !view) return;
+  let x0 = 0, y0 = 0, locked = false, dir = null, target = null, W = 0, lastX = 0, lastT = 0, ignoring = false;
+  function reset() {
+    el.style.transition = ''; el.style.transform = '';
+    ghost.style.transition = ''; ghost.style.transform = ''; ghost.style.opacity = '0';
+    view.classList.remove('swiping');
+    locked = false; dir = null; target = null;
+  }
+  el.addEventListener('touchstart', e => {
+    if (currentView !== 'detail') return;
+    // ponytail: don't hijack swipes that start on the reader sliders / their controls.
+    if (e.target.closest('.reader-controls')) { ignoring = true; return; }
+    ignoring = false;
+    const t = e.changedTouches[0];
+    x0 = t.clientX; y0 = t.clientY; locked = false; dir = null; target = null;
+  }, { passive: true });
+  el.addEventListener('touchmove', e => {
+    if (currentView !== 'detail' || ignoring) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - x0, dy = t.clientY - y0;
+    if (!locked) {
+      // engage only on a clear horizontal intent; otherwise let the page scroll.
+      if (Math.abs(dx) < 12 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+      const idx = currentSongIdx;
+      if (dx < 0 && currentList[idx + 1]) { dir = 'next'; target = currentList[idx + 1]; }
+      else if (dx > 0 && currentList[idx - 1]) { dir = 'prev'; target = currentList[idx - 1]; }
+      else return; // no neighbor that way — ignore
+      W = el.clientWidth || window.innerWidth;
+      ghost.innerHTML = songDetailHTML(target);
+      ghost.style.opacity = '1';
+      view.classList.add('swiping');
+      window.scrollTo(0, 0); // align front with ghost at the top during the gesture
+      locked = true;
+    }
+    e.preventDefault(); // horizontal drag owns this gesture
+    const tx = dx;
+    lastX = t.clientX; lastT = Date.now(); // ponytail: track velocity for fling-to-commit
+    // ponytail: subtle scale-down with drag distance for a depth/lift feel.
+    const scale = 1 - Math.min(Math.abs(dx) / W, 0.5) * 0.12;
+    el.style.transition = 'none';
+    el.style.transform = 'translateX(' + tx + 'px) scale(' + scale + ')';
+    // neighbor sits behind, offset by one card width on the revealed side.
+    ghost.style.transition = 'none';
+    ghost.style.transform = 'translateX(' + (dir === 'next' ? tx + W : tx - W) + 'px)';
+  }, { passive: false });
+  function finish() {
+    if (!locked) return;
+    const dx = lastX - x0;
+    const dt = Date.now() - lastT;
+    const v = dt > 0 ? dx / dt : 0; // px per ms
+    // ponytail: commit if dragged past ~28%, or flung (fast flick) even from mid-screen.
+    const commit = Math.abs(dx) > W * 0.28 || Math.abs(v) > 0.4;
+    el.style.transition = 'transform 0.25s cubic-bezier(0.22,0.61,0.36,1)';
+    ghost.style.transition = 'transform 0.25s cubic-bezier(0.22,0.61,0.36,1)';
+    if (commit && target) {
+      ghost.style.opacity = '0'; // hide revealed neighbor before the front snaps in
+      openSong(target, dir);
+      reset();
+    } else {
+      el.style.transform = 'translateX(0) scale(1)';
+      ghost.style.transform = 'translateX(' + (dir === 'next' ? W : -W) + 'px)';
+      setTimeout(() => { ghost.style.opacity = '0'; view.classList.remove('swiping'); }, 250);
+      setTimeout(() => { el.style.transition = ''; el.style.transform = ''; }, 260);
+    }
+    locked = false; dir = null; target = null;
+  }
+  el.addEventListener('touchend', e => {
+    if (ignoring) { ignoring = false; return; }
+    if (locked) { lastX = e.changedTouches[0].clientX; finish(); }
+  }, { passive: true });
+  // ponytail: browser may cancel the gesture (scroll interrupt, context switch) — always snap back.
+  el.addEventListener('touchcancel', () => { ignoring = false; if (locked) finish(); }, { passive: true });
+})();
+
+function openSong(song, dir) {
   // ponytail: capture scroll only when leaving a list view (not prev/next in detail).
   if (currentView !== 'detail') {
     const key = currentCat || currentListKind || 'home';
@@ -1605,7 +1700,7 @@ function openSong(song) {
   }
   currentSongIdx = currentList.findIndex(s => s.id === song.id);
   showView('detail');
-  renderSongDetail(song);
+  renderSongDetail(song, dir);
   addRecent(song.id);
   navPush();
 }
@@ -1637,8 +1732,7 @@ function restoreList(key) {
   return true;
 }
 
-function renderSongDetail(song) {
-  const el = document.getElementById('songDetail');
+function songDetailHTML(song) {
   const vt = {v:'Verse',c:'Chorus',b:'Bridge',p:'Reference',pc:'Pre-Chorus'};
   const vc = {v:0,c:0,b:0,p:0};
   // ponytail: a 'p' reference verse containing "Doh is" (often prefixed with
@@ -1670,34 +1764,43 @@ function renderSongDetail(song) {
   const prevSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>';
   const nextSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>';
   const editSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-  const delSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
   const listSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>';
   const plusSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>';
   const favSvg = isFav(song.id) ? '<svg viewBox="0 0 24 24" fill="var(--red)" stroke="var(--red)" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
-  const copySvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
   const shareSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
   const actions = '<div class="song-actions-row fade-in">'
     + '<button class="song-action-btn" onclick="openEditModal(\''+song.id+'\')" title="Edit">'+editSvg+'</button>'
-    + '<button class="song-action-btn" onclick="confirmDelete(\''+song.id+'\')" title="Delete">'+delSvg+'</button>'
     + '<button class="song-action-btn" onclick="_playlistModalSongId=\''+song.id+'\';openPlaylistChooser(\''+song.id+'\')" title="Add to playlist">'+plusSvg+'</button>'
     + '<button class="song-action-btn" onclick="toggleFav(\''+song.id+'\');renderSongDetail(currentList[currentSongIdx])" title="Favorite">'+favSvg+'</button>'
-    + '<button class="song-action-btn" onclick="copySong(\''+song.id+'\')" title="Copy song">'+copySvg+'</button>'
     + '<button class="song-action-btn" onclick="shareSong(\''+song.id+'\')" title="Share song">'+shareSvg+'</button>'
     + '</div>';
-  const header = '<div class="song-detail-header fade-in"><button class="song-nav-btn" '+(prev?'onclick="openSong(currentList[currentSongIdx-1])"':'disabled')+'>'+prevSvg+'</button><div class="song-header-center">'+numBadge+'<h1>'+esc(song.title)+'</h1><div class="song-detail-meta">'+meta.join(' · ')+'</div></div><button class="song-nav-btn" '+(next?'onclick="openSong(currentList[currentSongIdx+1])"':'disabled')+'>'+nextSvg+'</button></div>';
-  const fontIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V5h16v2"/><path d="M9 19h6M12 5v14"/></svg>';
-  const spaceIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h16M4 12h16M4 16h16"/></svg>';
-  const controls = '<div class="reader-controls" id="readerFontCtrl">'
-    + fontIcon + '<input type="range" min="14" max="28" step="1" value="'+readerFont+'" oninput="setReaderFont(this.value)"><span id="readerFontVal" class="rc-val">'+readerFont+'px</span>'
-    + '<span class="rc-sep"></span>'
-    + spaceIcon + '<input type="range" min="1.2" max="2.4" step="0.1" value="'+readerLH+'" oninput="setReaderLH(this.value)">'
-    + '</div>';
-  el.innerHTML = actions+header+vh+controls;
+  const header = '<div class="song-detail-header fade-in"><button class="song-nav-btn" '+(prev?'onclick="openSong(currentList[currentSongIdx-1],\'prev\')"':'disabled')+'>'+prevSvg+'</button><div class="song-header-center">'+numBadge+'<h1>'+esc(song.title)+'</h1><div class="song-detail-meta">'+meta.join(' · ')+'</div></div><button class="song-nav-btn" '+(next?'onclick="openSong(currentList[currentSongIdx+1],\'next\')"':'disabled')+'>'+nextSvg+'</button></div>';
+  return actions+header+vh;
+}
+
+function renderSongDetail(song, dir) {
+  const el = document.getElementById('songDetail');
+  el.innerHTML = songDetailHTML(song);
+  // ponytail: gallery-style slide when arriving via swipe/arrow nav.
+  if (dir === 'next' || dir === 'prev') {
+    el.classList.remove('slide-next', 'slide-prev');
+    void el.offsetWidth; // force reflow so the animation restarts
+    el.classList.add(dir === 'next' ? 'slide-next' : 'slide-prev');
+  }
   // ponytail: apply persisted reader sizing to the verses only (not header).
   el.style.setProperty('--reader-font', readerFont+'px');
   el.style.setProperty('--reader-lh', readerLH);
-  document.documentElement.style.setProperty('--reader-font', readerFont+'px');
-  document.documentElement.style.setProperty('--reader-lh', readerLH);
+  // ponytail: controls live in a host outside #songDetail (avoids being trapped
+  // by its transform/will-change containing block) so position:fixed stays relative to viewport.
+  const host = document.getElementById('readerControlsHost');
+  document.getElementById('readerControlsHost').innerHTML =
+    '<div class="reader-controls" id="readerFontCtrl">'
+    + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V5h16v2"/><path d="M9 19h6M12 5v14"/></svg>'
+    + '<input type="range" min="14" max="28" step="1" value="'+readerFont+'" oninput="setReaderFont(this.value)"><span id="readerFontVal" class="rc-val">'+readerFont+'px</span>'
+    + '<span class="rc-sep"></span>'
+    + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h16M4 12h16M4 16h16"/></svg>'
+    + '<input type="range" min="1.2" max="2.4" step="0.1" value="'+readerLH+'" oninput="setReaderLH(this.value)">'
+    + '</div>';
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -1715,21 +1818,6 @@ function songToText(id) {
     lines.push(label + (v.lines || []).map(l => indent + l).join('\n'));
   });
   return lines.join('\n\n');
-}
-
-async function copySong(id) {
-  const text = songToText(id);
-  try {
-    await navigator.clipboard.writeText(text);
-    toast('Song copied', 'success');
-  } catch (e) {
-    // ponytail: clipboard API can fail on insecure contexts — fallback to a textarea.
-    const ta = document.createElement('textarea');
-    ta.value = text; document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); toast('Song copied', 'success'); }
-    catch (_) { toast('Copy failed', 'error'); }
-    document.body.removeChild(ta);
-  }
 }
 
 async function shareSong(id) {
@@ -1752,6 +1840,18 @@ async function shareSong(id) {
 }
 
 // ─── SEARCH ───
+// ponytail: precompute lowercase fields once (after load) so every keystroke scan
+// avoids re-lowercasing the whole corpus — the single biggest search speedup.
+function buildSearchIndex() {
+  Object.keys(SONGS).forEach(k => {
+    const list = SONGS[k] && SONGS[k].songs;
+    if (!list) return;
+    list.forEach(song => {
+      song._l = ((song.title||'')+' '+(song.author||'')+' '+(song.key||'')+' '+(song.number||'')).toLowerCase();
+      song._ll = song.verses ? song.verses.map(v => (v.lines||[]).join('\n').toLowerCase()) : [];
+    });
+  });
+}
 let searchTimeout;
 // ponytail: filter chips + sort are session UI state; recent searches persist.
 let searchFilter = 'all';   // all | title | lyrics | author | number
@@ -1761,7 +1861,7 @@ function onSearch(q) {
   const clr = document.getElementById('searchClear');
   if (clr) clr.classList.toggle('show', !!q);
   clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => doSearch(q), 200);
+  searchTimeout = setTimeout(() => doSearch(q), 350);
 }
 function setSearchFilter(f) {
   searchFilter = f;
@@ -1793,7 +1893,6 @@ async function doSearch(q) {
   searchQuery = q;
   const el = document.getElementById('searchResults');
   if (!q) { renderRecentSearch(); return; }
-  pushSearchHistory(q);
   const wasSearch = currentListKind === 'search';
   const prevKind = currentListKind;
   showView('search');
@@ -1810,32 +1909,32 @@ async function doSearch(q) {
   keys.forEach(key => {
     if (!SONGS[key] || !SONGS[key].songs) return;
     SONGS[key].songs.forEach(song => {
-      const titleHit = (song.title || '').toLowerCase().includes(q);
-      const authorHit = (song.author || '').toLowerCase().includes(q);
-      const keyHit = (song.key || '').toLowerCase().includes(q);
-      const numHit = (song.number || '').toLowerCase().includes(q);
+      const titleHit = song._l.includes(q);
+      const authorHit = (song.author||'').toLowerCase().includes(q);
+      const keyHit = (song.key||'').toLowerCase().includes(q);
+      const numHit = (song.number||'').toLowerCase().includes(q);
       // ponytail: filter chips narrow the match domain.
-      let pass = false, label = null;
+      let pass = false;
       if (searchFilter === 'title') pass = titleHit;
       else if (searchFilter === 'author') pass = authorHit;
       else if (searchFilter === 'number') pass = numHit;
       else if (searchFilter === 'lyrics') pass = false;
       else pass = (titleHit || authorHit || keyHit || numHit);
       if (pass) { results.push({...song, cat: key, catName: SONGS[key].info.name, matchField: 'title', matchLabel: 'Title'}); return; }
-      if (song.verses && (searchFilter === 'all' || searchFilter === 'lyrics')) {
-        for (let vi = 0; vi < song.verses.length; vi++) {
-          for (let li = 0; li < song.verses[vi].lines.length; li++) {
-            if (song.verses[vi].lines[li].toLowerCase().includes(q)) {
+      if (song._ll.length && (searchFilter === 'all' || searchFilter === 'lyrics')) {
+        for (let vi = 0; vi < song._ll.length; vi++) {
+          const lineIdx = song._ll[vi].indexOf(q);
+          if (lineIdx !== -1) {
   const vt = {v:'Verse',c:'Chorus',b:'Bridge',p:'Reference',pc:'Pre-Chorus'};
-              const vtype = vt[song.verses[vi].type||'v'] || 'Verse';
-              const vlabel = vtype + (song.verses[vi].type === 'v' ? ' ' + (vi+1) : '');
-              const allLines = song.verses[vi].lines;
-              const start = Math.max(0, li - 1);
-              const end = Math.min(allLines.length, li + 3);
-              const context = allLines.slice(start, end).join('\n');
-              results.push({...song, cat: key, catName: SONGS[key].info.name, matchField: 'verse', matchLabel: vlabel, snippet: context});
-              return;
-            }
+            const vtype = vt[(song.verses[vi]&&song.verses[vi].type)||'v'] || 'Verse';
+            const vlabel = vtype + ((song.verses[vi]&&song.verses[vi].type === 'v') ? ' ' + (vi+1) : '');
+            const allLines = song.verses[vi].lines;
+            const li = allLines.findIndex(l => l.toLowerCase().includes(q));
+            const start = Math.max(0, li - 1);
+            const end = Math.min(allLines.length, li + 3);
+            const context = allLines.slice(start, end).join('\n');
+            results.push({...song, cat: key, catName: SONGS[key].info.name, matchField: 'verse', matchLabel: vlabel, snippet: context});
+            return;
           }
         }
       }
@@ -1846,13 +1945,22 @@ async function doSearch(q) {
   else if (searchSort === 'alpha') results.sort((a, b) => (a.title||'').localeCompare(b.title||'', undefined, {sensitivity:'base'}));
   else if (searchSort === 'recent') { const ri = id => recents.indexOf(id); results.sort((a, b) => (ri(a.id)>=0?ri(a.id):1e9) - (ri(b.id)>=0?ri(b.id):1e9)); }
   const scope = scopeName ? ' in '+esc(scopeName) : '';
+  // ponytail: only remember queries that actually matched something, so partial
+  // keystroke pauses (sa/sav/savi) never clutter Recent Searches.
+  if (results.length) pushSearchHistory(q);
+  // ponytail: cap DOM nodes to the first 100 matches so the grid paints instantly
+  // even when a query matches thousands of songs.
+  const RENDER_CAP = 100;
+  const shown = results.slice(0, RENDER_CAP);
+  const moreNote = results.length > shown.length
+    ? '<div class="si-more">Showing first '+shown.length+' of '+results.length+' matches — refine your search to narrow down.</div>' : '';
   el.innerHTML =
     renderSearchToolbar() +
     '<div class="song-list-header"><h2>Search Results</h2><p>'+results.length+' result'+(results.length!==1?'s':'')+' for "'+esc(q)+'"'+scope+'</p></div>';
   if (!results.length) { el.innerHTML += '<div class="no-results"><div class="icon">'+SVG.search+'</div><p>No songs match your search</p></div>'; if (!wasSearch) navPush(); return; }
   const grid = document.createElement('div');
   grid.className = 'song-grid';
-  results.forEach((song, i) => {
+  shown.forEach((song, i) => {
     const item = document.createElement('div');
     item.className = 'song-item search-item fade-in';
     item.style.animationDelay = Math.min(i*0.02,0.5)+'s';
@@ -1872,6 +1980,7 @@ async function doSearch(q) {
     grid.appendChild(item);
   });
   el.appendChild(grid);
+  if (moreNote) el.insertAdjacentHTML('beforeend', moreNote);
   if (!wasSearch) navPush();
 }
 
