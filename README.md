@@ -1,6 +1,6 @@
 # Khristian Labu
 
-A gospel songbook app — 1,407 hymns across 4 songbooks.
+A gospel songbook app — 5,725 hymns across 18 songbooks in 6 collections.
 
 Try it live: [minatolun-dotcom.github.io/khristian-labu](https://minatolun-dotcom.github.io/khristian-labu/)
 
@@ -14,7 +14,7 @@ Try it live: [minatolun-dotcom.github.io/khristian-labu](https://minatolun-dotco
 
 ## Features
 
-- Browse 4 songbooks: Biakna Leh Phatna, Biakna Late, Pathian Ngaih La, Suangmantamte
+- Browse 18 songbooks across 6 collections: Khristian Labu (EBC), KBC, Zomi Labu, La Thiangtho Vaiphei, Gangte, and Khristian Hla Bu (Mizo)
 - Full-text search across titles, authors, and verses
 - Favorites & recently viewed (saved locally)
 - Dark/light theme
