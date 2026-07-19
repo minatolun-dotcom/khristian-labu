@@ -853,7 +853,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 18; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.2.0'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.2.1'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 let DEFAULT_SONGS = null;
 let SONGS = {};
@@ -1735,15 +1735,20 @@ async function copySong(id) {
 async function shareSong(id) {
   const song = currentList.find(s => s.id === id);
   const text = songToText(id);
-  const shareData = { title: song ? (song.title || 'Song') : 'Song', text };
-  if (navigator.share) {
-    try { await navigator.share(shareData); } catch (_) {}
-  } else if (navigator.clipboard) {
-    try { await navigator.clipboard.writeText(text); toast('Link copied to clipboard', 'success'); }
-    catch (e) { toast('Sharing not supported', 'error'); }
-  } else {
-    toast('Sharing not supported', 'error');
+  const shareData = { title: song ? (song.title || 'Song') : 'Song', text, dialogTitle: 'Share song' };
+  // ponytail: native Capacitor Share opens the Android sheet; fall back to web share, then clipboard.
+  const cap = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Share;
+  if (cap && cap.share) {
+    try { await cap.share(shareData); return; } catch (_) {}
   }
+  if (navigator.share) {
+    try { await navigator.share(shareData); return; } catch (_) {}
+  }
+  if (navigator.clipboard) {
+    try { await navigator.clipboard.writeText(text); toast('Copied to clipboard', 'success'); return; }
+    catch (e) {}
+  }
+  toast('Sharing not supported', 'error');
 }
 
 // ─── SEARCH ───
