@@ -1,6 +1,6 @@
 {
-  "version": "1.4.3",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.3/khristian-labu.apk",
-  "notes": "Reader fix: the font/line-spacing bar is now always visible at the very bottom of the screen, and when a song's lyrics fit on one screen the page can't be scrolled — increasing the font size or line spacing unlocks scrolling again. Pure content update — applies in-app via OTA.",
-  "updatedAt": "2026-08-16T15:00:00Z"
+  "version": "1.4.4",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.4/khristian-labu.apk",
+  "notes": "Lyrics now always stop above the bottom bar (padding adapts to the bar's real height, so even large system font scaling can't push lyrics under it), and the in-app update is more robust: if the signed update can't be applied it now skips straight to the APK download button with a clear message. Pure content update — applies in-app via OTA.",
+  "updatedAt": "2026-08-16T16:00:00Z"
 }

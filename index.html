@@ -976,7 +976,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.4.3'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.4.4'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1132,14 +1132,15 @@ async function checkOtaUpdate(force) {
     // OTA_SIGNING_PRIVATE_KEY secret); the per-bundle sessionKey/checksum ride in
     // the ota-session.json asset. Missing session data = unsigned legacy bundle:
     // pass nothing and the plugin installs it as-is (older APKs have no public key).
-    let sessionKey = '', checksum = '';
+    let sessionKey = '', checksum = '', sessBroken = false;
     try {
       const sess = (d.assets || []).find(a => a.name === 'ota-session.json');
       if (sess) {
         const j = await (await fetch(sess.browser_download_url)).json();
         sessionKey = j.sessionKey || ''; checksum = j.checksum || '';
+        if (!sessionKey || !checksum) sessBroken = true;
       }
-    } catch (e) { /* unsigned fallback below */ }
+    } catch (e) { sessBroken = true; /* release is signed but session data is unreachable */ }
     // ponytail: ask first (per the app's UX), then download + reload in place.
     confirmDangerous('Update to version ' + latest + ' is available. Download and restart the app now?', 'Update now', async () => {
       // live download progress via the plugin's 'download' events (0-100%).
@@ -1156,6 +1157,10 @@ async function checkOtaUpdate(force) {
       }
       if (prog) prog.classList.add('show');
       try {
+        // ponytail: the release is signed but the session data couldn't be fetched —
+        // downloading the encrypted bundle without keys is guaranteed to fail, so go
+        // straight to the APK download instead of a confusing failed install.
+        if (sessBroken) throw new Error('signed bundle session data unavailable');
         // ponytail: pass the per-bundle session data only when the release is signed;
         // unsigned (legacy) bundles install with no verification.
         const dOpts = { version: latest, url: url };
@@ -1167,7 +1172,7 @@ async function checkOtaUpdate(force) {
         // (no public key) — and a failed/rolled-back install shows nothing. Fall back
         // to the APK-download banner so those users can still get the new version.
         toast('In-app update failed — use the Download button instead', 'error');
-        console.error('[OTA update]', e);
+        console.error('[OTA update]', e && e.message ? e.message : e);
         try {
           const apk = (d.assets || []).find(a => a.name === 'khristian-labu.apk');
           if (apk) {
@@ -1491,6 +1496,23 @@ function updateReaderControls() {
   const lock = currentView === 'detail' && fits;
   document.documentElement.classList.toggle('scroll-locked', lock);
   if (lock && window.scrollY > 0) window.scrollTo(0, 0); // show the full song from the top
+  syncReaderSpacing();
+}
+
+// ponytail: the bottom padding of the song must clear the ACTUAL rendered height of
+// the reader bar — system font scaling can make the pill much taller than 38px, so a
+// hardcoded padding lets the last lyric line slide under it. Measure the bar and pad
+// the lyric area by its height + margin; lyrics can then never scroll past the bar.
+function syncReaderSpacing() {
+  const bar = document.querySelector('#readerControlsHost .reader-controls');
+  const detail = document.getElementById('songDetail');
+  if (!bar || !detail) return;
+  const h = Math.ceil(bar.getBoundingClientRect().height) || 38;
+  const pad = Math.max(120, h + 48); // generous floor + bar height + breathing room
+  const css = 'calc(' + pad + 'px + env(safe-area-inset-bottom))';
+  if (detail.style.paddingBottom !== css) detail.style.paddingBottom = css;
+  const ghost = document.getElementById('songDetailGhost');
+  if (ghost && ghost.style.paddingBottom !== css) ghost.style.paddingBottom = css;
 }
 // Orientation/size changes (rotation, fold, split-screen) can make a song fit or
 // stop fitting — re-evaluate the scroll lock while the reader is open.

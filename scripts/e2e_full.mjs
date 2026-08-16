@@ -663,6 +663,38 @@ await section('ota update', async () => {
   await page3.waitForSelector('#updateBanner:not([hidden])', { timeout: 10000 });
   ok('failed OTA falls back to APK download banner', (await page3.locator('#updVer').textContent()) === '7.7.7' && (await page3.locator('#updBtn').getAttribute('href')).includes('v7.7.7/khristian-labu.apk'));
   await page3.close();
+
+  // signed release whose session data is unreachable → no doomed download attempt;
+  // straight to the APK banner instead
+  const page4 = await newPage();
+  await page4.addInitScript(() => {
+    window.__otaCalls = [];
+    window.Capacitor = { Plugins: { CapacitorUpdater: {
+      notifyAppReady: async () => {},
+      addListener: async () => ({ remove: async () => {} }),
+      download: async o => { window.__otaCalls.push(['download', o]); return { id: 'b', version: o.version }; },
+      set: async () => {},
+    } } };
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (url, opts) => {
+      if (String(url).includes('api.github.com/repos/')) {
+        return { ok: true, json: async () => ({ tag_name: 'v6.6.6', assets: [
+          { name: 'khristian-labu.apk', browser_download_url: 'https://github.com/x/releases/download/v6.6.6/khristian-labu.apk' },
+          { name: 'ota-session.json', browser_download_url: 'https://github.com/x/releases/download/v6.6.6/ota-session.json' },
+        ] }) };
+      }
+      if (String(url).includes('ota-session.json')) throw new Error('offline');
+      return realFetch(url, opts);
+    };
+  });
+  await waitLoaded(page4);
+  await page4.evaluate(() => { localStorage.removeItem('labu_ota_last_check'); checkOtaUpdate(true); });
+  await page4.waitForSelector('#confirmModal.open', { timeout: 10000 });
+  await page4.locator('#confirmBtn').click();
+  await page4.waitForSelector('#updateBanner:not([hidden])', { timeout: 10000 });
+  const dl4 = await page4.evaluate(() => window.__otaCalls.filter(c => c[0] === 'download').length);
+  ok('signed release with unreachable session data skips download, shows APK banner', dl4 === 0 && (await page4.locator('#updBtn').getAttribute('href')).includes('v6.6.6/khristian-labu.apk'), 'downloads=' + dl4);
+  await page4.close();
 });
 
 // ═══════════════ 10. HISTORY API ═══════════════
