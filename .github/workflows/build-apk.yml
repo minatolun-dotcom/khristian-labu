@@ -229,6 +229,58 @@ jobs:
             www-latest.zip
             ota-session.json
 
+      # ponytail: mirror the per-release session data (sessionKey/checksum) into the
+      # committed version.json. The app reads version.json from raw.githubusercontent
+      # (CORS-open) to DETECT the update; the release-CDN copy of ota-session.json is
+      # CORS-BLOCKED for a webview fetch, so the session data must ride in the same
+      # CORS-open file the app already fetches. Without this, in-app OTA on APKs
+      # silently fell back to the GitHub download banner every time.
+      - name: Mirror session data into version.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PYEOF'
+          import json, base64, os, urllib.request, urllib.error
+
+          repo = os.environ.get('GITHUB_REPOSITORY', 'minatolun-dotcom/khristian-labu')
+          token = os.environ['GH_TOKEN']
+          tag = os.environ['TAG'].lstrip('v')
+          sess = json.load(open('ota-session.json'))
+
+          # read current version.json from the default branch
+          req = urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/contents/version.json',
+              headers={'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json', 'User-Agent': 'labu-ci'},
+          )
+          cur = json.load(urllib.request.urlopen(req))
+          data = json.loads(base64.b64decode(cur['content']).decode())
+
+          # inject this release's session data (only when present and signed)
+          if sess.get('sessionKey') and sess.get('checksum'):
+              data['sessionKey'] = sess['sessionKey']
+              data['checksum'] = sess['checksum']
+              data['otaVersion'] = tag
+
+          body = json.dumps(data, indent=2, ensure_ascii=False) + '\n'
+          payload = json.dumps({
+              'message': f'chore: mirror OTA session data for v{tag} into version.json',
+              'content': base64.b64encode(body.encode()).decode(),
+              'sha': cur['sha'],
+          }).encode()
+          put = urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/contents/version.json',
+              data=payload, method='PUT',
+              headers={'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json', 'User-Agent': 'labu-ci', 'Content-Type': 'application/json'},
+          )
+          try:
+              urllib.request.urlopen(put)
+              print('version.json updated with session data for', tag)
+          except urllib.error.HTTPError as e:
+              print('WARN: could not update version.json:', e.code, e.read()[:200])
+          PYEOF
+
       # Note: version.json and APP_VERSION are committed directly in the repo
       # (see index.html). We do NOT push back to main from CI — that reset main
       # to the tag checkout and broke on any divergence.

@@ -649,10 +649,12 @@ await section('ota update', async () => {
     };
       const realFetch = window.fetch.bind(window);
     window.fetch = async (url, opts) => {
-      // static update source (version.json on raw + Pages) is checked first now
+      // static update source (version.json on raw + Pages) is checked first now; it
+      // carries the release's sessionKey/checksum (mirrored post-release by CI) so the
+      // app never needs the CORS-blocked release CDN for the session data.
       if (String(url).includes('version.json')) {
         window.__apiCalls++;
-        return { ok: true, json: async () => ({ version: '9.9.9', apkUrl: 'https://github.com/x/releases/download/v9.9.9/khristian-labu.apk' }) };
+        return { ok: true, json: async () => ({ version: '9.9.9', apkUrl: 'https://github.com/x/releases/download/v9.9.9/khristian-labu.apk', sessionKey: 'sk-static', checksum: 'cs-static', otaVersion: '9.9.9' }) };
       }
       if (String(url).includes('api.github.com/repos/')) {
         window.__apiCalls++;
@@ -666,8 +668,9 @@ await section('ota update', async () => {
       }
       return realFetch(url, opts);
     };
-    // the APK's native HTTP plugin — the app must route the session fetch through it
-    // (plain fetch would be CORS-blocked by the release-asset CDN)
+    // the APK's native HTTP plugin — only a FALLBACK now: the session comes from the
+    // CORS-open static version.json, so CapacitorHttp should NOT be needed. Track calls
+    // to prove the primary path avoids it entirely (the release CDN is CORS-blocked).
     window.Capacitor.Plugins.CapacitorHttp = {
       request: async o => { window.__httpCalls = (window.__httpCalls || 0) + 1; return { status: 200, data: { version: '9.9.9', sessionKey: 'sk-http', checksum: 'cs-http' } }; },
     };
@@ -688,11 +691,11 @@ await section('ota update', async () => {
   await page.waitForFunction(() => window.__otaCalls.some(c => c[0] === 'set'), null, { timeout: 10000 });
   const dl = await page.evaluate(() => window.__otaCalls.find(c => c[0] === 'download'));
   ok('download called with the release zip url', !!dl && dl[1].url.endsWith('/releases/download/v9.9.9/www-latest.zip') && dl[1].version === '9.9.9', JSON.stringify(dl && dl[1]));
-  // the session data MUST come from CapacitorHttp (native, no CORS) — the release-asset
-  // CDN sends no CORS headers, so a plain fetch dies in the webview and silently falls
-  // back to the APK banner (the "shows the old way" bug). The mock returns 'sk-http'.
-  ok('session fetch goes through CapacitorHttp (CORS-free), not plain fetch', (await page.evaluate(() => window.__httpCalls || 0)) > 0, 'httpCalls=' + (await page.evaluate(() => window.__httpCalls || 0)));
-  ok('signed release passes sessionKey/checksum to download', !!dl && dl[1].sessionKey === 'sk-http' && dl[1].checksum === 'cs-http', JSON.stringify(dl && dl[1]));
+  // the session data comes from the CORS-open static version.json (mirrored by CI) —
+  // NOT the release CDN, which sends no CORS headers and would die in the webview
+  // (the "shows the old way" bug). CapacitorHttp is only a fallback now.
+  ok('session comes from static version.json (CORS-open), no CDN fetch', (await page.evaluate(() => window.__httpCalls || 0)) === 0, 'httpCalls=' + (await page.evaluate(() => window.__httpCalls || 0)));
+  ok('signed release passes sessionKey/checksum to download', !!dl && dl[1].sessionKey === 'sk-static' && dl[1].checksum === 'cs-static', JSON.stringify(dl && dl[1]));
   ok('set applied after download', true);
   await page.waitForFunction(() => !document.getElementById('otaProgress')?.classList.contains('show'), null, { timeout: 5000 });
   ok('ota progress card hides after update', true);

@@ -560,6 +560,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
   <span class="upd-text">New version <b id="updVer"></b> available</span>
   <a id="updBtn" class="upd-btn" target="_blank" rel="noopener">Update</a>
   <button class="upd-close" onclick="dismissUpdate()" aria-label="Dismiss">×</button>
+  <div id="otaErrorDetail" style="display:none;margin-top:6px;font-size:0.72rem;color:var(--amber);word-break:break-word;"></div>
 </div>
 <div class="modal-overlay" id="sidebarModal" onclick="if(event.target===this)closeSidebar()">
   <div class="modal" style="max-width:360px;">
@@ -1001,7 +1002,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.0'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.1'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1158,7 +1159,7 @@ async function fetchJson(url, opts) {
 // check silently died — "no update" forever). version.json is a tiny static file
 // committed in the repo and served by GitHub Pages + raw.githubusercontent (no rate
 // limit, no auth, CORS-open), so we use IT first and fall back to the API only if
-// both static hosts fail. Returns {tag, version, apkUrl, assets:[names]} or null.
+// both static hosts fail. Returns {tag, version, apkUrl, assets:[names], session} or null.
 async function fetchUpdateInfo() {
   const staticHosts = [
     'https://raw.githubusercontent.com/' + REPO + '/main/version.json',
@@ -1177,6 +1178,7 @@ async function fetchUpdateInfo() {
         version,
         apkUrl: j.apkUrl || ('https://github.com/' + REPO + '/releases/download/' + tag + '/khristian-labu.apk'),
         assets: ['khristian-labu.apk', 'ota-session.json', 'www-latest.zip'],
+        session: { sessionKey: j.sessionKey || '', checksum: j.checksum || '', version: version },
         source: 'static',
       };
     } catch (e) { /* try next host */ }
@@ -1222,15 +1224,26 @@ async function checkOtaUpdate(force) {
   // the ota-session.json asset. Missing session data = unsigned legacy bundle:
   // pass nothing and the plugin installs it as-is (older APKs have no public key).
   let sessionKey = '', checksum = '', sessBroken = false;
-  try {
-    if (info.assets.includes('ota-session.json')) {
+  // ponytail: the static version.json carries the same sessionKey/checksum (the
+  // release process mirrors them into it), so we can read them from the CORS-open
+  // static host WITHOUT touching the CORS-blocked release CDN at all. That is the
+  // primary path — it works in every webview (a plain fetch to raw.githubusercontent
+  // already succeeded for version.json itself). Only if the static file has no
+  // session data do we fall back to the release asset via CapacitorHttp (native).
+  // ponytail: only trust the static session if it belongs to the target version —
+  // between the version.json bump and the post-build mirror, version.json can carry
+  // the PREVIOUS release's session data, which would decrypt-fail the new bundle.
+  if (info.session && info.session.sessionKey && info.session.checksum && info.session.version === latest) {
+    sessionKey = info.session.sessionKey; checksum = info.session.checksum;
+  } else if (info.assets.includes('ota-session.json')) {
+    try {
       const sessUrl = info.sessionUrl || ('https://github.com/' + REPO + '/releases/download/' + info.tag + '/ota-session.json');
       // ponytail: via CapacitorHttp when inside the APK — plain fetch dies on CORS here.
       const j = await fetchJson(sessUrl);
       sessionKey = (j && j.sessionKey) || ''; checksum = (j && j.checksum) || '';
       if (!sessionKey || !checksum) sessBroken = true;
-    }
-  } catch (e) { sessBroken = true; /* release is signed but session data is unreachable */ }
+    } catch (e) { sessBroken = true; /* release is signed but session data is unreachable */ }
+  }
   // ponytail: ask first (per the app's UX), then download + reload in place.
   try {
     confirmDangerous('Update to version ' + latest + ' is available. Download and restart the app now?', 'Update now', async () => {
@@ -1262,8 +1275,16 @@ async function checkOtaUpdate(force) {
         // ponytail: OTA can't install a signed bundle on an APK built before signing
         // (no public key) — and a failed/rolled-back install shows nothing. Fall back
         // to the APK-download banner so those users can still get the new version.
+        const errMsg = (e && e.message) ? e.message : String(e);
         toast('In-app update failed — use the Download button instead', 'error');
-        console.error('[OTA update]', e && e.message ? e.message : e);
+        console.error('[OTA update]', errMsg);
+        // ponytail: surface the REAL failure reason on screen (previously console-only,
+        // so a device-side failure looked identical to "no update"). The banner shows
+        // it too, so users can report exactly what went wrong.
+        try {
+          const de = document.getElementById('otaErrorDetail');
+          if (de) { de.textContent = 'OTA error: ' + errMsg.slice(0, 200); de.style.display = 'block'; }
+        } catch (e2) {}
         try {
           document.getElementById('updVer').textContent = latest;
           document.getElementById('updBtn').href = info.apkUrl;

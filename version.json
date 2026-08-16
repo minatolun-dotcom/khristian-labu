@@ -1,6 +1,6 @@
 {
-  "version": "1.5.0",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.5.0/khristian-labu.apk",
-  "notes": "Song lists no longer rebuild every time you navigate back and forward — the rendered rows are kept and re-shown instantly, so the app feels much snappier. Also includes the OTA fix from 1.4.9: in-app updates now actually install instead of silently falling back to the manual APK download. Pure content update — applies in-app via OTA.",
-  "updatedAt": "2026-08-16T22:00:00Z"
+  "version": "1.5.1",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.5.1/khristian-labu.apk",
+  "notes": "OTA update reliability: the update check no longer depends on the GitHub release CDN (whose CORS headers block in-app fetches and silently fell back to the manual APK download banner). The release session data now rides in the same static version.json the app already reads, so in-app updates apply directly. Content is unchanged from 1.5.0.",
+  "updatedAt": "2026-08-16T16:39:49Z"
 }
