@@ -54,6 +54,17 @@ jobs:
           sed -i "s/const APP_VERSION = '[^']*';/const APP_VERSION = '${VERSION}';/" index.html
           cp index.html www/
 
+      # ponytail: package the web bundle for in-app OTA updates. The APK ships with
+      # @capgo/capacitor-updater (manual mode, no cloud), which downloads this zip
+      # from the GitHub Release and applies it in place — users never reinstall the APK.
+      - name: Package OTA bundle
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cd www
+          zip -rq ../www-latest.zip .
+          cd ..
+          ls -lh www-latest.zip
+
       # ponytail: the heavy Android/Gradle build only runs on version tags or manual
       # dispatch. Plain pushes to main just update the web app (Pages serves main root),
       # so they skip the APK entirely and save CI minutes.
@@ -186,6 +197,7 @@ jobs:
           files: |
             android/app/build/outputs/apk/release/khristian-labu.apk
             android/app/build/outputs/apk/debug/khristian-labu-debug.apk
+            www-latest.zip
 
       # Note: version.json and APP_VERSION are committed directly in the repo
       # (see index.html). We do NOT push back to main from CI — that reset main

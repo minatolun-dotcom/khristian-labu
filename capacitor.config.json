@@ -9,6 +9,9 @@
   "plugins": {
     "Assets": {
       "icon": "assets/logo.png"
+    },
+    "CapacitorUpdater": {
+      "autoUpdate": false
     }
   }
 }

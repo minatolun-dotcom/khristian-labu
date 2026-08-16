@@ -56,23 +56,23 @@ flowchart TD
 
 ## App updates (free, self-hosted distribution)
 
-The website (Pages) updates automatically on every push. The APK is distributed via **GitHub Releases** (built by the workflow on each `v*` tag) and delivered to users with a free in-app update prompt — no Play Store, no backend.
+The website (Pages) updates automatically on every push. The APK is distributed via **GitHub Releases** (built by the workflow on each `v*` tag) and updates itself **in-app via over-the-air (OTA) bundles** — users never reinstall the APK or visit the release page. No Play Store, no backend, no paid cloud.
 
 ```mermaid
 flowchart LR
     A[git tag vX.Y.Z] --> B[workflow builds APK]
-    B --> C[attaches APK to GitHub Release]
-    C --> D[writes version.json to main]
-    D --> E[Pages serves version.json]
-    F[app launch] --> G[fetch latest release via GitHub API]
+    B --> C[attaches APK + www-latest.zip to GitHub Release]
+    F[APK launch] --> G[fetch latest release via GitHub API]
     G --> H{newer than APP_VERSION?}
-    H -- yes --> I[show Update banner → opens APK download]
-    H -- no --> J[no banner]
+    H -- yes --> I[ask first → download www-latest.zip → apply + reload]
+    H -- no --> J[no update]
 ```
 
-- **Detection**: on launch (and every 6h) the app calls the CORS-enabled GitHub Releases API (`releases/latest`), compares `tag_name` to the embedded `APP_VERSION`, and shows a dismissible banner if newer.
-- **Update action**: the banner's "Update" button opens the release APK `browser_download_url`; Android then prompts to install (no auto-install, by design).
-- **Version wiring**: the `APP_VERSION` constant in `index.html` is rewritten to the tag at build time, and `version.json` is committed to `main` so Pages serves it. Dismissal is remembered per version in `localStorage`.
+- **Web users**: the Pages build updates automatically on every push (no action needed).
+- **APK users**: `@capgo/capacitor-updater` runs in **manual mode** (`autoUpdate: false`, no cloud). On launch (max once/day) and via Settings → "Check for update", the app calls the CORS-enabled GitHub Releases API, compares `tag_name` to the embedded `APP_VERSION`, and if newer asks "Update now?" — then downloads the release's `www-latest.zip` bundle (showing a **live progress card** from the plugin's `download` events) and applies it in place (`notifyAppReady` marks the bundle healthy; broken bundles auto-roll-back).
+- **Bundle packaging**: the workflow zips `www/` into `www-latest.zip` and attaches it to every tagged Release (the zip is the same content shipped in the APK).
+- **Native caveat**: OTA updates the web bundle only — if a future release adds a new Capacitor *native* plugin, users must install that APK once; pure content/JS changes (the vast majority) never require it.
+- **Web banner**: the dismissible "Update available → download APK" banner remains for web visitors who want the Android app.
 - **Free tier**: GitHub Releases + API are free; the unauthenticated API limit (60 req/hr per IP) is ample for occasional client checks.
 
 ## PWA / offline support

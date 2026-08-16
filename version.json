@@ -1,6 +1,6 @@
 {
-  "version": "1.2.3",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.2.3/khristian-labu.apk",
-  "notes": "Edge-swipe back to song list; swiping between songs no longer stacks history (one back returns to list). See release notes on GitHub.",
-  "updatedAt": "2026-07-19T08:00:00Z"
+  "version": "1.3.0",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.3.0/khristian-labu.apk",
+  "notes": "In-app OTA updates (no more downloading the APK from GitHub), WhatsApp share with full-song screenshots, Google Drive backup/restore, reader scroll memory + verse jump, search normalization, and more. See release notes on GitHub.",
+  "updatedAt": "2026-08-16T00:00:00Z"
 }

@@ -245,7 +245,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 }
 /* ponytail: per-song reader controls in one bottom row (font size + line spacing).
    Both persist via localStorage. */
-.reader-controls{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));z-index:40;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:8px 16px;box-shadow:var(--shadow);backdrop-filter:blur(8px);max-width:calc(100vw - 24px);flex-wrap:nowrap;justify-content:center;overflow-x:auto;}
+.reader-controls{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));z-index:40;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:8px 16px;box-shadow:var(--shadow);max-width:calc(100vw - 24px);flex-wrap:nowrap;justify-content:center;overflow-x:auto;}
 .reader-controls .rc-sep{width:1px;height:20px;background:var(--border);flex:none;}
 .reader-controls svg{width:16px;height:16px;color:var(--text3);flex:none;}
 .reader-controls input[type=range]{width:110px;accent-color:var(--accent);flex:none;}
@@ -348,6 +348,13 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 /* ─── TOAST ─── */
 .toast-container{position:fixed;bottom:2rem;right:2rem;z-index:300;display:flex;flex-direction:column;gap:0.5rem;}
 .toast{padding:12px 20px;border-radius:var(--radius-sm);background:var(--card);border:1px solid var(--border);color:var(--text);font-size:0.85rem;animation:slideUp 0.3s ease-out;box-shadow:0 8px 24px rgba(0,0,0,0.3);}
+/* ponytail: in-app OTA download progress card (APK). Centered so it never
+   overlaps the reader controls or the WhatsApp FAB. */
+.ota-progress{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:80;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;box-shadow:0 12px 32px rgba(0,0,0,0.35);min-width:250px;max-width:calc(100vw - 32px);display:none;flex-direction:column;gap:8px;font-size:0.82rem;}
+.ota-progress.show{display:flex;}
+.ota-progress .op-label{display:flex;justify-content:space-between;gap:12px;color:var(--text2);font-weight:500;}
+.ota-progress .op-track{height:6px;border-radius:999px;background:var(--bg3);overflow:hidden;}
+.ota-progress .op-fill{height:100%;width:0%;border-radius:999px;background:var(--accent);transition:width 0.2s ease;}
 .toast.success{border-color:var(--green);}.toast.error{border-color:var(--red);}
 .update-banner{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:300;display:flex;align-items:center;gap:0.75rem;padding:0.55rem 0.6rem 0.55rem 1rem;background:var(--card);border:1px solid var(--accent);border-radius:999px;box-shadow:0 10px 30px rgba(0,0,0,0.35);font-size:0.85rem;max-width:calc(100% - 2rem);}
 .update-banner[hidden]{display:none;}
@@ -566,7 +573,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 </div>
 
 <!-- SONG DETAIL -->
-<div class="view" id="detailView"><div class="song-detail-ghost" id="songDetailGhost"></div><div class="song-detail" id="songDetail"></div><div id="readerControlsHost"></div></div>
+<div class="view" id="detailView"><div class="song-detail-ghost" id="songDetailGhost"></div><div class="song-detail" id="songDetail"></div></div>
 
 <!-- SEARCH -->
 <div class="view" id="searchView"><div class="search-results" id="searchResults"></div></div>
@@ -927,7 +934,16 @@ Second verse line 2"></textarea>
 </div>
 
 <div class="toast-container" id="toastContainer"></div>
+<!-- OTA download progress (APK in-app updates) — centered so it clears the reader bar + FAB -->
+<div class="ota-progress" id="otaProgress">
+  <div class="op-label"><span>Downloading update…</span><span id="otaProgressPct">0%</span></div>
+  <div class="op-track"><div class="op-fill" id="otaProgressFill"></div></div>
+</div>
 <input type="file" id="restoreFile" accept="application/json,.json" style="display:none">
+<!-- ponytail: reader controls live at body level, NOT inside #detailView — so no
+     view-level transform/overflow can ever trap position:fixed and turn the bar
+     sticky; it stays pinned to the viewport bottom and lyrics never scroll beneath it. -->
+<div id="readerControlsHost"></div>
 <!-- WhatsApp share FAB (visible on the song detail view only) -->
 <div id="waFabWrap" style="display:none;">
   <div class="wa-menu" id="waMenu">
@@ -947,8 +963,8 @@ Second verse line 2"></textarea>
 
 <script>
 // ─── DATA ───
-const DATA_VERSION = 18; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.2.3'; // ponytail: bump on release so the update checker can compare
+const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
+const APP_VERSION = '1.3.0'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1021,6 +1037,13 @@ const SVG = {
 };
 
 // ─── INIT ───
+// ponytail: register the service worker at script top (not after init()'s async
+// chain) — waiting for 'load' inside init() races the load event on fast/offline
+// connections, which could silently skip registration and break offline support.
+if ('serviceWorker' in navigator && !window.Capacitor) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+
 async function init() {
   const ld = document.getElementById('heroDesc');
   if (ld) ld.textContent = 'Loading songs…';
@@ -1038,10 +1061,6 @@ async function init() {
   // ponytail: free update notifications via GitHub Releases (CORS-enabled API)
   checkForUpdate();
   setInterval(checkForUpdate, 6 * 60 * 60 * 1000); // re-check every 6h
-  // ponytail: PWA/offline — register SW on web only (native APK uses bundled assets)
-  if ('serviceWorker' in navigator && !window.Capacitor) {
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
-  }
   // ponytail: Android hardware Back has no default handler -> app closes. Mirror web behavior:
   // single press closes overlay/search or goes back one in-app view; double press at root exits.
   const Cap = window.Capacitor;
@@ -1063,8 +1082,63 @@ function dismissUpdate() {
   try { localStorage.setItem('labu_update_dismissed', document.getElementById('updVer').textContent); } catch (e) {}
   const b = document.getElementById('updateBanner'); if (b) b.hidden = true;
 }
+function otaPlugin() {
+  return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorUpdater) || null;
+}
+// ponytail: in-app OTA update for the APK. @capgo/capacitor-updater runs in manual
+// mode (autoUpdate:false, no cloud): CI attaches www-latest.zip to every tagged
+// GitHub Release, and this downloads + applies it in place — users never reinstall
+// the APK or visit the release page. Web users keep the auto-updating Pages build.
+async function checkOtaUpdate(force) {
+  const Up = otaPlugin();
+  if (!Up) return;
+  const last = parseInt(localStorage.getItem('labu_ota_last_check') || '0', 10);
+  if (!force && Date.now() - last < 24 * 60 * 60 * 1000) return; // at most one check/day
+  localStorage.setItem('labu_ota_last_check', String(Date.now()));
+  try {
+    const res = await fetch('https://api.github.com/repos/' + REPO + '/releases/latest',
+      { headers: { 'Accept': 'application/vnd.github+json' } });
+    if (!res.ok) { if (force) toast('Could not check for updates', 'error'); return; }
+    const d = await res.json();
+    const latest = (d.tag_name || '').replace(/^v/, '');
+    if (!latest) { if (force) toast('Could not check for updates', 'error'); return; }
+    if (compareVer(latest, APP_VERSION) <= 0) {
+      if (force) toast('You are on the latest version (' + APP_VERSION + ')', 'success');
+      return;
+    }
+    const url = 'https://github.com/' + REPO + '/releases/download/' + d.tag_name + '/www-latest.zip';
+    // ponytail: ask first (per the app's UX), then download + reload in place.
+    confirmDangerous('Update to version ' + latest + ' is available. Download and restart the app now?', 'Update now', async () => {
+      // live download progress via the plugin's 'download' events (0-100%).
+      const prog = document.getElementById('otaProgress');
+      const fill = document.getElementById('otaProgressFill');
+      const pct = document.getElementById('otaProgressPct');
+      let listener = null;
+      if (Up.addListener) {
+        try { listener = await Up.addListener('download', e => {
+          const p = Math.max(0, Math.min(100, Math.round((e && e.percent) || 0)));
+          if (fill) fill.style.width = p + '%';
+          if (pct) pct.textContent = p + '%';
+        }); } catch (e) { /* progress is a nicety — never block the update on it */ }
+      }
+      if (prog) prog.classList.add('show');
+      try {
+        const v = await Up.download({ version: latest, url: url });
+        await Up.set(v); // applies the new bundle and reloads the app in place
+      } catch (e) {
+        toast('Update failed — please try again later', 'error');
+        console.error('[OTA update]', e);
+      } finally {
+        if (prog) prog.classList.remove('show');
+        if (listener && listener.remove) { try { await listener.remove(); } catch (e) {} }
+      }
+    });
+  } catch (e) { if (force) toast('Could not check for updates (offline?)', 'error'); }
+}
+
 async function manualCheckUpdate() {
   toast('Checking for updates…', 'success');
+  if (otaPlugin()) { checkOtaUpdate(true); return; } // APK: update in-app
   try {
     const res = await fetch('https://api.github.com/repos/' + REPO + '/releases/latest',
       { headers: { 'Accept': 'application/vnd.github+json' } });
@@ -1088,6 +1162,8 @@ async function manualCheckUpdate() {
   } catch (e) { toast('Could not check for updates (offline?)', 'error'); }
 }
 async function checkForUpdate() {
+  // APK: updates apply in-app via OTA — the GitHub download banner is web-only.
+  if (otaPlugin()) { checkOtaUpdate(false); return; }
   try {
     const res = await fetch('https://api.github.com/repos/' + REPO + '/releases/latest',
       { headers: { 'Accept': 'application/vnd.github+json' } });
@@ -1223,6 +1299,16 @@ async function loadSongs() {
     } else {
       SONGS = await fetchSongsJSON();
       idbPut('cache', { version: DATA_VERSION, data: SONGS }, 'songs').catch(() => {});
+      // ponytail: this fetch only happens when IndexedDB is empty (first visit per
+      // DATA_VERSION), which races SW activation — so the SW never gets a chance to
+      // runtime-cache the corpus. Warm it once the SW takes control (unconditional:
+      // control may land mid-load) so future visits (fresh IDB, private mode) stay
+      // instant + offline via the SW cache too.
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.ready.then(() => {
+          fetch('songs.json.gzip' + (DATA_VERSION ? ('?v=' + DATA_VERSION) : '')).catch(() => {});
+        }).catch(() => {});
+      }
     }
     // Replay user edits (songs AND user-made structure) BEFORE deriving indexes,
     // so created songbooks/books exist when CAT_ORDER/BOOK_GROUP are built.
@@ -1235,6 +1321,10 @@ async function loadSongs() {
     renderGroups();
     // ponytail: the Favorites & Recents row needs the full corpus to resolve song titles.
     renderFavRecents();
+    // ponytail: mark the OTA bundle healthy only once the corpus is loaded and the
+    // UI rendered — a broken OTA bundle then rolls back to the last good one.
+    const _cu = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorUpdater;
+    if (_cu) _cu.notifyAppReady().catch(() => {});
   } catch (err) {
     showLoadError(err);
     throw err;
@@ -2190,7 +2280,9 @@ function renderRecentSearch() {
     el.innerHTML = '<div class="no-results"><div class="icon">'+SVG.search+'</div><p>Search songs by title, lyrics, author, or number</p></div>';
     return;
   }
-  const chips = searchHistory.map(h => '<button class="si-rec" onclick="runRecentSearch('+JSON.stringify(h)+')">'+esc(h)+'</button>').join('');
+  // ponytail: JSON.stringify emits double quotes — escape them as &quot; so they
+  // survive the double-quoted HTML attribute and the onclick actually parses.
+  const chips = searchHistory.map(h => '<button class="si-rec" onclick="runRecentSearch('+JSON.stringify(h).replace(/"/g,'&quot;')+')">'+esc(h)+'</button>').join('');
   el.innerHTML = '<div class="song-list-header si-rec-head"><h2>Recent Searches</h2><button class="si-clear-hist" onclick="clearSearchHistory()">Clear</button></div><div class="si-recent">'+chips+'</div>';
 }
 
@@ -2430,6 +2522,9 @@ async function openExportModal(songId) {
     document.getElementById('exportSingleInfo').style.display = 'block';
   } else {
     document.getElementById('exportScope').disabled = false;
+    // ponytail: opening the modal from the toolbar must reset the scope — a
+    // leftover 'single' selection has no song attached and fails the export.
+    document.getElementById('exportScope').value = 'all';
     document.getElementById('exportSingleInfo').style.display = 'none';
   }
   const ps = document.getElementById('exportPlaylistSelect');
@@ -2519,7 +2614,8 @@ function downloadFile(content, filename, type) {
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // ponytail: revoking synchronously can cancel the download before it starts — defer it.
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 // ─── FIND & REPLACE ───

@@ -119,14 +119,21 @@ def zomi_verses(body):
 def zomi_books(path):
     data = load(path)
     out = {}
+    used = {}
     for s in data:
         t = s.get('type')
         if t not in ZOMI_MAP:
             continue
         code, name = ZOMI_MAP[t]
         num = s.get('number')
+        # ponytail: Tedim Labu has (A)/(B)/(C) sub-songs sharing one hymn number —
+        # suffix the duplicate ids so favorites/playlists/edits don't collide.
+        base = f"{code}_{num}"
+        n = used.get(base, 0)
+        used[base] = n + 1
+        sid = base if n == 0 else base + ('bc'[n - 1] if n < 3 else 'x' + str(n))
         song = {
-            'id': f"{code}_{num}",
+            'id': sid,
             'title': s.get('title', '').strip(),
             'author': '',
             'number': str(num),
