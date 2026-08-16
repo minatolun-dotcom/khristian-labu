@@ -1,6 +1,6 @@
 {
-  "version": "1.4.1",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.1/khristian-labu.apk",
-  "notes": "Status bar fix (Android 15/16 edge-to-edge): the app now reliably renders below the status bar via a three-layer safe-area fallback (env() + Capacitor's injected inset + native status-bar height). Pure content update — applies in-app via OTA, no APK reinstall needed.",
-  "updatedAt": "2026-08-16T13:00:00Z"
+  "version": "1.4.2",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.2/khristian-labu.apk",
+  "notes": "Fixed in-app updates reverting to the old version: the app now confirms the OTA bundle is healthy at boot (before the heavy song-load), well within the plugin's rollback window. The update popup also now shows on top of the Settings popup, and updates that can't install over-the-air fall back to the APK download button. Pure content update — applies in-app via OTA.",
+  "updatedAt": "2026-08-16T14:00:00Z"
 }

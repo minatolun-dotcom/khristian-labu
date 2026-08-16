@@ -37,8 +37,10 @@ async function newPage(vp = { width: 1280, height: 800 }, extra = {}) {
   page.on('console', m => {
     if (m.type() !== 'error') return;
     // ignore network status failures (e.g. the GitHub update-check API rate-limiting
-    // the shared sandbox IP) — the app catches those; real JS errors still fail.
+    // the shared sandbox IP) and app-level caught-error logs (e.g. a test stub making
+    // the OTA download fail on purpose) — the app handles those; real JS errors still fail.
     if (/Failed to load resource: the server responded with a status of (403|404|429|5\d\d)/.test(m.text())) return;
+    if (/^\[(OTA update|Khristian Labu)\]/.test(m.text())) return;
     allErrors.push('[' + page.url() + '] console: ' + m.text().slice(0, 200));
   });
   page.on('pageerror', e => allErrors.push('[' + currentSection + '] pageerror: ' + e.message.slice(0, 200) + ' | ' + (e.stack || '').split('\n').slice(1, 3).join(' ~ ')));
@@ -550,6 +552,8 @@ await section('ota update', async () => {
     };
   });
   await waitLoaded(page);
+  // notifyAppReady must fire early on boot or the plugin rolls the update back
+  ok('notifyAppReady called on boot (no rollback)', await page.evaluate(() => window.__otaCalls.includes('notifyAppReady')));
   // on launch, the update check routes to OTA and asks before downloading
   await page.waitForSelector('#confirmModal.open', { timeout: 15000 });
   const msg = await page.textContent('#confirmMsg');
@@ -601,13 +605,55 @@ await section('ota update', async () => {
     };
   });
   await waitLoaded(page2);
-  await page2.evaluate(() => { localStorage.removeItem('labu_ota_last_check'); checkOtaUpdate(true); });
+  // the boot-time update check may already have opened the prompt — close it so we
+  // can open Settings, then trigger the prompt again from inside Settings
+  await page2.evaluate(() => { const c = document.getElementById('confirmModal'); if (c) c.classList.remove('open'); });
+  // trigger the update prompt from INSIDE the Settings modal → confirm must be on top
+  await openSettings(page2);
+  await page2.locator('#settingsModal').locator('text=Check for update').click();
   await page2.waitForSelector('#confirmModal.open', { timeout: 10000 });
+  const stack = await page2.evaluate(() => {
+    const c = getComputedStyle(document.getElementById('confirmModal'));
+    const s = getComputedStyle(document.getElementById('settingsModal'));
+    return { confirmZ: parseInt(c.zIndex), settingsZ: parseInt(s.zIndex), confirmOpen: document.getElementById('confirmModal').classList.contains('open'), settingsOpen: document.getElementById('settingsModal').classList.contains('open') };
+  });
+  ok('ota confirm popup shows above the settings popup', stack.confirmOpen && stack.settingsOpen && stack.confirmZ > stack.settingsZ, JSON.stringify(stack));
   await page2.locator('#confirmBtn').click();
   await page2.waitForFunction(() => window.__otaCalls.some(c => c[0] === 'set'), null, { timeout: 10000 });
   const dl2 = await page2.evaluate(() => window.__otaCalls.find(c => c[0] === 'download'));
   ok('unsigned release downloads with no session data', !!dl2 && !('sessionKey' in dl2[1]) && !('checksum' in dl2[1]), JSON.stringify(dl2 && dl2[1]));
   await page2.close();
+
+  // OTA fails (e.g. APK built before signing, no public key) → APK download banner
+  const page3 = await newPage();
+  await page3.addInitScript(() => {
+    window.Capacitor = { Plugins: { CapacitorUpdater: {
+      notifyAppReady: async () => {},
+      addListener: async () => ({ remove: async () => {} }),
+      download: async () => { throw new Error('cannot decrypt signed bundle'); },
+      set: async () => {},
+    } } };
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (url, opts) => {
+      if (String(url).includes('api.github.com/repos/')) {
+        return { ok: true, json: async () => ({ tag_name: 'v7.7.7', assets: [
+          { name: 'khristian-labu.apk', browser_download_url: 'https://github.com/x/releases/download/v7.7.7/khristian-labu.apk' },
+          { name: 'ota-session.json', browser_download_url: 'https://github.com/x/releases/download/v7.7.7/ota-session.json' },
+        ] }) };
+      }
+      if (String(url).includes('ota-session.json')) {
+        return { ok: true, json: async () => ({ version: '7.7.7', sessionKey: 'sk', checksum: 'cs' }) };
+      }
+      return realFetch(url, opts);
+    };
+  });
+  await waitLoaded(page3);
+  await page3.evaluate(() => { localStorage.removeItem('labu_ota_last_check'); checkOtaUpdate(true); });
+  await page3.waitForSelector('#confirmModal.open', { timeout: 10000 });
+  await page3.locator('#confirmBtn').click();
+  await page3.waitForSelector('#updateBanner:not([hidden])', { timeout: 10000 });
+  ok('failed OTA falls back to APK download banner', (await page3.locator('#updVer').textContent()) === '7.7.7' && (await page3.locator('#updBtn').getAttribute('href')).includes('v7.7.7/khristian-labu.apk'));
+  await page3.close();
 });
 
 // ═══════════════ 10. HISTORY API ═══════════════

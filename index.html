@@ -268,6 +268,9 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 /* ─── MODAL ─── */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:200;align-items:center;justify-content:center;padding:1rem;}
 .modal-overlay.open{display:flex;}
+/* ponytail: the confirm dialog must always sit on top — it can open from inside
+   Settings/playlist/edit modals (e.g. the OTA update prompt, deletes, restore). */
+#confirmModal{z-index:280;}
 .modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);width:100%;max-width:480px;max-height:90vh;overflow-y:auto;animation:slideUp 0.3s ease-out;}
 .modal-header{display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);}
 .modal-header h3{font-size:1.1rem;font-weight:600;}
@@ -971,7 +974,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.4.1'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.4.2'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1052,6 +1055,15 @@ if ('serviceWorker' in navigator && !window.Capacitor) {
 }
 
 async function init() {
+  // ponytail: commit the OTA bundle as healthy as soon as the script boots. The
+  // @capgo/capacitor-updater plugin auto-rolls back to the previous bundle if
+  // notifyAppReady() isn't called within its appReadyTimeout (default 10s, 30s for a
+  // fresh bundle) — waiting for the full 5,719-song corpus load + search-index build
+  // races that window on slow devices and makes every update revert. A bundle that
+  // fails to even boot (JS syntax error, blank screen) still rolls back: the script
+  // never runs, so notifyAppReady() is never called.
+  const _cu = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorUpdater;
+  if (_cu) _cu.notifyAppReady().catch(() => {});
   const ld = document.getElementById('heroDesc');
   if (ld) ld.textContent = 'Loading songs…';
   await loadMeta();
@@ -1149,8 +1161,19 @@ async function checkOtaUpdate(force) {
         const v = await Up.download(dOpts);
         await Up.set(v); // applies the new bundle and reloads the app in place
       } catch (e) {
-        toast('Update failed — please try again later', 'error');
+        // ponytail: OTA can't install a signed bundle on an APK built before signing
+        // (no public key) — and a failed/rolled-back install shows nothing. Fall back
+        // to the APK-download banner so those users can still get the new version.
+        toast('In-app update failed — use the Download button instead', 'error');
         console.error('[OTA update]', e);
+        try {
+          const apk = (d.assets || []).find(a => a.name === 'khristian-labu.apk');
+          if (apk) {
+            document.getElementById('updVer').textContent = latest;
+            document.getElementById('updBtn').href = apk.browser_download_url;
+            document.getElementById('updateBanner').hidden = false;
+          }
+        } catch (e2) { /* banner is best-effort */ }
       } finally {
         if (prog) prog.classList.remove('show');
         if (listener && listener.remove) { try { await listener.remove(); } catch (e) {} }
@@ -1344,10 +1367,8 @@ async function loadSongs() {
     renderGroups();
     // ponytail: the Favorites & Recents row needs the full corpus to resolve song titles.
     renderFavRecents();
-    // ponytail: mark the OTA bundle healthy only once the corpus is loaded and the
-    // UI rendered — a broken OTA bundle then rolls back to the last good one.
-    const _cu = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorUpdater;
-    if (_cu) _cu.notifyAppReady().catch(() => {});
+    // (notifyAppReady is called early in init() — see the comment there. Calling it
+    // here instead raced the plugin's appReadyTimeout rollback on slow devices.)
   } catch (err) {
     showLoadError(err);
     throw err;
