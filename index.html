@@ -1001,7 +1001,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.4.8'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.4.9'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1133,6 +1133,26 @@ function dismissUpdate() {
 function otaPlugin() {
   return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorUpdater) || null;
 }
+// ponytail: fetch JSON without tripping CORS inside the Capacitor webview. Release
+// assets (ota-session.json) are served from a CDN that sends NO
+// Access-Control-Allow-Origin, so a plain fetch() from the webview always fails
+// with "TypeError: Failed to fetch" — which silently sent every signed OTA update
+// down the APK-banner fallback (the prompt appeared, the user confirmed, then the
+// session data could never load and the download was skipped). CapacitorHttp
+// performs the request NATIVELY (no CORS, follows redirects), so use it when
+// available; plain fetch elsewhere (web / tests).
+async function fetchJson(url, opts) {
+  const Cap = window.Capacitor;
+  const CHttp = Cap && Cap.Plugins && Cap.Plugins.CapacitorHttp;
+  if (CHttp && CHttp.request) {
+    const res = await CHttp.request({ url, method: 'GET', responseType: 'json', ...opts });
+    if (res && res.status >= 400) throw new Error('HTTP ' + res.status);
+    return res && res.data;
+  }
+  const res = await fetch(url, opts);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
 // ponytail: the app's update source of truth. The GitHub Releases API is free but
 // rate-limited to 60 req/hr per IP (phones on shared mobile NAT IPs hit this and the
 // check silently died — "no update" forever). version.json is a tiny static file
@@ -1205,8 +1225,9 @@ async function checkOtaUpdate(force) {
   try {
     if (info.assets.includes('ota-session.json')) {
       const sessUrl = info.sessionUrl || ('https://github.com/' + REPO + '/releases/download/' + info.tag + '/ota-session.json');
-      const j = await (await fetch(sessUrl)).json();
-      sessionKey = j.sessionKey || ''; checksum = j.checksum || '';
+      // ponytail: via CapacitorHttp when inside the APK — plain fetch dies on CORS here.
+      const j = await fetchJson(sessUrl);
+      sessionKey = (j && j.sessionKey) || ''; checksum = (j && j.checksum) || '';
       if (!sessionKey || !checksum) sessBroken = true;
     }
   } catch (e) { sessBroken = true; /* release is signed but session data is unreachable */ }

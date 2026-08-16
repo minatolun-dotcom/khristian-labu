@@ -1,6 +1,6 @@
 {
-  "version": "1.4.8",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.8/khristian-labu.apk",
-  "notes": "Fixed the front page showing a big empty area below the content: the song-detail view was being rendered underneath the home page (its flex display rule overrode the view-hiding rule), and after opening a song the lyrics stayed visible in that space. The detail view is now truly hidden unless a song is open. Pure content update — applies in-app via OTA.",
-  "updatedAt": "2026-08-16T20:15:00Z"
+  "version": "1.4.9",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.9/khristian-labu.apk",
+  "notes": "Fixed the real reason in-app updates silently failed: the update's signature/session data (ota-session.json) is served from a CDN that blocks cross-origin reads, so the app could never load it inside the Android webview and fell back to the manual APK download every time. The session fetch now goes through Capacitor's native HTTP plugin, which has no such restriction — signed OTA updates actually install now. Pure content update — applies in-app via OTA.",
+  "updatedAt": "2026-08-16T21:00:00Z"
 }

@@ -609,7 +609,7 @@ await section('ota update', async () => {
         },
       },
     };
-    const realFetch = window.fetch.bind(window);
+      const realFetch = window.fetch.bind(window);
     window.fetch = async (url, opts) => {
       // static update source (version.json on raw + Pages) is checked first now
       if (String(url).includes('version.json')) {
@@ -628,6 +628,11 @@ await section('ota update', async () => {
       }
       return realFetch(url, opts);
     };
+    // the APK's native HTTP plugin — the app must route the session fetch through it
+    // (plain fetch would be CORS-blocked by the release-asset CDN)
+    window.Capacitor.Plugins.CapacitorHttp = {
+      request: async o => { window.__httpCalls = (window.__httpCalls || 0) + 1; return { status: 200, data: { version: '9.9.9', sessionKey: 'sk-http', checksum: 'cs-http' } }; },
+    };
   });
   await waitLoaded(page);
   // notifyAppReady must fire early on boot or the plugin rolls the update back
@@ -645,7 +650,11 @@ await section('ota update', async () => {
   await page.waitForFunction(() => window.__otaCalls.some(c => c[0] === 'set'), null, { timeout: 10000 });
   const dl = await page.evaluate(() => window.__otaCalls.find(c => c[0] === 'download'));
   ok('download called with the release zip url', !!dl && dl[1].url.endsWith('/releases/download/v9.9.9/www-latest.zip') && dl[1].version === '9.9.9', JSON.stringify(dl && dl[1]));
-  ok('signed release passes sessionKey/checksum to download', !!dl && dl[1].sessionKey === 'sk-test' && dl[1].checksum === 'cs-test', JSON.stringify(dl && dl[1]));
+  // the session data MUST come from CapacitorHttp (native, no CORS) — the release-asset
+  // CDN sends no CORS headers, so a plain fetch dies in the webview and silently falls
+  // back to the APK banner (the "shows the old way" bug). The mock returns 'sk-http'.
+  ok('session fetch goes through CapacitorHttp (CORS-free), not plain fetch', (await page.evaluate(() => window.__httpCalls || 0)) > 0, 'httpCalls=' + (await page.evaluate(() => window.__httpCalls || 0)));
+  ok('signed release passes sessionKey/checksum to download', !!dl && dl[1].sessionKey === 'sk-http' && dl[1].checksum === 'cs-http', JSON.stringify(dl && dl[1]));
   ok('set applied after download', true);
   await page.waitForFunction(() => !document.getElementById('otaProgress')?.classList.contains('show'), null, { timeout: 5000 });
   ok('ota progress card hides after update', true);
