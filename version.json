@@ -1,6 +1,6 @@
 {
-  "version": "1.4.7",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.7/khristian-labu.apk",
-  "notes": "OTA update check is now rate-limit-proof: the app reads a tiny static version.json (raw.githubusercontent + Pages, no API quota) as its primary update source, with the GitHub Releases API only as a fallback. Phones on shared mobile NAT IPs were silently hitting the API's 60 req/hr cap, so the check died and updates never appeared — fixed. Pure content update — applies in-app via OTA.",
-  "updatedAt": "2026-08-16T19:30:00Z"
+  "version": "1.4.8",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.8/khristian-labu.apk",
+  "notes": "Fixed the front page showing a big empty area below the content: the song-detail view was being rendered underneath the home page (its flex display rule overrode the view-hiding rule), and after opening a song the lyrics stayed visible in that space. The detail view is now truly hidden unless a song is open. Pure content update — applies in-app via OTA.",
+  "updatedAt": "2026-08-16T20:15:00Z"
 }

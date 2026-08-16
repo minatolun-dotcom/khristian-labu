@@ -86,6 +86,43 @@ await section('load & home', async () => {
   await page.close();
 });
 
+// ═══════════════ 1b. VIEW HIDING (detail view must not render below home) ═══════════════
+await section('view hiding', async () => {
+  const page = await newPage({ width: 390, height: 844 });
+  await waitLoaded(page);
+  // BUG: #detailView used to force display:flex unconditionally (ID specificity beat
+  // .view{display:none}), so the lyric view was ALWAYS rendered — an empty block below
+  // the home page, and the song lyrics stayed visible there after visiting a song.
+  const home = await page.evaluate(() => {
+    const dv = document.getElementById('detailView');
+    const cs = getComputedStyle(dv);
+    return {
+      display: cs.display,
+      docHeight: document.documentElement.scrollHeight,
+      vh: window.innerHeight,
+    };
+  });
+  ok('detail view hidden on home page', home.display === 'none', 'display=' + home.display);
+  ok('no empty space below home content', home.docHeight <= home.vh + 250, 'docHeight=' + home.docHeight + ' vh=' + home.vh);
+  // open a song → detail active (flex), then back → hidden again, lyrics not visible
+  await page.locator('#groupGrid .cat-card').first().click();
+  await page.waitForSelector('#categoryGrid .cat-card');
+  await page.locator('#categoryGrid .cat-card').first().click();
+  await page.waitForSelector('#songGrid .song-item');
+  await page.locator('#songGrid .song-item').first().click();
+  await page.waitForSelector('#songDetail .verse');
+  ok('detail view flex when active', (await page.evaluate(() => getComputedStyle(document.getElementById('detailView')).display)) === 'flex');
+  await page.goBack(); await page.waitForSelector('#songGrid .song-item');
+  await page.goBack(); await page.waitForSelector('#categoryGrid .cat-card');
+  await page.goBack(); await page.waitForSelector('#groupGrid .cat-card');
+  const back = await page.evaluate(() => {
+    const dv = document.getElementById('detailView');
+    return { display: getComputedStyle(dv).display, rect: dv.getBoundingClientRect().height };
+  });
+  ok('detail view hidden again after back to home', back.display === 'none' && back.rect === 0, JSON.stringify(back));
+  await page.close();
+});
+
 // ═══════════════ 2. READER FEATURES (scroll memory, verse jump, WhatsApp FAB) ═══════════════
 await section('reader features', async () => {
   const page = await newPage();

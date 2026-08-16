@@ -207,7 +207,12 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
    lyrics scroll inside .song-scroll and that container is clipped at the footer's
    top edge, lyrics can never render, scroll, or disappear behind the footer — no
    padding hacks, no measurement needed. */
-#detailView{position:relative;display:flex;flex-direction:column;height:calc(100dvh - 64px - var(--sat, 0px));overflow:hidden;}
+#detailView{position:relative;height:calc(100dvh - 64px - var(--sat, 0px));overflow:hidden;}
+/* ponytail: flex layout only while ACTIVE — an unconditional display:flex here (ID
+   specificity) would override .view{display:none} and leave the lyric view rendered
+   below the home page (the "empty space" on the front page, with lyrics visible in
+   it after visiting a song). Hidden by default via .view{display:none}. */
+#detailView.active{display:flex;flex-direction:column;}
 #detailView.swiping{overflow:hidden;}
 .song-scroll{flex:0 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;position:relative;}
 .song-scroll .song-detail-ghost{position:absolute;top:0;left:0;right:0;z-index:0;opacity:0;pointer-events:none;will-change:transform;max-width:700px;margin:0 auto;padding:2rem;padding-bottom:32px;}
@@ -996,7 +1001,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.4.7'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.4.8'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
