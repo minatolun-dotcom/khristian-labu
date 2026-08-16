@@ -45,6 +45,7 @@ html{overflow-x:clip;}
 /* ponytail: when a song's lyrics fit on one screen the page scroll is locked — there
    is nothing to scroll; growing the font/line-spacing unlocks it again. */
 html.scroll-locked{overflow:hidden;}
+.song-scroll.scroll-locked{overflow:hidden;}
 body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(124,106,239,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(124,106,239,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
 [data-theme="light"] body::before{background:linear-gradient(rgba(37,99,235,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(37,99,235,0.04) 1px,transparent 1px);background-size:40px 40px;}
 body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 10% 0%,rgba(124,106,239,0.12) 0%,transparent 40%),radial-gradient(ellipse at 90% 100%,rgba(167,139,250,0.08) 0%,transparent 40%);pointer-events:none;z-index:0;}
@@ -199,14 +200,20 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .search-results .si-clear-hist:hover{color:var(--red);}
 .search-results .si-more{padding:1rem;text-align:center;color:var(--text3);font-size:0.8rem;}
 
-/* ─── SONG DETAIL ─── */  .song-detail{max-width:700px;margin:0 auto;padding:2rem;padding-bottom:32px;position:relative;z-index:1;will-change:transform;}
-/* ponytail: ghost neighbor layer behind the detail card for live swipe preview. */
-.song-detail-ghost{position:absolute;top:0;left:0;right:0;z-index:0;opacity:0;pointer-events:none;will-change:transform;max-width:700px;margin:0 auto;padding:2rem;padding-bottom:32px;}
-#detailView{position:relative;}
+/* ─── SONG DETAIL ───
+   ponytail: the detail view is a flex COLUMN that fills the space below the nav:
+   .song-scroll (the ONLY scroll container for lyrics) on top, then the reader
+   footer (#readerControlsHost) as a separate in-flow sibling below it. Because the
+   lyrics scroll inside .song-scroll and that container is clipped at the footer's
+   top edge, lyrics can never render, scroll, or disappear behind the footer — no
+   padding hacks, no measurement needed. */
+#detailView{position:relative;display:flex;flex-direction:column;height:calc(100dvh - 64px - var(--sat, 0px));overflow:hidden;}
 #detailView.swiping{overflow:hidden;}
+.song-scroll{flex:0 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;position:relative;}
+.song-scroll .song-detail-ghost{position:absolute;top:0;left:0;right:0;z-index:0;opacity:0;pointer-events:none;will-change:transform;max-width:700px;margin:0 auto;padding:2rem;padding-bottom:32px;}
+.song-detail{max-width:700px;margin:0 auto;padding:2rem;padding-bottom:2rem;position:relative;z-index:1;will-change:transform;}
 /* ponytail: depth cue while dragging — front card lifts with a shadow + slight scale. */
 #detailView.swiping .song-detail{box-shadow:0 18px 50px rgba(0,0,0,0.45);border-radius:var(--radius-sm);}
-.song-actions-row{display:flex;justify-content:center;gap:0.5rem;margin-bottom:1rem;}
 .song-action-btn{width:36px;height:36px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all var(--transition);}
 .song-action-btn svg{width:16px;height:16px;}
 .song-action-btn:hover{background:var(--accent-glow);color:var(--accent);border-color:var(--accent);}
@@ -252,20 +259,24 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 }
 /* ponytail: per-song reader controls in one bottom row (font size + line spacing).
    Both persist via localStorage. */
-/* ponytail: the reader bar is IN FLOW at the end of the document (sticky bottom:0),
-   NOT position:fixed. That is the key to both bottom-area bugs: on a scrollable song
-the pill sticks to the viewport bottom (always visible, lowest position); on a song
-that fits one screen it sits right after the last lyric — no dead zone above it, and
-lyrics can never scroll underneath it because it is a sibling that follows them. */
-#readerControlsHost{position:sticky;bottom:0;z-index:40;display:flex;justify-content:center;pointer-events:none;padding-bottom:calc(var(--sab,0px) + 12px);}
-.reader-controls{pointer-events:auto;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:8px 16px;box-shadow:var(--shadow);max-width:calc(100vw - 24px);flex-wrap:nowrap;justify-content:center;overflow-x:auto;}
+/* ponytail: the reader FOOTER is a separate in-flow element below the lyrics scroll
+   area (#songScroll). It never overlaps lyrics — the scroll container above it is
+   clipped at the footer's top edge. Safe-area inset (--sab) pads its bottom. */
+#readerControlsHost{flex:none;z-index:40;background:var(--bg);border-top:1px solid var(--border);padding:10px 16px calc(var(--sab,0px) + 10px);display:flex;flex-direction:column;align-items:center;gap:10px;}
+.reader-controls{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:8px 16px;box-shadow:var(--shadow);max-width:calc(100vw - 24px);flex-wrap:nowrap;justify-content:center;overflow-x:auto;}
 .reader-controls .rc-sep{width:1px;height:20px;background:var(--border);flex:none;}
 .reader-controls svg{width:16px;height:16px;color:var(--text3);flex:none;}
 .reader-controls input[type=range]{width:110px;accent-color:var(--accent);flex:none;}
 .reader-controls .rc-val{font-size:0.75rem;color:var(--text3);min-width:34px;text-align:right;flex:none;}
+/* ponytail: the song actions (edit/playlist/fav/share) live in the footer too,
+   right-aligned, with a divider from the sliders. */
+.reader-actions{display:flex;align-items:center;gap:10px;justify-content:center;}
+.reader-actions .song-action-btn{width:36px;height:36px;}
 @media (max-width:768px){
   .reader-controls{width:calc(100vw - 24px);gap:10px;padding:8px 12px;}
-  .reader-controls input[type=range]{width:30vw;}
+  .reader-controls input[type=range]{width:26vw;}
+  #readerControlsHost{padding:8px 10px calc(var(--sab,0px) + 8px);gap:8px;}
+  .reader-actions{gap:8px;}
 }
 .song-breadcrumb a{position:relative;overflow:hidden;}
 .song-breadcrumb a::after{content:'';position:absolute;bottom:-1px;left:0;width:0;height:1px;background:var(--accent);transition:width 0.3s ease;}
@@ -431,8 +442,9 @@ lyrics can never scroll underneath it because it is a sibling that follows them.
   .song-num{min-width:32px;height:32px;font-size:0.75rem;}
   .song-info{min-width:0;overflow:hidden;}
   .song-title{overflow-wrap:break-word;word-break:break-word;white-space:normal;}
-  .song-detail{padding:1.25rem 1rem;padding-bottom:16px;}
-  .song-detail-ghost{padding:1.25rem 1rem;padding-bottom:16px;}
+  #detailView{height:calc(100dvh - 56px - var(--sat, 0px));}
+  .song-detail{padding:1.25rem 1rem;padding-bottom:1.5rem;}
+  .song-scroll .song-detail-ghost{padding:1.25rem 1rem;padding-bottom:1.5rem;}
   .song-detail-header{gap:0.5rem;}
   .song-nav-btn{width:38px;height:38px;}
   .song-nav-btn svg{width:18px;height:18px;}
@@ -493,11 +505,11 @@ lyrics can never scroll underneath it because it is a sibling that follows them.
 .verse-jump .vj:hover{background:var(--accent);color:#fff;border-color:var(--accent);}
 @media(max-width:768px){.verse-jump{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}.verse-jump::-webkit-scrollbar{display:none;}}
 /* ─── WHATSAPP SHARE FAB (song detail) ─── */
-.wa-fab{position:fixed;right:24px;bottom:calc(var(--sab,0px) + 70px);z-index:60;width:56px;height:56px;border-radius:50%;border:none;background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(37,211,102,0.4);transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);}
+.wa-fab{position:fixed;right:24px;bottom:calc(var(--sab,0px) + var(--footer-h, 96px) + 12px);z-index:60;width:56px;height:56px;border-radius:50%;border:none;background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(37,211,102,0.4);transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);}
 .wa-fab:hover{transform:scale(1.08);}
 .wa-fab:active{transform:scale(0.95);}
 .wa-fab svg{width:28px;height:28px;fill:#fff;}
-.wa-menu{position:fixed;right:24px;bottom:calc(var(--sab,0px) + 134px);z-index:60;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,0.35);display:none;flex-direction:column;min-width:230px;animation:slideUp 0.15s ease-out;}
+.wa-menu{position:fixed;right:24px;bottom:calc(var(--sab,0px) + var(--footer-h, 96px) + 64px);z-index:60;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,0.35);display:none;flex-direction:column;min-width:230px;animation:slideUp 0.15s ease-out;}
 .wa-menu.open{display:flex;}
 .wa-menu button{display:flex;align-items:center;gap:10px;padding:8px;border:none;background:none;color:var(--text);font-size:0.85rem;font-family:inherit;cursor:pointer;border-radius:10px;text-align:left;transition:background 0.15s;}
 .wa-menu button:hover{background:var(--bg3);}
@@ -506,8 +518,8 @@ lyrics can never scroll underneath it because it is a sibling that follows them.
 .wa-menu .wm-title{font-weight:600;display:block;}
 .wa-menu .wm-sub{color:var(--text3);font-size:0.72rem;display:block;margin-top:1px;}
 @media(max-width:768px){
-  .wa-fab{right:14px;bottom:calc(76px + env(safe-area-inset-bottom));width:52px;height:52px;}
-  .wa-menu{right:14px;bottom:calc(138px + env(safe-area-inset-bottom));}
+  .wa-fab{right:14px;bottom:calc(var(--sab,0px) + var(--footer-h, 112px) + 12px);width:52px;height:52px;}
+  .wa-menu{right:14px;bottom:calc(var(--sab,0px) + var(--footer-h, 112px) + 64px);}
 }
 /* ponytail: honor OS-level reduced-motion (vestibular/a11y) — kill fades/slides. */
 @media (prefers-reduced-motion: reduce){
@@ -589,8 +601,15 @@ lyrics can never scroll underneath it because it is a sibling that follows them.
   <div class="song-grid" id="songGrid"></div>
 </div>
 
-<!-- SONG DETAIL -->
-<div class="view" id="detailView"><div class="song-detail-ghost" id="songDetailGhost"></div><div class="song-detail" id="songDetail"></div></div>
+<!-- SONG DETAIL: flex column = scrollable lyrics area (clips above the footer) + a
+     separate footer (sliders + song actions) that lyrics can never pass behind. -->
+<div class="view" id="detailView">
+  <div class="song-scroll" id="songScroll">
+    <div class="song-detail-ghost" id="songDetailGhost"></div>
+    <div class="song-detail" id="songDetail"></div>
+  </div>
+  <div id="readerControlsHost"></div>
+</div>
 
 <!-- SEARCH -->
 <div class="view" id="searchView"><div class="search-results" id="searchResults"></div></div>
@@ -957,10 +976,6 @@ Second verse line 2"></textarea>
   <div class="op-track"><div class="op-fill" id="otaProgressFill"></div></div>
 </div>
 <input type="file" id="restoreFile" accept="application/json,.json" style="display:none">
-<!-- ponytail: reader controls live at body level, NOT inside #detailView — so no
-     view-level transform/overflow can ever trap position:fixed and turn the bar
-     sticky; it stays pinned to the viewport bottom and lyrics never scroll beneath it. -->
-<div id="readerControlsHost"></div>
 <!-- WhatsApp share FAB (visible on the song detail view only) -->
 <div id="waFabWrap" style="display:none;">
   <div class="wa-menu" id="waMenu">
@@ -981,7 +996,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.4.5'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.4.6'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1494,15 +1509,14 @@ function scheduleReaderControlsCheck() {
   requestAnimationFrame(() => requestAnimationFrame(updateReaderControls));
 }
 function updateReaderControls() {
-  const detail = document.getElementById('songDetail');
-  const verses = detail ? detail.querySelectorAll('.verse') : [];
-  const last = verses[verses.length - 1];
-  // Absolute bottom of the last lyric line (scroll-independent). ~56px ≈ the bar's
-  // height (38px) + a little margin.
-  const fits = !!last && (last.getBoundingClientRect().bottom + window.scrollY) <= window.innerHeight - 56;
+  const sc = document.getElementById('songScroll');
+  if (!sc) return;
+  // When the lyrics fit inside the scroll container there is nothing to scroll —
+  // lock the CONTAINER (not the document) so gestures can't bounce it.
+  const fits = sc.scrollHeight <= sc.clientHeight + 1;
   const lock = currentView === 'detail' && fits;
-  document.documentElement.classList.toggle('scroll-locked', lock);
-  if (lock && window.scrollY > 0) window.scrollTo(0, 0); // show the full song from the top
+  sc.classList.toggle('scroll-locked', lock);
+  if (lock && sc.scrollTop > 0) sc.scrollTop = 0; // show the full song from the top
 }
 
 // ponytail: bottom safe-area for the reader pill, FAB and WA menu. The native
@@ -1518,12 +1532,21 @@ function syncSafeAreaBottom() {
     if (n > 0) px = Math.min(n, 34);
   } catch (_) {}
   document.documentElement.style.setProperty('--sab', px + 'px');
+  // ponytail: expose the reader footer's real height so the WhatsApp FAB/menu always
+  // float ABOVE it (footer height varies: sliders + actions, safe-area, font scaling).
+  syncFooterHeight();
+}
+function syncFooterHeight() {
+  const host = document.getElementById('readerControlsHost');
+  if (!host) return;
+  const h = host.offsetHeight || 0;
+  document.documentElement.style.setProperty('--footer-h', h + 'px');
 }
 // Orientation/size changes (rotation, fold, split-screen) can make a song fit or
 // stop fitting — re-evaluate the scroll lock while the reader is open. Also re-sync
 // the bottom safe-area (the native WebView sets --safe-area-inset-bottom after load).
-window.addEventListener('resize', () => { syncSafeAreaBottom(); if (currentView === 'detail') scheduleReaderControlsCheck(); });
-window.addEventListener('orientationchange', () => { syncSafeAreaBottom(); if (currentView === 'detail') scheduleReaderControlsCheck(); });
+window.addEventListener('resize', () => { syncSafeAreaBottom(); syncFooterHeight(); if (currentView === 'detail') scheduleReaderControlsCheck(); });
+window.addEventListener('orientationchange', () => { syncSafeAreaBottom(); syncFooterHeight(); if (currentView === 'detail') scheduleReaderControlsCheck(); });
 
 function showView(v) {
   currentView = v;
@@ -1536,11 +1559,14 @@ function showView(v) {
   if (hideSearch) { searchBox.style.display = 'none'; } else { searchBox.removeAttribute('style'); }
   if (v !== 'search') searchBox.classList.remove('active');
   document.getElementById('searchToggle').style.display = hideSearch ? 'none' : '';
-  // ponytail: reader controls belong only to the detail view. Toggle the host
-  // (it lives outside #songDetail so position:fixed anchors to the viewport).
+  // ponytail: reader controls belong only to the detail view. Toggle the footer host.
   document.getElementById('readerControlsHost').style.display = (v === 'detail' ? '' : 'none');
   // ponytail: never leave the scroll lock on outside the song reader.
-  if (v !== 'detail') document.documentElement.classList.remove('scroll-locked');
+  if (v !== 'detail') {
+    document.documentElement.classList.remove('scroll-locked');
+    const sc = document.getElementById('songScroll');
+    if (sc) sc.classList.remove('scroll-locked');
+  }
   // ponytail: WhatsApp share FAB belongs to the detail view only.
   const wf = document.getElementById('waFabWrap');
   if (wf) { wf.style.display = (v === 'detail' ? '' : 'none'); if (v !== 'detail') closeWaMenu(); }
@@ -1617,6 +1643,7 @@ function applyState(s) {
         currentCat = s.cat;
         currentSongIdx = currentList.indexOf(song);
         showView('detail');
+        window.scrollTo(0, 0);
         renderSongDetail(song);
       } else { showView('home'); renderGroups(); }
       break;
@@ -1972,7 +1999,8 @@ document.getElementById('songGrid').addEventListener('click', e => {
       ghost.innerHTML = songDetailHTML(target);
       ghost.style.opacity = '1';
       view.classList.add('swiping');
-      window.scrollTo(0, 0); // align front with ghost at the top during the gesture
+      const scEl = document.getElementById('songScroll');
+      if (scEl) scEl.scrollTop = 0; // align front with ghost at the top during the gesture
       locked = true;
     }
     e.preventDefault(); // horizontal drag owns this gesture
@@ -2041,6 +2069,10 @@ function openSong(song, dir) {
   const enteredFromList = currentView !== 'detail';
   currentSongIdx = currentList.findIndex(s => s.id === song.id);
   showView('detail');
+  // ponytail: the detail view is a fixed-height flex column below the nav — reset the
+  // DOCUMENT scroll so it isn't carried over from the list; lyrics scroll inside
+  // #songScroll instead.
+  window.scrollTo(0, 0);
   renderSongDetail(song, dir);
   addRecent(song.id);
   // ponytail: only push history when entering detail from a list/search, NOT when
@@ -2054,7 +2086,8 @@ function saveReaderScroll() {
   if (currentView !== 'detail') return;
   const s = currentList[currentSongIdx];
   if (!s) return;
-  _songScroll[s.id] = window.scrollY;
+  const sc = document.getElementById('songScroll');
+  _songScroll[s.id] = sc ? sc.scrollTop : 0;
   const ks = Object.keys(_songScroll);
   if (ks.length > 300) ks.slice(0, 100).forEach(k => delete _songScroll[k]);
 }
@@ -2123,27 +2156,34 @@ function songDetailHTML(song) {
   const prev = currentList[currentSongIdx-1], next = currentList[currentSongIdx+1];
   const prevSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>';
   const nextSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>';
+  const header = '<div class="song-detail-header fade-in"><button class="song-nav-btn" '+(prev?'onclick="openSong(currentList[currentSongIdx-1],\'prev\')"':'disabled')+'>'+prevSvg+'</button><div class="song-header-center">'+numBadge+'<h1>'+esc(song.title)+'</h1><div class="song-detail-meta">'+meta.join(' · ')+'</div></div><button class="song-nav-btn" '+(next?'onclick="openSong(currentList[currentSongIdx+1],\'next\')"':'disabled')+'>'+nextSvg+'</button></div>';
+  return header+jump+vh;
+}
+
+// ponytail: the song actions (edit / playlist / fav / share) live in the reader
+// FOOTER, next to the sliders — never over the lyrics. Rebuilt per song so the
+// fav icon reflects the current state.
+function readerActionsHTML(song) {
   const editSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-  const listSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>';
   const plusSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>';
   const favSvg = isFav(song.id) ? '<svg viewBox="0 0 24 24" fill="var(--red)" stroke="var(--red)" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
   const shareSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
-  const actions = '<div class="song-actions-row fade-in">'
+  return '<div class="reader-actions">'
     + '<button class="song-action-btn" onclick="openEditModal(\''+song.id+'\')" title="Edit">'+editSvg+'</button>'
     + '<button class="song-action-btn" onclick="_playlistModalSongId=\''+song.id+'\';openPlaylistChooser(\''+song.id+'\')" title="Add to playlist">'+plusSvg+'</button>'
-    + '<button class="song-action-btn" onclick="toggleFav(\''+song.id+'\');renderSongDetail(currentList[currentSongIdx])" title="Favorite">'+favSvg+'</button>'
+    + '<button class="song-action-btn" id="readerFavBtn" onclick="toggleFav(\''+song.id+'\');refreshReaderActions()" title="Favorite">'+favSvg+'</button>'
     + '<button class="song-action-btn" onclick="shareSong(\''+song.id+'\')" title="Share song">'+shareSvg+'</button>'
     + '</div>';
-  const header = '<div class="song-detail-header fade-in"><button class="song-nav-btn" '+(prev?'onclick="openSong(currentList[currentSongIdx-1],\'prev\')"':'disabled')+'>'+prevSvg+'</button><div class="song-header-center">'+numBadge+'<h1>'+esc(song.title)+'</h1><div class="song-detail-meta">'+meta.join(' · ')+'</div></div><button class="song-nav-btn" '+(next?'onclick="openSong(currentList[currentSongIdx+1],\'next\')"':'disabled')+'>'+nextSvg+'</button></div>';
-  return actions+header+jump+vh;
 }
 
 function scrollToVerse(i) {
   const el = document.getElementById('sv'+i);
   if (!el) return;
-  // 76px = sticky nav (64px) + breathing room.
-  const y = el.getBoundingClientRect().top + window.scrollY - 76;
-  window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+  const sc = document.getElementById('songScroll');
+  if (!sc) return;
+  // Scroll within the lyrics container only (never the document).
+  const y = el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop - 76;
+  sc.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
 }
 
 function renderSongDetail(song, dir) {
@@ -2160,11 +2200,10 @@ function renderSongDetail(song, dir) {
   // ponytail: apply persisted reader sizing to the verses only (not header).
   el.style.setProperty('--reader-font', readerFont+'px');
   el.style.setProperty('--reader-lh', readerLH);
-  // ponytail: controls live in a host OUTSIDE #songDetail (avoids being trapped by
-  // its transform/will-change during swipes) and AFTER it in the DOM, so the host can
-  // be position:sticky;bottom:0 — stuck to the viewport bottom on scrollable songs,
-  // parked right after the lyrics on one-screen songs. Lyrics can never pass under it.
-  const host = document.getElementById('readerControlsHost');
+  // ponytail: the FOOTER is a separate in-flow element below the lyrics scroll area
+  // (#songScroll): sliders + the song actions. Because it sits outside the scroll
+  // container, lyrics physically cannot pass behind it — the container clips at the
+  // footer's top edge.
   document.getElementById('readerControlsHost').innerHTML =
     '<div class="reader-controls" id="readerFontCtrl">'
     + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V5h16v2"/><path d="M9 19h6M12 5v14"/></svg>'
@@ -2172,14 +2211,26 @@ function renderSongDetail(song, dir) {
     + '<span class="rc-sep"></span>'
     + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8h16M4 12h16M4 16h16"/></svg>'
     + '<input type="range" min="1.2" max="2.4" step="0.1" value="'+readerLH+'" oninput="setReaderLH(this.value)">'
-    + '</div>';
+    + '</div>'
+    + readerActionsHTML(song);
+  syncFooterHeight(); // measure the footer so the WA FAB/menu sit above it
   // ponytail: restore the reader's saved position when returning to a previously
   // read song; swipe/arrow nav always starts fresh at the top.
+  const scrollEl = document.getElementById('songScroll');
   const saved = _songScroll[song.id];
-  if (dir || saved == null) window.scrollTo({top:0,behavior:'smooth'});
-  else requestAnimationFrame(() => window.scrollTo(0, saved));
-  // ponytail: hide the reader bar when the lyrics fit on one screen (nothing to scroll).
+  if (dir || saved == null) scrollEl.scrollTo({top:0,behavior:'smooth'});
+  else requestAnimationFrame(() => scrollEl.scrollTop = saved);
+  // ponytail: keep the scroll lock in sync (fits-on-screen songs can't scroll).
   scheduleReaderControlsCheck();
+}
+
+// ponytail: re-render just the fav button in the footer after toggling (avoids a
+// full song re-render that would reset the reader scroll).
+function refreshReaderActions() {
+  const song = currentList[currentSongIdx];
+  if (!song) return;
+  const row = document.querySelector('#readerControlsHost .reader-actions');
+  if (row) row.outerHTML = readerActionsHTML(song);
 }
 
 // ponytail: build a plain-text copy of a song (title + verses), used by copy/share.

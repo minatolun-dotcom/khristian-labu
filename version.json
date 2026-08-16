@@ -1,6 +1,6 @@
 {
-  "version": "1.4.5",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.5/khristian-labu.apk",
-  "notes": "Fixed the two lyrics-page layout bugs: the bottom font/alignment bar is now a true bottom element the lyrics can never slide under (it lives after the lyrics in the page flow, so even big system font scaling can't cover text), and short songs no longer show a huge empty area below the last line — the bar now sits right after the lyrics. Pure content update — applies in-app via OTA.",
-  "updatedAt": "2026-08-16T17:00:00Z"
+  "version": "1.4.6",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.6/khristian-labu.apk",
+  "notes": "The bottom controls are now a real footer, completely separate from the lyrics: lyrics scroll in their own area that clips above the footer, so text can never slide behind the sliders at any scroll position or font size. The song actions (edit, playlist, favorite, share) moved from above the title into that footer. Short songs end naturally right above the footer with no empty gap. Pure content update — applies in-app via OTA.",
+  "updatedAt": "2026-08-16T18:00:00Z"
 }

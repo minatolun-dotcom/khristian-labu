@@ -103,22 +103,22 @@ await section('reader features', async () => {
   await page.waitForSelector('#songDetail .verse');
   const vjCount = await page.locator('.verse-jump .vj').count();
   ok('verse jump strip (' + vjCount + ' chips)', vjCount >= 12, 'long song should show numbered jump chips');
-  // tap the last jump chip → scrolls down
-  const before = await page.evaluate(() => window.scrollY);
+  // tap the last jump chip → scrolls the lyrics CONTAINER down
+  const before = await page.evaluate(() => document.getElementById('songScroll').scrollTop);
   await page.locator('.verse-jump .vj').last().click();
   await page.waitForTimeout(400);
-  const after = await page.evaluate(() => window.scrollY);
+  const after = await page.evaluate(() => document.getElementById('songScroll').scrollTop);
   ok('verse jump scrolls down', after > before, before + ' → ' + after);
   // scroll memory: let the verse-jump smooth scroll settle first (Chromium won't
   // cancel it mid-flight, which would corrupt the position we save), then scroll.
   await page.waitForTimeout(1500);
-  await page.evaluate(() => window.scrollTo(0, 403));
+  await page.evaluate(() => { document.getElementById('songScroll').scrollTop = 403; });
   await page.waitForTimeout(200);
   await page.goBack();
   await page.waitForSelector('#searchResults .song-item');
   await page.locator('#searchResults .song-item').nth(idx).click();
   await page.waitForSelector('#songDetail .verse');
-  const restored = await page.evaluate(() => window.scrollY);
+  const restored = await page.evaluate(() => document.getElementById('songScroll').scrollTop);
   ok('reader scroll restored', Math.abs(restored - 403) < 20, 'got ' + restored);
   // WhatsApp FAB + menu (check the .wa-fab button — the wrapper div has zero size)
   ok('wa fab visible in detail', await page.locator('#waFabWrap .wa-fab').isVisible());
@@ -143,57 +143,66 @@ await section('reader features', async () => {
   await page.waitForSelector('#songDetail .verse');
   await page.waitForTimeout(300);
   ok('reader bar visible on long song', await page.locator('#readerControlsHost .reader-controls').isVisible());
-  // BUG 1: the bar is sticky — while mid-scroll it stays pinned at the viewport bottom
-  await page.evaluate(() => window.scrollTo(0, 300));
-  await page.waitForTimeout(300);
-  const pinned = await page.evaluate(() => {
-    const host = document.getElementById('readerControlsHost').getBoundingClientRect();
-    return { bottom: Math.round(host.bottom), vh: window.innerHeight };
+  // BUG 1: the footer is a SEPARATE element — the lyrics scroll container clips at its
+  // top edge, so lyrics can never render behind the footer at ANY scroll position.
+  const footerLayout = await page.evaluate(() => {
+    const sc = document.getElementById('songScroll');
+    const footer = document.getElementById('readerControlsHost');
+    const srect = sc.getBoundingClientRect();
+    const frect = footer.getBoundingClientRect();
+    return {
+      clipOK: Math.round(srect.bottom) <= Math.round(frect.top) + 1,
+      footerBelow: frect.top >= srect.bottom - 1,
+      footerBottom: Math.round(frect.bottom),
+      vh: window.innerHeight,
+      actionsInFooter: !!footer.querySelector('.reader-actions'),
+      actionsInSong: !!document.getElementById('songDetail').querySelector('.song-actions-row'),
+    };
   });
-  ok('bar pinned at viewport bottom mid-scroll (bottom=' + pinned.bottom + ')', Math.abs(pinned.bottom - pinned.vh) <= 2, JSON.stringify(pinned));
-  // max font + max line-height at end of scroll: the last lyric line clears the bar
+  ok('lyrics clip above the separate footer (container bottom ' + footerLayout + ')', footerLayout.clipOK && footerLayout.footerBelow, JSON.stringify(footerLayout));
+  ok('song actions moved into the footer', footerLayout.actionsInFooter && !footerLayout.actionsInSong);
+  // max font + max line-height at the end of container scroll: last line clears the footer
   await page.evaluate(() => { setReaderFont(28); setReaderLH(2.4); });
   await page.waitForTimeout(400);
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await page.evaluate(() => { const sc = document.getElementById('songScroll'); sc.scrollTop = sc.scrollHeight; });
   await page.waitForTimeout(400);
   const clearance = await page.evaluate(() => {
-    const bar = document.querySelector('#readerControlsHost .reader-controls').getBoundingClientRect();
+    const footer = document.getElementById('readerControlsHost').getBoundingClientRect();
     const verses = document.querySelectorAll('#songDetail .verse');
     const last = verses[verses.length - 1].getBoundingClientRect();
-    return Math.round(bar.top - last.bottom);
+    return Math.round(footer.top - last.bottom);
   });
-  ok('lyrics stop well above the bar at max font (' + clearance + 'px)', clearance > 40, 'clearance=' + clearance);
-  // when lyrics fit on one screen the bar STAYS but the page scroll is LOCKED;
+  ok('last lyric line clears the footer at max scroll (' + clearance + 'px)', clearance > 10, 'clearance=' + clearance);
+  // when lyrics fit on one screen the footer STAYS but the CONTAINER scroll is LOCKED;
   // growing the font past the fold unlocks it again
   await page.evaluate(() => {
     setReaderFont(17); setReaderLH(1.6); // back to defaults before the fit test
     document.getElementById('songDetail').innerHTML =
-      '<div class="song-actions-row"></div><div class="song-detail-header"><h1>Short</h1></div><div class="verse" id="sv0"><p>' + Array(15).fill('One line of lyrics.').join('<br>') + '</p></div>';
+      '<div class="song-detail-header"><h1>Short</h1></div><div class="verse" id="sv0"><p>' + Array(15).fill('One line of lyrics.').join('<br>') + '</p></div>';
     scheduleReaderControlsCheck();
   });
   await page.waitForTimeout(300);
   ok('reader bar stays visible on a one-screen song', await page.locator('#readerControlsHost .reader-controls').isVisible());
-  // BUG 2: no dead zone — the pill rests right after the last line (not pushed down to
-  // the viewport bottom, which would leave a huge gap between lyrics and controls)
+  // BUG 2: no dead zone — the lyrics end naturally; the footer sits right below them
   const shortGap = await page.evaluate(() => {
-    const detail = document.getElementById('songDetail');
-    const verses = detail.querySelectorAll('.verse');
+    const sc = document.getElementById('songScroll');
+    const footer = document.getElementById('readerControlsHost').getBoundingClientRect();
+    const verses = document.querySelectorAll('#songDetail .verse');
     const last = verses[verses.length - 1].getBoundingClientRect();
-    const bar = document.querySelector('#readerControlsHost .reader-controls').getBoundingClientRect();
-    return Math.round(bar.top - last.bottom);
+    return Math.round(footer.top - last.bottom);
   });
-  ok('no dead zone between lyrics and bar on one-screen song (gap=' + shortGap + 'px)', shortGap < 80, 'gap=' + shortGap);
-  ok('page scroll locked when lyrics fit on one screen', await page.evaluate(() => document.documentElement.classList.contains('scroll-locked')));
-  await page.evaluate(() => window.scrollTo(0, 500));
+  ok('no dead zone between lyrics and footer on one-screen song (gap=' + shortGap + 'px)', shortGap < 160, 'gap=' + shortGap);
+  ok('container scroll locked when lyrics fit on one screen', await page.evaluate(() => document.getElementById('songScroll').classList.contains('scroll-locked')));
+  await page.evaluate(() => { const sc = document.getElementById('songScroll'); sc.scrollTop = 500; });
   await page.waitForTimeout(200);
-  ok('cannot scroll while locked', (await page.evaluate(() => window.scrollY)) === 0);
+  ok('cannot scroll container while locked', (await page.evaluate(() => document.getElementById('songScroll').scrollTop)) === 0);
   // increasing size/spacing so the lyrics no longer fit → scroll works again
   await page.evaluate(() => { setReaderFont(28); setReaderLH(2.4); });
   await page.waitForTimeout(400);
-  ok('font increase unlocks scroll when lyrics overflow', await page.evaluate(() => !document.documentElement.classList.contains('scroll-locked')));
-  await page.evaluate(() => window.scrollTo(0, 200));
+  ok('font increase unlocks scroll when lyrics overflow', await page.evaluate(() => !document.getElementById('songScroll').classList.contains('scroll-locked')));
+  await page.evaluate(() => { document.getElementById('songScroll').scrollTop = 200; });
   await page.waitForTimeout(200);
-  ok('scrolling works again after unlock', (await page.evaluate(() => window.scrollY)) > 0);
+  ok('scrolling works again after unlock', (await page.evaluate(() => document.getElementById('songScroll').scrollTop)) > 0);
   await page.close();
 });
 
@@ -760,11 +769,11 @@ await section('mobile', async () => {
   await page.waitForTimeout(700);
   const afterSwipe = (await page.locator('#songDetail .song-header-center h1').textContent()).trim();
   ok('swipe right goes to previous song (' + afterSwipe + ')', afterSwipe === first, 'expected ' + first + ' got ' + afterSwipe + ' (2nd=' + second + ')');
-  // layout: reader bar + FAB within viewport
-  const bar = await page.locator('#readerFontCtrl').boundingBox();
+  // layout: footer + FAB within viewport, FAB above the footer
+  const footer = await page.locator('#readerControlsHost').boundingBox();
   const fab = await page.locator('#waFabWrap .wa-fab').boundingBox();
-  ok('mobile bar within viewport', !!bar && bar.y + bar.height <= 844, JSON.stringify(bar));
-  ok('mobile fab above bar', !!fab && !!bar && fab.y + fab.height < bar.y, JSON.stringify({ fab, bar }));
+  ok('footer within viewport', !!footer && footer.y + footer.height <= 846, JSON.stringify(footer));
+  ok('mobile fab above footer', !!fab && !!footer && fab.y + fab.height < footer.y, JSON.stringify({ fab, footer }));
   await page.close();
 });
 
