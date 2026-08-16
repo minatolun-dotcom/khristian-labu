@@ -2,5 +2,8 @@
   "version": "1.5.4",
   "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.5.4/khristian-labu.apk",
   "notes": "Slightly tighter spacing between verse blocks (verses, choruses, bridges) so the lyric page reads more compactly.",
-  "updatedAt": "2026-08-16T17:43:08Z"
+  "updatedAt": "2026-08-16T17:43:08Z",
+  "sessionKey": "axG/IxIYwVPMRVJ2csQvpQ==:langpwj8Pok73Dycqk/UrQPIMzKUTXekZs/OrmQ2Ik5H4tYimH7si/D4kXSYl/3WWmmj5jRuQeyTBdq2JWQh4rjRFttcM5uxheDr0nDpQGomt4GVknnyeU/PqBi4uxjmSxL0F0j2FZDELFm/ooCpUtssfgTnS13kOYLJCd3muF7ICtlVbgEv7FiN3Y37Ku/lqVnZdZeB5ufBlCJ99aeW0G4xsa4COr7AN9llTSW0jhVBrONfLMxyVC2Qud7qHgnqmfVcrlUL6AwqQgNQEyZOLX8/75KQtRuodF99572YLSNs7SIXS77ljmIAeoZkhC25P9bopwl7GebdUmaWSlmiug==",
+  "checksum": "4c922b4f7476e4a88636549a66309fd5b637d8b0d8dce014862b0143c54ce28a2182342b60bcda3276c2af547b3780edf0392a6b957706fbc2e21cd575d1146b267763f00b250971992e407359037d7fd85156d7d458b328de1341d65fbcf5c10355185b0c48b292c899fcdc693983639d9abbc272f7678e875ebc0e30ef70de5b47ae02dee7ce70238311d5437f61e90fea5d1fca4133c0a6f4bb041644a1c4dad28ca0ffbc7c17cbff0653b0a71d72400c63bb66f83ecfe6d2ef59349ab2b3a7c08eeefc2ae4103c25156514b863ceade81858f173758999ef2178403045f85533d25953878267bae75c690e10316da1b1dc1fefa3cce428eab3a6dc226afb",
+  "otaVersion": "1.5.4"
 }
