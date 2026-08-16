@@ -81,6 +81,16 @@ await section('load & home', async () => {
   await page.waitForSelector('#songDetail .verse');
   ok('detail renders', (await page.locator('#songDetail .verse').count()) > 0);
   ok('reader controls visible', await page.locator('#readerFontCtrl').isVisible());
+  // ponytail: the reader footer must be pinned to the BOTTOM of the viewport even
+  // for short songs (the lyrics scroll area grows to fill leftover space, so the
+  // footer never floats up right after the last lyric line).
+  const footerPos = await page.evaluate(() => {
+    const f = document.getElementById('readerControlsHost').getBoundingClientRect();
+    const sc = document.getElementById('songScroll');
+    return { footerBottom: Math.round(f.bottom), viewportH: innerHeight, scrollH: Math.round(sc.getBoundingClientRect().height), contentH: sc.scrollHeight };
+  });
+  ok('reader footer pinned to viewport bottom (short or long song)', Math.abs(footerPos.footerBottom - footerPos.viewportH) <= 2, JSON.stringify(footerPos));
+  ok('lyrics scroll area fills space above footer', footerPos.scrollH > 0 && footerPos.scrollH <= footerPos.viewportH, JSON.stringify(footerPos));
   const title = (await page.locator('#songDetail .song-header-center h1').textContent()).trim();
   ok('tab title syncs to song', (await page.title()).includes(title));
   await page.close();

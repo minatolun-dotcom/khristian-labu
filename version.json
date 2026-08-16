@@ -1,9 +1,6 @@
 {
-  "version": "1.5.1",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.5.1/khristian-labu.apk",
-  "notes": "OTA update reliability: the update check no longer depends on the GitHub release CDN (whose CORS headers block in-app fetches and silently fell back to the manual APK download banner). The release session data now rides in the same static version.json the app already reads, so in-app updates apply directly. Content is unchanged from 1.5.0.",
-  "updatedAt": "2026-08-16T16:39:49Z",
-  "sessionKey": "/i14WPWSav46wpnvLxzlXA==:SKaWBOhXKUdlIwpOQdYy+4uLxhXwlcumdkWBj3USjpu8oZKc8F3Lmo52kxV7Ic+u6vjOEvxp4cfrnzzwBsfOlPvs6nhFMzAYZvfj6k81Qwkvu7byRv8X9NX7H27ufv+ZUi+0cau0BGX0z9L7a/PluZqQ58Su/XYc9AHAPeEfQZY8TX1GUXMg+gZ3sqOloQSsyCE2MyP1JeNAn01rgbvj83DFxe8btCvWdyjsVi4ckIc+oyyHHxVCWJPasZiQf4aMMEtNztYv+2Yl9WAcxBn7IUNwthhpmIE/Lkl4gVn/iJWgajTrgIZU/iH6dGnb8y6uaF7DfGp8qNcpjeDwr2PcdA==",
-  "checksum": "024c584edec7bbd4af269f737b812d5fe45b1322cc20d6e3abd649809297a7b2a9f2c6c9f3cb8d80f3a726d60d3f01ca11b0e113c50d1a1359bc2f4c416dfe3b0b31e721110615a31d375be0b1b7e397f909255ffc0118bf122d106067c8f778fc8e83cd47a0c15ea3d46201fa7483384ede82d38bbcd36cb095f32363e6646c37c3b9826afcc108cf35c8de6c47c53bc33ef1abc1ca4ccb176c2df4d2847e50b17192b5af17f1f99688d61e648678a30eb2b1d583fe01d4da46c184bd180ab6d67e849bd4b2540c730e5632335acda2463d9b0d89564ec602da2c7af365af12df8e46c34789cb77bda7199b5ee95794e677f6ee837fc4044b6081ad6def895e",
-  "otaVersion": "1.5.1"
+  "version": "1.5.2",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.5.2/khristian-labu.apk",
+  "notes": "Fix: the reader footer (font/alignment sliders + song actions) now stays pinned to the bottom of the screen for short songs too — previously it floated up right after the last lyric line when the lyrics were shorter than the screen. Lyrics behavior is unchanged: long songs still scroll the final line fully above the footer.",
+  "updatedAt": "2026-08-16T17:22:53Z"
 }
