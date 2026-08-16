@@ -996,7 +996,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.4.6'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.4.7'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1128,6 +1128,52 @@ function dismissUpdate() {
 function otaPlugin() {
   return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorUpdater) || null;
 }
+// ponytail: the app's update source of truth. The GitHub Releases API is free but
+// rate-limited to 60 req/hr per IP (phones on shared mobile NAT IPs hit this and the
+// check silently died — "no update" forever). version.json is a tiny static file
+// committed in the repo and served by GitHub Pages + raw.githubusercontent (no rate
+// limit, no auth, CORS-open), so we use IT first and fall back to the API only if
+// both static hosts fail. Returns {tag, version, apkUrl, assets:[names]} or null.
+async function fetchUpdateInfo() {
+  const staticHosts = [
+    'https://raw.githubusercontent.com/' + REPO + '/main/version.json',
+    'https://minatolun-dotcom.github.io/khristian-labu/version.json',
+  ];
+  for (const u of staticHosts) {
+    try {
+      const res = await fetch(u, { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) continue;
+      const j = await res.json();
+      const version = String(j.version || '').replace(/^v/, '');
+      if (!version) continue;
+      const tag = 'v' + version;
+      return {
+        tag,
+        version,
+        apkUrl: j.apkUrl || ('https://github.com/' + REPO + '/releases/download/' + tag + '/khristian-labu.apk'),
+        assets: ['khristian-labu.apk', 'ota-session.json', 'www-latest.zip'],
+        source: 'static',
+      };
+    } catch (e) { /* try next host */ }
+  }
+  try {
+    const res = await fetch('https://api.github.com/repos/' + REPO + '/releases/latest',
+      { headers: { 'Accept': 'application/vnd.github+json' } });
+    if (!res.ok) return null;
+    const d = await res.json();
+    const tag = d.tag_name || '';
+    const version = tag.replace(/^v/, '');
+    if (!tag || !version) return null;
+    const apk = (d.assets || []).find(a => a.name === 'khristian-labu.apk');
+    return {
+      tag, version,
+      apkUrl: apk ? apk.browser_download_url : ('https://github.com/' + REPO + '/releases/download/' + tag + '/khristian-labu.apk'),
+      assets: (d.assets || []).map(a => a.name),
+      sessionUrl: (d.assets || []).find(a => a.name === 'ota-session.json')?.browser_download_url || '',
+      source: 'api',
+    };
+  } catch (e) { return null; }
+}
 // ponytail: in-app OTA update for the APK. @capgo/capacitor-updater runs in manual
 // mode (autoUpdate:false, no cloud): CI attaches www-latest.zip to every tagged
 // GitHub Release, and this downloads + applies it in place — users never reinstall
@@ -1138,32 +1184,29 @@ async function checkOtaUpdate(force) {
   const last = parseInt(localStorage.getItem('labu_ota_last_check') || '0', 10);
   if (!force && Date.now() - last < 24 * 60 * 60 * 1000) return; // at most one check/day
   localStorage.setItem('labu_ota_last_check', String(Date.now()));
+  const info = await fetchUpdateInfo();
+  if (!info) { if (force) toast('Could not check for updates', 'error'); return; }
+  const latest = info.version;
+  if (compareVer(latest, APP_VERSION) <= 0) {
+    if (force) toast('You are on the latest version (' + APP_VERSION + ')', 'success');
+    return;
+  }
+  const url = 'https://github.com/' + REPO + '/releases/download/' + info.tag + '/www-latest.zip';
+  // ponytail: releases are code-signed (CI encrypts www-latest.zip with the
+  // OTA_SIGNING_PRIVATE_KEY secret); the per-bundle sessionKey/checksum ride in
+  // the ota-session.json asset. Missing session data = unsigned legacy bundle:
+  // pass nothing and the plugin installs it as-is (older APKs have no public key).
+  let sessionKey = '', checksum = '', sessBroken = false;
   try {
-    const res = await fetch('https://api.github.com/repos/' + REPO + '/releases/latest',
-      { headers: { 'Accept': 'application/vnd.github+json' } });
-    if (!res.ok) { if (force) toast('Could not check for updates', 'error'); return; }
-    const d = await res.json();
-    const latest = (d.tag_name || '').replace(/^v/, '');
-    if (!latest) { if (force) toast('Could not check for updates', 'error'); return; }
-    if (compareVer(latest, APP_VERSION) <= 0) {
-      if (force) toast('You are on the latest version (' + APP_VERSION + ')', 'success');
-      return;
+    if (info.assets.includes('ota-session.json')) {
+      const sessUrl = info.sessionUrl || ('https://github.com/' + REPO + '/releases/download/' + info.tag + '/ota-session.json');
+      const j = await (await fetch(sessUrl)).json();
+      sessionKey = j.sessionKey || ''; checksum = j.checksum || '';
+      if (!sessionKey || !checksum) sessBroken = true;
     }
-    const url = 'https://github.com/' + REPO + '/releases/download/' + d.tag_name + '/www-latest.zip';
-    // ponytail: releases are code-signed (CI encrypts www-latest.zip with the
-    // OTA_SIGNING_PRIVATE_KEY secret); the per-bundle sessionKey/checksum ride in
-    // the ota-session.json asset. Missing session data = unsigned legacy bundle:
-    // pass nothing and the plugin installs it as-is (older APKs have no public key).
-    let sessionKey = '', checksum = '', sessBroken = false;
-    try {
-      const sess = (d.assets || []).find(a => a.name === 'ota-session.json');
-      if (sess) {
-        const j = await (await fetch(sess.browser_download_url)).json();
-        sessionKey = j.sessionKey || ''; checksum = j.checksum || '';
-        if (!sessionKey || !checksum) sessBroken = true;
-      }
-    } catch (e) { sessBroken = true; /* release is signed but session data is unreachable */ }
-    // ponytail: ask first (per the app's UX), then download + reload in place.
+  } catch (e) { sessBroken = true; /* release is signed but session data is unreachable */ }
+  // ponytail: ask first (per the app's UX), then download + reload in place.
+  try {
     confirmDangerous('Update to version ' + latest + ' is available. Download and restart the app now?', 'Update now', async () => {
       // live download progress via the plugin's 'download' events (0-100%).
       const prog = document.getElementById('otaProgress');
@@ -1196,12 +1239,9 @@ async function checkOtaUpdate(force) {
         toast('In-app update failed — use the Download button instead', 'error');
         console.error('[OTA update]', e && e.message ? e.message : e);
         try {
-          const apk = (d.assets || []).find(a => a.name === 'khristian-labu.apk');
-          if (apk) {
-            document.getElementById('updVer').textContent = latest;
-            document.getElementById('updBtn').href = apk.browser_download_url;
-            document.getElementById('updateBanner').hidden = false;
-          }
+          document.getElementById('updVer').textContent = latest;
+          document.getElementById('updBtn').href = info.apkUrl;
+          document.getElementById('updateBanner').hidden = false;
         } catch (e2) { /* banner is best-effort */ }
       } finally {
         if (prog) prog.classList.remove('show');
@@ -1214,45 +1254,31 @@ async function checkOtaUpdate(force) {
 async function manualCheckUpdate() {
   toast('Checking for updates…', 'success');
   if (otaPlugin()) { checkOtaUpdate(true); return; } // APK: update in-app
-  try {
-    const res = await fetch('https://api.github.com/repos/' + REPO + '/releases/latest',
-      { headers: { 'Accept': 'application/vnd.github+json' } });
-    if (!res.ok) { toast('Could not check for updates', 'error'); return; }
-    const d = await res.json();
-    const latest = (d.tag_name || '').replace(/^v/, '');
-    if (!latest) { toast('Could not check for updates', 'error'); return; }
-    if (compareVer(latest, APP_VERSION) > 0) {
-      if (localStorage.getItem('labu_update_dismissed') !== latest) {
-        const apk = (d.assets || []).find(a => a.name === 'khristian-labu.apk');
-        if (apk) {
-          document.getElementById('updVer').textContent = latest;
-          document.getElementById('updBtn').href = apk.browser_download_url;
-          document.getElementById('updateBanner').hidden = false;
-        }
-      }
-      toast('Update available: v' + latest, 'success');
-    } else {
-      toast('You are on the latest version (' + APP_VERSION + ')', 'success');
+  const info = await fetchUpdateInfo();
+  if (!info) { toast('Could not check for updates', 'error'); return; }
+  const latest = info.version;
+  if (compareVer(latest, APP_VERSION) > 0) {
+    if (localStorage.getItem('labu_update_dismissed') !== latest) {
+      document.getElementById('updVer').textContent = latest;
+      document.getElementById('updBtn').href = info.apkUrl;
+      document.getElementById('updateBanner').hidden = false;
     }
-  } catch (e) { toast('Could not check for updates (offline?)', 'error'); }
+    toast('Update available: v' + latest, 'success');
+  } else {
+    toast('You are on the latest version (' + APP_VERSION + ')', 'success');
+  }
 }
 async function checkForUpdate() {
   // APK: updates apply in-app via OTA — the GitHub download banner is web-only.
   if (otaPlugin()) { checkOtaUpdate(false); return; }
-  try {
-    const res = await fetch('https://api.github.com/repos/' + REPO + '/releases/latest',
-      { headers: { 'Accept': 'application/vnd.github+json' } });
-    if (!res.ok) return;
-    const d = await res.json();
-    const latest = (d.tag_name || '').replace(/^v/, '');
-    if (!latest || compareVer(latest, APP_VERSION) <= 0) return;
-    if (localStorage.getItem('labu_update_dismissed') === latest) return;
-    const apk = (d.assets || []).find(a => a.name === 'khristian-labu.apk');
-    if (!apk) return;
-    document.getElementById('updVer').textContent = latest;
-    document.getElementById('updBtn').href = apk.browser_download_url;
-    document.getElementById('updateBanner').hidden = false;
-  } catch (e) { /* offline or rate-limited: ignore */ }
+  const info = await fetchUpdateInfo();
+  if (!info) return;
+  const latest = info.version;
+  if (!latest || compareVer(latest, APP_VERSION) <= 0) return;
+  if (localStorage.getItem('labu_update_dismissed') === latest) return;
+  document.getElementById('updVer').textContent = latest;
+  document.getElementById('updBtn').href = info.apkUrl;
+  document.getElementById('updateBanner').hidden = false;
 }
 
 // ─── INDEXEDDB (replaces the localStorage full-corpus store, which has a ~5MB quota) ───

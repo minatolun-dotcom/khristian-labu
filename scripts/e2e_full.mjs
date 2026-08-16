@@ -574,6 +574,11 @@ await section('ota update', async () => {
     };
     const realFetch = window.fetch.bind(window);
     window.fetch = async (url, opts) => {
+      // static update source (version.json on raw + Pages) is checked first now
+      if (String(url).includes('version.json')) {
+        window.__apiCalls++;
+        return { ok: true, json: async () => ({ version: '9.9.9', apkUrl: 'https://github.com/x/releases/download/v9.9.9/khristian-labu.apk' }) };
+      }
       if (String(url).includes('api.github.com/repos/')) {
         window.__apiCalls++;
         return { ok: true, json: async () => ({ tag_name: 'v9.9.9', assets: [
@@ -634,6 +639,10 @@ await section('ota update', async () => {
     };
     const realFetch = window.fetch.bind(window);
     window.fetch = async (url, opts) => {
+      // static source unavailable (e.g. offline) → the API fallback must serve
+      if (String(url).includes('version.json')) {
+        return { ok: false, status: 503 };
+      }
       if (String(url).includes('api.github.com/repos/')) {
         return { ok: true, json: async () => ({ tag_name: 'v8.8.8', assets: [{ name: 'khristian-labu.apk' }] }) };
       }
@@ -671,6 +680,9 @@ await section('ota update', async () => {
     } } };
     const realFetch = window.fetch.bind(window);
     window.fetch = async (url, opts) => {
+      if (String(url).includes('version.json')) {
+        return { ok: true, json: async () => ({ version: '7.7.7', apkUrl: 'https://github.com/x/releases/download/v7.7.7/khristian-labu.apk' }) };
+      }
       if (String(url).includes('api.github.com/repos/')) {
         return { ok: true, json: async () => ({ tag_name: 'v7.7.7', assets: [
           { name: 'khristian-labu.apk', browser_download_url: 'https://github.com/x/releases/download/v7.7.7/khristian-labu.apk' },
@@ -704,6 +716,9 @@ await section('ota update', async () => {
     } } };
     const realFetch = window.fetch.bind(window);
     window.fetch = async (url, opts) => {
+      if (String(url).includes('version.json')) {
+        return { ok: true, json: async () => ({ version: '6.6.6', apkUrl: 'https://github.com/x/releases/download/v6.6.6/khristian-labu.apk' }) };
+      }
       if (String(url).includes('api.github.com/repos/')) {
         return { ok: true, json: async () => ({ tag_name: 'v6.6.6', assets: [
           { name: 'khristian-labu.apk', browser_download_url: 'https://github.com/x/releases/download/v6.6.6/khristian-labu.apk' },

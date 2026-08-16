@@ -1,6 +1,6 @@
 {
-  "version": "1.4.6",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.6/khristian-labu.apk",
-  "notes": "The bottom controls are now a real footer, completely separate from the lyrics: lyrics scroll in their own area that clips above the footer, so text can never slide behind the sliders at any scroll position or font size. The song actions (edit, playlist, favorite, share) moved from above the title into that footer. Short songs end naturally right above the footer with no empty gap. Pure content update — applies in-app via OTA.",
-  "updatedAt": "2026-08-16T18:00:00Z"
+  "version": "1.4.7",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.7/khristian-labu.apk",
+  "notes": "OTA update check is now rate-limit-proof: the app reads a tiny static version.json (raw.githubusercontent + Pages, no API quota) as its primary update source, with the GitHub Releases API only as a fallback. Phones on shared mobile NAT IPs were silently hitting the API's 60 req/hr cap, so the check died and updates never appeared — fixed. Pure content update — applies in-app via OTA.",
+  "updatedAt": "2026-08-16T19:30:00Z"
 }
