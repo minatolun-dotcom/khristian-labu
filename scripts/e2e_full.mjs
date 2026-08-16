@@ -143,7 +143,15 @@ await section('reader features', async () => {
   await page.waitForSelector('#songDetail .verse');
   await page.waitForTimeout(300);
   ok('reader bar visible on long song', await page.locator('#readerControlsHost .reader-controls').isVisible());
-  // max font + max line-height at end of scroll: the last lyric line clears the fixed bar
+  // BUG 1: the bar is sticky — while mid-scroll it stays pinned at the viewport bottom
+  await page.evaluate(() => window.scrollTo(0, 300));
+  await page.waitForTimeout(300);
+  const pinned = await page.evaluate(() => {
+    const host = document.getElementById('readerControlsHost').getBoundingClientRect();
+    return { bottom: Math.round(host.bottom), vh: window.innerHeight };
+  });
+  ok('bar pinned at viewport bottom mid-scroll (bottom=' + pinned.bottom + ')', Math.abs(pinned.bottom - pinned.vh) <= 2, JSON.stringify(pinned));
+  // max font + max line-height at end of scroll: the last lyric line clears the bar
   await page.evaluate(() => { setReaderFont(28); setReaderLH(2.4); });
   await page.waitForTimeout(400);
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
@@ -165,6 +173,16 @@ await section('reader features', async () => {
   });
   await page.waitForTimeout(300);
   ok('reader bar stays visible on a one-screen song', await page.locator('#readerControlsHost .reader-controls').isVisible());
+  // BUG 2: no dead zone — the pill rests right after the last line (not pushed down to
+  // the viewport bottom, which would leave a huge gap between lyrics and controls)
+  const shortGap = await page.evaluate(() => {
+    const detail = document.getElementById('songDetail');
+    const verses = detail.querySelectorAll('.verse');
+    const last = verses[verses.length - 1].getBoundingClientRect();
+    const bar = document.querySelector('#readerControlsHost .reader-controls').getBoundingClientRect();
+    return Math.round(bar.top - last.bottom);
+  });
+  ok('no dead zone between lyrics and bar on one-screen song (gap=' + shortGap + 'px)', shortGap < 80, 'gap=' + shortGap);
   ok('page scroll locked when lyrics fit on one screen', await page.evaluate(() => document.documentElement.classList.contains('scroll-locked')));
   await page.evaluate(() => window.scrollTo(0, 500));
   await page.waitForTimeout(200);

@@ -199,10 +199,9 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .search-results .si-clear-hist:hover{color:var(--red);}
 .search-results .si-more{padding:1rem;text-align:center;color:var(--text3);font-size:0.8rem;}
 
-/* ─── SONG DETAIL ─── */
-.song-detail{max-width:700px;margin:0 auto;padding:2rem;padding-bottom:calc(140px + env(safe-area-inset-bottom));position:relative;z-index:1;will-change:transform;}
+/* ─── SONG DETAIL ─── */  .song-detail{max-width:700px;margin:0 auto;padding:2rem;padding-bottom:32px;position:relative;z-index:1;will-change:transform;}
 /* ponytail: ghost neighbor layer behind the detail card for live swipe preview. */
-.song-detail-ghost{position:absolute;top:0;left:0;right:0;z-index:0;opacity:0;pointer-events:none;will-change:transform;max-width:700px;margin:0 auto;padding:2rem;padding-bottom:calc(140px + env(safe-area-inset-bottom));}
+.song-detail-ghost{position:absolute;top:0;left:0;right:0;z-index:0;opacity:0;pointer-events:none;will-change:transform;max-width:700px;margin:0 auto;padding:2rem;padding-bottom:32px;}
 #detailView{position:relative;}
 #detailView.swiping{overflow:hidden;}
 /* ponytail: depth cue while dragging — front card lifts with a shadow + slight scale. */
@@ -253,7 +252,13 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 }
 /* ponytail: per-song reader controls in one bottom row (font size + line spacing).
    Both persist via localStorage. */
-.reader-controls{position:fixed;left:50%;transform:translateX(-50%);bottom:env(safe-area-inset-bottom);z-index:40;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:8px 16px;box-shadow:var(--shadow);max-width:calc(100vw - 24px);flex-wrap:nowrap;justify-content:center;overflow-x:auto;}
+/* ponytail: the reader bar is IN FLOW at the end of the document (sticky bottom:0),
+   NOT position:fixed. That is the key to both bottom-area bugs: on a scrollable song
+the pill sticks to the viewport bottom (always visible, lowest position); on a song
+that fits one screen it sits right after the last lyric — no dead zone above it, and
+lyrics can never scroll underneath it because it is a sibling that follows them. */
+#readerControlsHost{position:sticky;bottom:0;z-index:40;display:flex;justify-content:center;pointer-events:none;padding-bottom:calc(var(--sab,0px) + 12px);}
+.reader-controls{pointer-events:auto;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:8px 16px;box-shadow:var(--shadow);max-width:calc(100vw - 24px);flex-wrap:nowrap;justify-content:center;overflow-x:auto;}
 .reader-controls .rc-sep{width:1px;height:20px;background:var(--border);flex:none;}
 .reader-controls svg{width:16px;height:16px;color:var(--text3);flex:none;}
 .reader-controls input[type=range]{width:110px;accent-color:var(--accent);flex:none;}
@@ -426,8 +431,8 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
   .song-num{min-width:32px;height:32px;font-size:0.75rem;}
   .song-info{min-width:0;overflow:hidden;}
   .song-title{overflow-wrap:break-word;word-break:break-word;white-space:normal;}
-  .song-detail{padding:1.25rem 1rem;padding-bottom:calc(110px + env(safe-area-inset-bottom));}
-  .song-detail-ghost{padding:1.25rem 1rem;padding-bottom:calc(110px + env(safe-area-inset-bottom));}
+  .song-detail{padding:1.25rem 1rem;padding-bottom:16px;}
+  .song-detail-ghost{padding:1.25rem 1rem;padding-bottom:16px;}
   .song-detail-header{gap:0.5rem;}
   .song-nav-btn{width:38px;height:38px;}
   .song-nav-btn svg{width:18px;height:18px;}
@@ -488,11 +493,11 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .verse-jump .vj:hover{background:var(--accent);color:#fff;border-color:var(--accent);}
 @media(max-width:768px){.verse-jump{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}.verse-jump::-webkit-scrollbar{display:none;}}
 /* ─── WHATSAPP SHARE FAB (song detail) ─── */
-.wa-fab{position:fixed;right:24px;bottom:calc(env(safe-area-inset-bottom) + 52px);z-index:60;width:56px;height:56px;border-radius:50%;border:none;background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(37,211,102,0.4);transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);}
+.wa-fab{position:fixed;right:24px;bottom:calc(var(--sab,0px) + 70px);z-index:60;width:56px;height:56px;border-radius:50%;border:none;background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(37,211,102,0.4);transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);}
 .wa-fab:hover{transform:scale(1.08);}
 .wa-fab:active{transform:scale(0.95);}
 .wa-fab svg{width:28px;height:28px;fill:#fff;}
-.wa-menu{position:fixed;right:24px;bottom:calc(env(safe-area-inset-bottom) + 116px);z-index:60;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,0.35);display:none;flex-direction:column;min-width:230px;animation:slideUp 0.15s ease-out;}
+.wa-menu{position:fixed;right:24px;bottom:calc(var(--sab,0px) + 134px);z-index:60;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,0.35);display:none;flex-direction:column;min-width:230px;animation:slideUp 0.15s ease-out;}
 .wa-menu.open{display:flex;}
 .wa-menu button{display:flex;align-items:center;gap:10px;padding:8px;border:none;background:none;color:var(--text);font-size:0.85rem;font-family:inherit;cursor:pointer;border-radius:10px;text-align:left;transition:background 0.15s;}
 .wa-menu button:hover{background:var(--bg3);}
@@ -976,7 +981,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.4.4'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.4.5'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1066,6 +1071,8 @@ async function init() {
   // never runs, so notifyAppReady() is never called.
   const _cu = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorUpdater;
   if (_cu) _cu.notifyAppReady().catch(() => {});
+  syncSafeAreaBottom(); // native --safe-area-inset-bottom may land after first paint; re-sync on load
+  window.addEventListener('load', syncSafeAreaBottom);
   const ld = document.getElementById('heroDesc');
   if (ld) ld.textContent = 'Loading songs…';
   await loadMeta();
@@ -1496,28 +1503,27 @@ function updateReaderControls() {
   const lock = currentView === 'detail' && fits;
   document.documentElement.classList.toggle('scroll-locked', lock);
   if (lock && window.scrollY > 0) window.scrollTo(0, 0); // show the full song from the top
-  syncReaderSpacing();
 }
 
-// ponytail: the bottom padding of the song must clear the ACTUAL rendered height of
-// the reader bar — system font scaling can make the pill much taller than 38px, so a
-// hardcoded padding lets the last lyric line slide under it. Measure the bar and pad
-// the lyric area by its height + margin; lyrics can then never scroll past the bar.
-function syncReaderSpacing() {
-  const bar = document.querySelector('#readerControlsHost .reader-controls');
-  const detail = document.getElementById('songDetail');
-  if (!bar || !detail) return;
-  const h = Math.ceil(bar.getBoundingClientRect().height) || 38;
-  const pad = Math.max(120, h + 48); // generous floor + bar height + breathing room
-  const css = 'calc(' + pad + 'px + env(safe-area-inset-bottom))';
-  if (detail.style.paddingBottom !== css) detail.style.paddingBottom = css;
-  const ghost = document.getElementById('songDetailGhost');
-  if (ghost && ghost.style.paddingBottom !== css) ghost.style.paddingBottom = css;
+// ponytail: bottom safe-area for the reader pill, FAB and WA menu. The native
+// Capacitor WebView injects the REAL inset as `--safe-area-inset-bottom` (CSS px)
+// regardless of WebView version — unlike env(safe-area-inset-bottom), which can be
+// missing or wrong. Use it capped at 34px so a bogus large value can never float the
+// pill half-way up the screen.
+function syncSafeAreaBottom() {
+  let px = 0;
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--safe-area-inset-bottom').trim();
+    const n = parseInt(v, 10);
+    if (n > 0) px = Math.min(n, 34);
+  } catch (_) {}
+  document.documentElement.style.setProperty('--sab', px + 'px');
 }
 // Orientation/size changes (rotation, fold, split-screen) can make a song fit or
-// stop fitting — re-evaluate the scroll lock while the reader is open.
-window.addEventListener('resize', () => { if (currentView === 'detail') scheduleReaderControlsCheck(); });
-window.addEventListener('orientationchange', () => { if (currentView === 'detail') scheduleReaderControlsCheck(); });
+// stop fitting — re-evaluate the scroll lock while the reader is open. Also re-sync
+// the bottom safe-area (the native WebView sets --safe-area-inset-bottom after load).
+window.addEventListener('resize', () => { syncSafeAreaBottom(); if (currentView === 'detail') scheduleReaderControlsCheck(); });
+window.addEventListener('orientationchange', () => { syncSafeAreaBottom(); if (currentView === 'detail') scheduleReaderControlsCheck(); });
 
 function showView(v) {
   currentView = v;
@@ -2154,8 +2160,10 @@ function renderSongDetail(song, dir) {
   // ponytail: apply persisted reader sizing to the verses only (not header).
   el.style.setProperty('--reader-font', readerFont+'px');
   el.style.setProperty('--reader-lh', readerLH);
-  // ponytail: controls live in a host outside #songDetail (avoids being trapped
-  // by its transform/will-change containing block) so position:fixed stays relative to viewport.
+  // ponytail: controls live in a host OUTSIDE #songDetail (avoids being trapped by
+  // its transform/will-change during swipes) and AFTER it in the DOM, so the host can
+  // be position:sticky;bottom:0 — stuck to the viewport bottom on scrollable songs,
+  // parked right after the lyrics on one-screen songs. Lyrics can never pass under it.
   const host = document.getElementById('readerControlsHost');
   document.getElementById('readerControlsHost').innerHTML =
     '<div class="reader-controls" id="readerFontCtrl">'
