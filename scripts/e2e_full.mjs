@@ -431,6 +431,9 @@ await section('status bar', async () => {
           setOverlaysWebView: async o => window.__sbCalls.push(['overlay', o]),
           setBackgroundColor: async o => window.__sbCalls.push(['bg', o]),
           setStyle: async o => window.__sbCalls.push(['style', o]),
+          // mimics an Android 15/16 device: native height known, but no safe-area
+          // CSS insets injected (the broken edge-to-edge case)
+          getInfo: async () => ({ height: 24, overlays: false, visible: true, style: 'LIGHT', color: '#0f0f13' }),
         },
       },
     };
@@ -439,6 +442,14 @@ await section('status bar', async () => {
   const onLoad = await page.evaluate(() => window.__sbCalls);
   ok('status bar overlay disabled on launch (app below the bar)', onLoad.some(c => c[0] === 'overlay' && c[1].overlay === false), JSON.stringify(onLoad));
   ok('status bar color + icon style set on launch', onLoad.some(c => c[0] === 'style') && onLoad.some(c => c[0] === 'bg'), JSON.stringify(onLoad));
+  // no safe-area CSS insets available (env/injected var both 0) → the native height
+  // fallback keeps the app below the status bar
+  await page.waitForTimeout(800);
+  const sbFallback = await page.evaluate(() => ({
+    varSet: getComputedStyle(document.documentElement).getPropertyValue('--sat-fallback').trim(),
+    navPad: getComputedStyle(document.querySelector('nav')).paddingTop,
+  }));
+  ok('status bar height fallback applied (nav padded below bar)', sbFallback.varSet === '24px' && sbFallback.navPad === '24px', JSON.stringify(sbFallback));
   // theme switch re-applies the status bar to match
   await openSettings(page);
   await page.locator('#themeDark').click();

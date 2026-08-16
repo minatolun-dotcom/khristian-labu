@@ -50,7 +50,11 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse
 input,textarea,select,button{font-family:inherit;}
 
 /* ─── NAV ─── */
-nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--border);padding:0 2rem;padding-top:env(safe-area-inset-top);transition:background var(--transition);}
+/* ponytail: Android 15/16 force edge-to-edge (transparent status bar), and the WebView
+   doesn't always report env(safe-area-inset-top). Fall back to Capacitor's injected
+   --safe-area-inset-top, then to the native StatusBar height (--sat-fallback). */
+:root{--sat:max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px), var(--sat-fallback, 0px));}
+nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-filter:blur(20px) saturate(180%);-webkit-backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid var(--border);padding:0 2rem;padding-top:var(--sat);transition:background var(--transition);}
 [data-theme="light"] nav{background:rgba(248,249,252,0.9);}
 .nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;height:64px;}
 .logo{display:flex;align-items:center;gap:10px;font-family:'Outfit',sans-serif;font-weight:800;font-size:1.3rem;cursor:pointer;user-select:none;letter-spacing:-0.02em;transition:all 0.3s ease;}
@@ -358,7 +362,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .ota-progress .op-track{height:6px;border-radius:999px;background:var(--bg3);overflow:hidden;}
 .ota-progress .op-fill{height:100%;width:0%;border-radius:999px;background:var(--accent);transition:width 0.2s ease;}
 .toast.success{border-color:var(--green);}.toast.error{border-color:var(--red);}
-.update-banner{position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:300;display:flex;align-items:center;gap:0.75rem;padding:0.55rem 0.6rem 0.55rem 1rem;background:var(--card);border:1px solid var(--accent);border-radius:999px;box-shadow:0 10px 30px rgba(0,0,0,0.35);font-size:0.85rem;max-width:calc(100% - 2rem);}
+.update-banner{position:fixed;top:calc(64px + var(--sat, 0px));left:50%;transform:translateX(-50%);z-index:300;display:flex;align-items:center;gap:0.75rem;padding:0.55rem 0.6rem 0.55rem 1rem;background:var(--card);border:1px solid var(--accent);border-radius:999px;box-shadow:0 10px 30px rgba(0,0,0,0.35);font-size:0.85rem;max-width:calc(100% - 2rem);}
 .update-banner[hidden]{display:none;}
 .upd-text{color:var(--text);white-space:nowrap;}
 .upd-text b{color:var(--accent);}
@@ -366,7 +370,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .upd-btn:hover{filter:brightness(1.1);}
 .upd-close{background:none;border:none;color:var(--text3);font-size:1.25rem;cursor:pointer;line-height:1;padding:0 0.2rem;}
 .upd-close:hover{color:var(--text);}
-@media(max-width:768px){.update-banner{top:58px;font-size:0.8rem;}}
+@media(max-width:768px){.update-banner{top:calc(58px + var(--sat, 0px));font-size:0.8rem;}}
 
 /* ─── CONFIRM DIALOG ─── */
 .confirm-body{text-align:center;padding:1rem 0;}
@@ -374,17 +378,17 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .confirm-body p{color:var(--text2);line-height:1.5;}
 
 @media(max-width:768px){
-  nav{padding:0 1rem;}
+  nav{padding:0 1rem;padding-top:var(--sat);}
   .nav-inner{height:56px;}
   .logo span{font-size:1rem;}
   .logo img{width:32px;height:32px;}
   .search-toggle{display:flex;}
-  .search-box{position:fixed;top:0;left:0;right:0;width:100%;height:54px;padding:0 0.5rem;background:var(--bg);border-bottom:1px solid var(--border);z-index:200;display:flex;align-items:center;opacity:0;pointer-events:none;transform:translateY(-100%);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);top:env(safe-area-inset-top);height:calc(54px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top);}
+  .search-box{position:fixed;top:0;left:0;right:0;width:100%;height:54px;padding:0 0.5rem;background:var(--bg);border-bottom:1px solid var(--border);z-index:200;display:flex;align-items:center;opacity:0;pointer-events:none;transform:translateY(-100%);transition:all 0.3s cubic-bezier(0.4,0,0.2,1);height:calc(54px + var(--sat, 0px));padding-top:var(--sat, 0px);}
   [data-theme="light"] .search-box{background:rgba(248,249,252,0.97);}
   .search-box.active{opacity:1;pointer-events:auto;transform:translateY(0);}
   .search-box .search-icon{position:static !important;flex-shrink:0;width:20px;height:20px;margin-left:12px;margin-right:8px;transform:none !important;left:auto !important;top:auto !important;}
   .search-box input{flex:1;padding:10px 12px 10px 8px;font-size:0.95rem;height:40px;box-sizing:border-box;}
-  .search-results .si-toolbar{top:calc(54px + env(safe-area-inset-top));padding-top:0.6rem;padding-bottom:0.6rem;}
+  .search-results .si-toolbar{top:calc(54px + var(--sat, 0px));padding-top:0.6rem;padding-bottom:0.6rem;}
   .theme-toggle,.admin-btn{width:36px;height:36px;}
   .hero{padding:2rem 1rem 1rem;}
   .hero h1{font-size:1.8rem;}
@@ -967,7 +971,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.4.0'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.4.1'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -2381,15 +2385,41 @@ function applyTheme() {
 
 // ponytail: the native Android status bar follows the app theme. Content is kept
 // below the bar (setOverlaysWebView(false) — no-op on Android 15+, where edge-to-
-// edge is enforced and the CSS env(safe-area-inset-top) padding on the nav takes
-// over), the bar's background matches the theme, and icons stay readable.
+// edge is enforced), the bar's background matches the theme, and icons stay readable.
+// On Android 15/16 the WebView may not report env(safe-area-inset-top) at all, so we
+// also set --sat-fallback from the plugin's getInfo().height — the CSS then uses the
+// max of env(), Capacitor's injected --safe-area-inset-top, and this fallback.
 function applyStatusBar(isLight) {
   const SB = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.StatusBar;
   if (!SB) return; // web build / test stub
   SB.setOverlaysWebView({ overlay: false }).catch(() => {});
   SB.setBackgroundColor({ color: isLight ? '#f8f9fc' : '#0f0f13' }).catch(() => {});
   SB.setStyle({ style: isLight ? 'DARK' : 'LIGHT' }).catch(() => {});
+  syncStatusBarFallback();
+  setTimeout(syncStatusBarFallback, 400); // re-check once layout settles
 }
+
+// Guaranteed status-bar height: the plugin measures it natively. Apply it as extra
+// top padding only when Capacitor's own injected --safe-area-inset-top isn't present
+// (the WebView isn't reporting insets — exactly the broken Android 15/16 case). max()
+// in CSS means this can never double-pad when env()/--safe-area-inset-top do work.
+function syncStatusBarFallback() {
+  const SB = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.StatusBar;
+  if (!SB || !SB.getInfo) return;
+  SB.getInfo().then(info => {
+    const h = info && typeof info.height === 'number' ? info.height : 0;
+    // Check Capacitor's injected var (not the computed padding) to avoid a feedback
+    // loop where applying the fallback makes the next check skip it.
+    const injected = getComputedStyle(document.documentElement).getPropertyValue('--safe-area-inset-top').trim();
+    const injectedPx = parseFloat(injected) || 0;
+    if (h > 0 && injectedPx <= 0) {
+      document.documentElement.style.setProperty('--sat-fallback', h + 'px');
+    } else {
+      document.documentElement.style.removeProperty('--sat-fallback');
+    }
+  }).catch(() => {});
+}
+window.addEventListener('resize', syncStatusBarFallback);
 
 function setTheme(mode) {
   localStorage.setItem('labu-theme', mode);

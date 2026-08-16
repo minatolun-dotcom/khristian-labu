@@ -1,6 +1,6 @@
 {
-  "version": "1.4.0",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.0/khristian-labu.apk",
-  "notes": "Signed OTA updates (tamper-proof in-app updates), Android status bar fix (app no longer under the bar), lyrics stop cleanly above the reader bar, reader bar hidden for one-screen songs, iOS home-screen icon, load-failure retry, playlist-scoped search, and more. See release notes on GitHub.",
-  "updatedAt": "2026-08-16T12:00:00Z"
+  "version": "1.4.1",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.1/khristian-labu.apk",
+  "notes": "Status bar fix (Android 15/16 edge-to-edge): the app now reliably renders below the status bar via a three-layer safe-area fallback (env() + Capacitor's injected inset + native status-bar height). Pure content update — applies in-app via OTA, no APK reinstall needed.",
+  "updatedAt": "2026-08-16T13:00:00Z"
 }
