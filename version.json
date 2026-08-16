@@ -2,5 +2,8 @@
   "version": "1.5.5",
   "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.5.5/khristian-labu.apk",
   "notes": "OTA diagnostics on the update banner (shows exactly which step fails), banner Download button opens via the system browser, and Settings now labels App version vs latest available.",
-  "updatedAt": "2026-08-16T19:10:00Z"
+  "updatedAt": "2026-08-16T19:10:00Z",
+  "sessionKey": "hz9M+YwqgBT/fuJIsfRpCQ==:gebTita8sHz8uSa1w/UjFPqvw62Y/mkyJ4h9hz6Ivg7jkD1F5j8qGvX0bOJh3w8U2Oc2asJ4hnksOiCbYp2GRJ9M8pHaEnJvq7vzSKxAQco+hUiQ9rRqaMnEfm5JfyDh4GdrRo0uXzL/txZCP/qKqcpANfvkdEtiiMUUTaPuYWEKNONoK11snK8AqfxYbRgyF74o4vI1mfPVSDj225IWmEELHLmiVF5V+xsXGIKwpT//9rrufgDtgrK96twTKJR5S1U8ON//9rzCwGyGac3vmyYPX+FJujtK+uZtC3ze77/oCwM3pAgv/z8G8rU4SDwj4xT5jN9QaQ/7hD4I8H0p9w==",
+  "checksum": "9fad46cd6c24ba69267981c2617ac38622332e3d0b9a28eb73d57314aac16280c4d9805b77c0443fd6a002c4c4988846755db453a971d327df9b0ac3852a3958d9b0d2d609cbc00c881ebf7923ce67b39e436949f8dac396322ce689c9bc7748519c4e0118acf0cf01d31d80c61a086b42698f5965d42279fdbb62852e733f70df7a95641869d08f3e18d7b2241aa0cfd4775fe422032fce34a2ea6637032e9c4ff2a55a10bffe5a5fdf5a774b60750cfbeacbc3c5453e3637086bff2a3f57186d01e40f4bdd503032a50df6ed97f20b5bbba8bb44ce32d01178dda3371f78c52f16d0ec628562b56a5b7fd4ed091ee025bdb0bcf42ae604f3478ecdeb0c9ea0",
+  "otaVersion": "1.5.5"
 }
