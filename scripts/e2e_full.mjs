@@ -867,6 +867,85 @@ await section('ota update', async () => {
   const dl4 = await page4.evaluate(() => window.__otaCalls.filter(c => c[0] === 'download').length);
   ok('signed release with unreachable session data skips download, shows APK banner', dl4 === 0 && (await page4.locator('#updBtn').getAttribute('href')).includes('v6.6.6/khristian-labu.apk'), 'downloads=' + dl4);
   await page4.close();
+
+  // OTA step diagnostics: the banner shows exactly which step ran/failed, so a
+  // device-side failure is visible instead of console-only
+  const page5 = await newPage();
+  await page5.addInitScript(() => {
+    window.Capacitor = { Plugins: { CapacitorUpdater: {
+      notifyAppReady: async () => {},
+      addListener: async () => ({ remove: async () => {} }),
+      download: async () => { throw new Error('cannot decrypt signed bundle'); },
+      set: async () => {},
+    } } };
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (url, opts) => {
+      if (String(url).includes('version.json')) {
+        return { ok: true, json: async () => ({ version: '5.5.5', apkUrl: 'https://github.com/x/releases/download/v5.5.5/khristian-labu.apk', sessionKey: 'sk5', checksum: 'cs5', otaVersion: '5.5.5' }) };
+      }
+      return realFetch(url, opts);
+    };
+  });
+  await waitLoaded(page5);
+  await page5.evaluate(() => { localStorage.removeItem('labu_ota_last_check'); checkOtaUpdate(true); });
+  await page5.waitForSelector('#confirmModal.open', { timeout: 10000 });
+  await page5.locator('#confirmBtn').click();
+  await page5.waitForSelector('#updateBanner:not([hidden])', { timeout: 10000 });
+  const diag5 = await page5.evaluate(() => ({
+    stepShown: getComputedStyle(document.getElementById('otaStepDetail')).display !== 'none',
+    stepText: document.getElementById('otaStepDetail').textContent,
+    errShown: getComputedStyle(document.getElementById('otaErrorDetail')).display !== 'none',
+    errText: document.getElementById('otaErrorDetail').textContent,
+  }));
+  ok('OTA diagnostics: step trace visible on failure', diag5.stepShown && diag5.stepText.includes('5.5.5'), diag5.stepText);
+  ok('OTA diagnostics: real error text visible on failure', diag5.errShown && diag5.errText.includes('OTA error'), diag5.errText);
+  // dismiss clears the diagnostics
+  await page5.evaluate(() => dismissUpdate());
+  const diag5b = await page5.evaluate(() => ({
+    step: getComputedStyle(document.getElementById('otaStepDetail')).display,
+    err: getComputedStyle(document.getElementById('otaErrorDetail')).display,
+    bannerHidden: document.getElementById('updateBanner').hidden,
+  }));
+  ok('dismiss hides banner and clears diagnostics', diag5b.bannerHidden && diag5b.step === 'none' && diag5b.err === 'none');
+  await page5.close();
+
+  // banner Download button: inside the APK it must hand the URL to the native
+  // AppLauncher (system browser) instead of the WebView; on web it stays a plain link
+  const page6 = await newPage();
+  await page6.addInitScript(() => {
+    window.__launch = null;
+    window.Capacitor = {
+      isNativePlatform: () => true,
+      Plugins: { AppLauncher: { openUrl: async o => { window.__launch = o.url; } } },
+    };
+  });
+  await waitLoaded(page6);
+  await page6.evaluate(() => showUpdateBanner('4.4.4', 'https://github.com/x/releases/download/v4.4.4/khristian-labu.apk'));
+  const ret = await page6.evaluate(() => {
+    const a = document.getElementById('updBtn');
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+    const cancelled = !a.dispatchEvent(ev);
+    return { cancelled, launched: window.__launch, href: a.getAttribute('href') };
+  });
+  ok('APK: banner Download button opens via native AppLauncher', ret.launched && ret.launched.includes('v4.4.4/khristian-labu.apk') && ret.cancelled, JSON.stringify(ret));
+  await page6.close();
+
+  // Settings: shows the latest offered version next to the installed one
+  const page7 = await newPage();
+  await waitLoaded(page7);
+  await openSettings(page7);
+  const ver7 = await page7.evaluate(() => ({
+    label: document.getElementById('appVersion').parentElement.textContent.trim(),
+    latestHidden: getComputedStyle(document.getElementById('latestVersion')).display === 'none',
+  }));
+  ok('Settings labels installed version, no latest shown before check', ver7.label.includes('App version') && ver7.latestHidden, ver7.label);
+  await page7.evaluate(() => showUpdateBanner('3.3.3', 'https://github.com/x/releases/download/v3.3.3/khristian-labu.apk'));
+  const ver7b = await page7.evaluate(() => ({
+    latestShown: getComputedStyle(document.getElementById('latestVersion')).display !== 'none',
+    latestText: document.getElementById('latestVersionVal').textContent,
+  }));
+  ok('Settings shows latest version when an update is available', ver7b.latestShown && ver7b.latestText === '3.3.3', JSON.stringify(ver7b));
+  await page7.close();
 });
 
 // ═══════════════ 10. HISTORY API ═══════════════

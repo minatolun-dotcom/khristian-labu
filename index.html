@@ -558,9 +558,10 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 </nav>
 <div id="updateBanner" class="update-banner" hidden>
   <span class="upd-text">New version <b id="updVer"></b> available</span>
-  <a id="updBtn" class="upd-btn" target="_blank" rel="noopener">Update</a>
+  <a id="updBtn" class="upd-btn" target="_blank" rel="noopener" onclick="return openApkDownload(this.href)">Update</a>
   <button class="upd-close" onclick="dismissUpdate()" aria-label="Dismiss">×</button>
-  <div id="otaErrorDetail" style="display:none;margin-top:6px;font-size:0.72rem;color:var(--amber);word-break:break-word;"></div>
+  <div id="otaStepDetail" style="display:none;margin-top:6px;font-size:0.72rem;color:var(--text3);word-break:break-word;"></div>
+  <div id="otaErrorDetail" style="display:none;margin-top:4px;font-size:0.72rem;color:var(--amber);word-break:break-word;"></div>
 </div>
 <div class="modal-overlay" id="sidebarModal" onclick="if(event.target===this)closeSidebar()">
   <div class="modal" style="max-width:360px;">
@@ -978,7 +979,7 @@ Second verse line 2"></textarea>
       <button class="sidebar-item" onclick="resetLocalEdits()" style="background:var(--bg3);border-radius:8px;padding:0.75rem 1rem;border:1px solid var(--border);color:var(--red);">
         <span class="si-icon" style="color:var(--red);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></span><span class="si-label" style="color:var(--red);">Reset Local Edits</span>
       </button>
-      <div style="text-align:center;font-size:0.75rem;color:var(--text3);padding:0.4rem 0 0.25rem;">Version <span id="appVersion"></span></div>
+      <div style="text-align:center;font-size:0.75rem;color:var(--text3);padding:0.4rem 0 0.25rem;">App version <span id="appVersion"></span><span id="latestVersion" style="display:none;"> · Latest: <span id="latestVersionVal"></span></span></div>
     </div>
   </div>
 </div>
@@ -1010,7 +1011,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.4'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.5'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1139,6 +1140,36 @@ function compareVer(a, b) {
 function dismissUpdate() {
   try { localStorage.setItem('labu_update_dismissed', document.getElementById('updVer').textContent); } catch (e) {}
   const b = document.getElementById('updateBanner'); if (b) b.hidden = true;
+  const sd = document.getElementById('otaStepDetail'); if (sd) sd.style.display = 'none';
+  const ed = document.getElementById('otaErrorDetail'); if (ed) ed.style.display = 'none';
+}
+// ponytail: show the update banner consistently (web + OTA-fallback) and surface the
+// latest version in Settings so users can tell installed vs offered versions apart.
+function showUpdateBanner(latest, apkUrl) {
+  document.getElementById('updVer').textContent = latest;
+  document.getElementById('updBtn').href = apkUrl || ('https://github.com/' + REPO + '/releases/download/v' + latest + '/khristian-labu.apk');
+  document.getElementById('updateBanner').hidden = false;
+  const lv = document.getElementById('latestVersion');
+  if (lv) { document.getElementById('latestVersionVal').textContent = latest; lv.style.display = ''; }
+}
+// ponytail: banner Download button — inside the APK, hand the URL to the native
+// AppLauncher so it opens in the system browser / download manager instead of the
+// WebView (which can silently swallow APK downloads). Web keeps the plain link.
+function openApkDownload(url) {
+  const native = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  const launcher = native && window.Capacitor.Plugins && window.Capacitor.Plugins.AppLauncher;
+  if (launcher && launcher.openUrl) {
+    launcher.openUrl({ url }).catch(() => { window.open(url, '_blank'); });
+    return false; // handled natively — don't follow the <a> default
+  }
+  return true; // let the link work normally on web
+}
+// ponytail: live OTA diagnostics — each step of the in-app update writes its progress
+// to the banner so a device-side failure shows EXACTLY where it stopped (previously
+// console-only, which made every failure look like "no update").
+function otaStep(msg) {
+  const el = document.getElementById('otaStepDetail');
+  if (el) { el.textContent = 'Step: ' + msg; el.style.display = 'block'; }
 }
 function otaPlugin() {
   return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorUpdater) || null;
@@ -1217,12 +1248,15 @@ async function fetchUpdateInfo() {
 async function checkOtaUpdate(force) {
   const Up = otaPlugin();
   if (!Up) return;
+  otaStep('starting check');
   const last = parseInt(localStorage.getItem('labu_ota_last_check') || '0', 10);
   if (!force && Date.now() - last < 24 * 60 * 60 * 1000) return; // at most one check/day
   localStorage.setItem('labu_ota_last_check', String(Date.now()));
+  otaStep('fetching version info');
   const info = await fetchUpdateInfo();
-  if (!info) { if (force) toast('Could not check for updates', 'error'); return; }
+  if (!info) { otaStep('failed: could not reach update server'); if (force) toast('Could not check for updates', 'error'); return; }
   const latest = info.version;
+  otaStep('latest is ' + latest + ', installed ' + APP_VERSION);
   if (compareVer(latest, APP_VERSION) <= 0) {
     if (force) toast('You are on the latest version (' + APP_VERSION + ')', 'success');
     return;
@@ -1244,7 +1278,9 @@ async function checkOtaUpdate(force) {
   // the PREVIOUS release's session data, which would decrypt-fail the new bundle.
   if (info.session && info.session.sessionKey && info.session.checksum && info.session.version === latest) {
     sessionKey = info.session.sessionKey; checksum = info.session.checksum;
+    otaStep('session data loaded from version.json');
   } else if (info.assets.includes('ota-session.json')) {
+    otaStep('fetching session data from release');
     try {
       const sessUrl = info.sessionUrl || ('https://github.com/' + REPO + '/releases/download/' + info.tag + '/ota-session.json');
       // ponytail: via CapacitorHttp when inside the APK — plain fetch dies on CORS here.
@@ -1278,13 +1314,16 @@ async function checkOtaUpdate(force) {
         // unsigned (legacy) bundles install with no verification.
         const dOpts = { version: latest, url: url };
         if (sessionKey && checksum) { dOpts.sessionKey = sessionKey; dOpts.checksum = checksum; }
+        otaStep('downloading bundle');
         const v = await Up.download(dOpts);
+        otaStep('applying update');
         await Up.set(v); // applies the new bundle and reloads the app in place
       } catch (e) {
         // ponytail: OTA can't install a signed bundle on an APK built before signing
         // (no public key) — and a failed/rolled-back install shows nothing. Fall back
         // to the APK-download banner so those users can still get the new version.
         const errMsg = (e && e.message) ? e.message : String(e);
+        otaStep('failed installing ' + latest + ': ' + errMsg.slice(0, 120));
         toast('In-app update failed — use the Download button instead', 'error');
         console.error('[OTA update]', errMsg);
         // ponytail: surface the REAL failure reason on screen (previously console-only,
@@ -1295,9 +1334,7 @@ async function checkOtaUpdate(force) {
           if (de) { de.textContent = 'OTA error: ' + errMsg.slice(0, 200); de.style.display = 'block'; }
         } catch (e2) {}
         try {
-          document.getElementById('updVer').textContent = latest;
-          document.getElementById('updBtn').href = info.apkUrl;
-          document.getElementById('updateBanner').hidden = false;
+          showUpdateBanner(latest, info.apkUrl);
         } catch (e2) { /* banner is best-effort */ }
       } finally {
         if (prog) prog.classList.remove('show');
@@ -1315,9 +1352,7 @@ async function manualCheckUpdate() {
   const latest = info.version;
   if (compareVer(latest, APP_VERSION) > 0) {
     if (localStorage.getItem('labu_update_dismissed') !== latest) {
-      document.getElementById('updVer').textContent = latest;
-      document.getElementById('updBtn').href = info.apkUrl;
-      document.getElementById('updateBanner').hidden = false;
+      showUpdateBanner(latest, info.apkUrl);
     }
     toast('Update available: v' + latest, 'success');
   } else {
@@ -1332,9 +1367,7 @@ async function checkForUpdate() {
   const latest = info.version;
   if (!latest || compareVer(latest, APP_VERSION) <= 0) return;
   if (localStorage.getItem('labu_update_dismissed') === latest) return;
-  document.getElementById('updVer').textContent = latest;
-  document.getElementById('updBtn').href = info.apkUrl;
-  document.getElementById('updateBanner').hidden = false;
+  showUpdateBanner(latest, info.apkUrl);
 }
 
 // ─── INDEXEDDB (replaces the localStorage full-corpus store, which has a ~5MB quota) ───
