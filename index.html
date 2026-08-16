@@ -4,14 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Khristian Labu - Gospel Songbook</title>
-<meta name="description" content="Khristian Labu — gospel songbook app: 5,700+ hymns across 18 songbooks in 6 collections (Kuki, Zomi, Mizo). Search, favorites, playlists. Works offline, free.">
+<meta name="description" content="Khristian Labu — gospel songbook app: 5,700+ hymns across 17 songbooks in 6 collections (Kuki, Zomi, Mizo). Search, favorites, playlists. Works offline, free.">
 <meta property="og:title" content="Khristian Labu - Gospel Songbook">
-<meta property="og:description" content="5,700+ hymns across 18 songbooks in 6 collections. Works offline, free.">
+<meta property="og:description" content="5,700+ hymns across 17 songbooks in 6 collections. Works offline, free.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://minatolun-dotcom.github.io/khristian-labu/">
 <meta property="og:image" content="https://minatolun-dotcom.github.io/khristian-labu/icon-512.png">
 <meta name="twitter:card" content="summary">
 <link rel="icon" type="image/png" href="logo.png">
+<link rel="apple-touch-icon" href="icon-192.png"> <!-- iOS ignores manifest icons; needs a real link for Add-to-Home-Screen -->
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#0f0f13">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -192,9 +193,9 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .search-results .si-more{padding:1rem;text-align:center;color:var(--text3);font-size:0.8rem;}
 
 /* ─── SONG DETAIL ─── */
-.song-detail{max-width:700px;margin:0 auto;padding:2rem;padding-bottom:calc(96px + env(safe-area-inset-bottom));position:relative;z-index:1;will-change:transform;}
+.song-detail{max-width:700px;margin:0 auto;padding:2rem;padding-bottom:calc(140px + env(safe-area-inset-bottom));position:relative;z-index:1;will-change:transform;}
 /* ponytail: ghost neighbor layer behind the detail card for live swipe preview. */
-.song-detail-ghost{position:absolute;top:0;left:0;right:0;z-index:0;opacity:0;pointer-events:none;will-change:transform;max-width:700px;margin:0 auto;padding:2rem;}
+.song-detail-ghost{position:absolute;top:0;left:0;right:0;z-index:0;opacity:0;pointer-events:none;will-change:transform;max-width:700px;margin:0 auto;padding:2rem;padding-bottom:calc(140px + env(safe-area-inset-bottom));}
 #detailView{position:relative;}
 #detailView.swiping{overflow:hidden;}
 /* ponytail: depth cue while dragging — front card lifts with a shadow + slight scale. */
@@ -246,6 +247,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 /* ponytail: per-song reader controls in one bottom row (font size + line spacing).
    Both persist via localStorage. */
 .reader-controls{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));z-index:40;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:8px 16px;box-shadow:var(--shadow);max-width:calc(100vw - 24px);flex-wrap:nowrap;justify-content:center;overflow-x:auto;}
+.reader-controls.hidden{display:none;}
 .reader-controls .rc-sep{width:1px;height:20px;background:var(--border);flex:none;}
 .reader-controls svg{width:16px;height:16px;color:var(--text3);flex:none;}
 .reader-controls input[type=range]{width:110px;accent-color:var(--accent);flex:none;}
@@ -415,8 +417,8 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
   .song-num{min-width:32px;height:32px;font-size:0.75rem;}
   .song-info{min-width:0;overflow:hidden;}
   .song-title{overflow-wrap:break-word;word-break:break-word;white-space:normal;}
-  .song-detail{padding:1.25rem 1rem;padding-bottom:calc(72px + env(safe-area-inset-bottom));}
-  .song-detail-ghost{padding:1.25rem 1rem;padding-bottom:calc(72px + env(safe-area-inset-bottom));}
+  .song-detail{padding:1.25rem 1rem;padding-bottom:calc(110px + env(safe-area-inset-bottom));}
+  .song-detail-ghost{padding:1.25rem 1rem;padding-bottom:calc(110px + env(safe-area-inset-bottom));}
   .song-detail-header{gap:0.5rem;}
   .song-nav-btn{width:38px;height:38px;}
   .song-nav-btn svg{width:18px;height:18px;}
@@ -557,9 +559,10 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
     <p id="heroDesc">1,407 hymns and songs of faith</p>
     <div class="stats">
       <div class="stat"><div class="stat-num" id="statSongs">1,407</div><div class="stat-label">Songs</div></div>
-      <div class="stat"><div class="stat-num" id="statBooks">4</div><div class="stat-label">Songbooks</div></div>
+      <div class="stat"><div class="stat-num" id="statBooks">17</div><div class="stat-label">Songbooks</div></div>
       <div class="stat"><div class="stat-num">∞</div><div class="stat-label">Blessings</div></div>
     </div>
+    <button id="retryDataBtn" style="display:none;margin:0.5rem auto 0;" class="group-back-btn" onclick="retryLoad()">↻&nbsp; Retry</button>
   </div>
   <div class="categories" id="groupGrid"></div>
   <div class="categories" id="categoryGrid" style="display:none"></div>
@@ -964,7 +967,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.3.0'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.4.0'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1107,6 +1110,18 @@ async function checkOtaUpdate(force) {
       return;
     }
     const url = 'https://github.com/' + REPO + '/releases/download/' + d.tag_name + '/www-latest.zip';
+    // ponytail: releases are code-signed (CI encrypts www-latest.zip with the
+    // OTA_SIGNING_PRIVATE_KEY secret); the per-bundle sessionKey/checksum ride in
+    // the ota-session.json asset. Missing session data = unsigned legacy bundle:
+    // pass nothing and the plugin installs it as-is (older APKs have no public key).
+    let sessionKey = '', checksum = '';
+    try {
+      const sess = (d.assets || []).find(a => a.name === 'ota-session.json');
+      if (sess) {
+        const j = await (await fetch(sess.browser_download_url)).json();
+        sessionKey = j.sessionKey || ''; checksum = j.checksum || '';
+      }
+    } catch (e) { /* unsigned fallback below */ }
     // ponytail: ask first (per the app's UX), then download + reload in place.
     confirmDangerous('Update to version ' + latest + ' is available. Download and restart the app now?', 'Update now', async () => {
       // live download progress via the plugin's 'download' events (0-100%).
@@ -1123,7 +1138,11 @@ async function checkOtaUpdate(force) {
       }
       if (prog) prog.classList.add('show');
       try {
-        const v = await Up.download({ version: latest, url: url });
+        // ponytail: pass the per-bundle session data only when the release is signed;
+        // unsigned (legacy) bundles install with no verification.
+        const dOpts = { version: latest, url: url };
+        if (sessionKey && checksum) { dOpts.sessionKey = sessionKey; dOpts.checksum = checksum; }
+        const v = await Up.download(dOpts);
         await Up.set(v); // applies the new bundle and reloads the app in place
       } catch (e) {
         toast('Update failed — please try again later', 'error');
@@ -1353,6 +1372,19 @@ function showLoadError(err) {
   if (d) d.textContent = msg;
   const s = document.getElementById('statSongs');
   if (s) s.textContent = '!';
+  const b = document.getElementById('retryDataBtn');
+  if (b) b.style.display = ''; // offer a one-tap retry instead of a manual reload
+}
+// ponytail: retry the corpus load in place — loadSongs() reassigns SONGS and only
+// marks songsReady after the whole chain succeeds, so re-running it is safe even
+// if the first attempt failed partway through.
+async function retryLoad() {
+  const b = document.getElementById('retryDataBtn'); if (b) b.style.display = 'none';
+  const d = document.getElementById('heroDesc'); if (d) d.textContent = 'Loading songs…';
+  const s = document.getElementById('statSongs'); if (s) s.textContent = '…';
+  songsReady = false;
+  songsDone = loadSongs().catch(e => console.error('[Khristian Labu] retry failed:', e));
+  await songsDone;
 }
 
 function saveSongs() {
@@ -1364,7 +1396,9 @@ function updateStats() {
   CAT_ORDER.forEach(k => total += (SONGS[k]?.songs?.length || 0));
   const s = total.toLocaleString();
   document.getElementById('statSongs').textContent = s;
-  document.getElementById('statBooks').textContent = GROUPS.length;
+  // ponytail: GROUPS are collections (6); the "Songbooks" stat counts the actual
+  // books inside them (17) so the hero isn't misleading.
+  document.getElementById('statBooks').textContent = GROUPS.reduce((n, g) => n + ((g.books && g.books.length) || 0), 0);
   document.getElementById('heroDesc').textContent = s + ' hymns and songs of faith';
   const opt = document.getElementById('exportAllOption');
   if (opt) opt.textContent = 'All Songs (' + s + ')';
@@ -1409,8 +1443,33 @@ let _listCache = {};
 // ponytail: per-song reader sizing, persisted across sessions.
 let readerFont = parseInt(localStorage.getItem('labu-reader-font') || '17', 10);
 let readerLH = parseFloat(localStorage.getItem('labu-reader-lh') || '1.6');
-function setReaderFont(v){ readerFont = parseInt(v,10); localStorage.setItem('labu-reader-font', v); document.documentElement.style.setProperty('--reader-font', v+'px'); const d=document.getElementById('songDetail'); if(d) d.style.setProperty('--reader-font', v+'px'); const t=document.getElementById('readerFontVal'); if(t) t.textContent=v+'px'; }
-function setReaderLH(v){ readerLH = parseFloat(v); localStorage.setItem('labu-reader-lh', v); document.documentElement.style.setProperty('--reader-lh', v); const d=document.getElementById('songDetail'); if(d) d.style.setProperty('--reader-lh', v); }
+function setReaderFont(v){ readerFont = parseInt(v,10); localStorage.setItem('labu-reader-font', v); document.documentElement.style.setProperty('--reader-font', v+'px'); const d=document.getElementById('songDetail'); if(d) d.style.setProperty('--reader-font', v+'px'); const t=document.getElementById('readerFontVal'); if(t) t.textContent=v+'px'; scheduleReaderControlsCheck(); }
+function setReaderLH(v){ readerLH = parseFloat(v); localStorage.setItem('labu-reader-lh', v); document.documentElement.style.setProperty('--reader-lh', v); const d=document.getElementById('songDetail'); if(d) d.style.setProperty('--reader-lh', v); scheduleReaderControlsCheck(); }
+
+// ponytail: when a song's lyrics fit on one screen there is nothing to scroll, so
+// the floating reader bar (font-size + line-spacing sliders) is hidden — it would
+// otherwise hover over the page for no reason. Re-checked on resize/orientation
+// change and whenever the font size or line height changes.
+function scheduleReaderControlsCheck() {
+  requestAnimationFrame(() => requestAnimationFrame(updateReaderControls));
+}
+function updateReaderControls() {
+  const bar = document.querySelector('#readerControlsHost .reader-controls');
+  if (!bar || currentView !== 'detail') return;
+  const detail = document.getElementById('songDetail');
+  const verses = detail ? detail.querySelectorAll('.verse') : [];
+  const last = verses[verses.length - 1];
+  if (!last) return;
+  // Absolute bottom of the last lyric line (scroll-independent). ~56px ≈ the bar's
+  // height (38px) + its 12px bottom offset + a little margin.
+  const lastBottom = last.getBoundingClientRect().bottom + window.scrollY;
+  const fits = lastBottom <= window.innerHeight - 56;
+  bar.classList.toggle('hidden', fits);
+}
+// Orientation/size changes (rotation, fold, split-screen) can make a song fit or
+// stop fitting — re-evaluate the reader bar while the reader is open.
+window.addEventListener('resize', () => { if (currentView === 'detail') scheduleReaderControlsCheck(); });
+window.addEventListener('orientationchange', () => { if (currentView === 'detail') scheduleReaderControlsCheck(); });
 
 function showView(v) {
   currentView = v;
@@ -2061,6 +2120,8 @@ function renderSongDetail(song, dir) {
   const saved = _songScroll[song.id];
   if (dir || saved == null) window.scrollTo({top:0,behavior:'smooth'});
   else requestAnimationFrame(() => window.scrollTo(0, saved));
+  // ponytail: hide the reader bar when the lyrics fit on one screen (nothing to scroll).
+  scheduleReaderControlsCheck();
 }
 
 // ponytail: build a plain-text copy of a song (title + verses), used by copy/share.
@@ -2165,18 +2226,36 @@ async function doSearch(q) {
   const prevKind = currentListKind;
   showView('search');
   currentListKind = 'search';
-  // ponytail: scope search to the open songbook, or to all sub-books of the
-  // open main songbook (group), else search everything.
-  let keys = CAT_ORDER, scopeName = '';
+  // ponytail: scope search to the open songbook, to all sub-books of the open
+  // main songbook (group), or — for custom lists — to the open playlist /
+  // favorites / history list itself; else search everything.
+  let keys = CAT_ORDER, scopeName = '', scopedList = null;
   if (prevKind === 'cat' && currentCat) { keys = [currentCat]; scopeName = SONGS[currentCat].info.name; }
+  else if (prevKind === 'playlist' && currentPlaylistId) {
+    const pl = playlists.find(p => p.id === currentPlaylistId);
+    scopeName = pl ? pl.name : 'playlist';
+    scopedList = currentList;
+  }
+  else if (prevKind === 'fav') { scopeName = 'Favorites'; scopedList = currentList; }
+  else if (prevKind === 'recent') { scopeName = 'History'; scopedList = currentList; }
   else if (currentGroup) {
     const g = GROUPS.find(x => x.id === currentGroup);
     if (g && g.books.length) { keys = g.books; scopeName = g.name; }
   }
+  const pairs = [];
+  if (scopedList) {
+    scopedList.forEach(s => pairs.push({
+      song: s, key: s.cat,
+      catName: s.catName || (SONGS[s.cat] && SONGS[s.cat].info && SONGS[s.cat].info.name) || s.cat
+    }));
+  } else {
+    keys.forEach(key => {
+      if (!SONGS[key] || !SONGS[key].songs) return;
+      SONGS[key].songs.forEach(song => pairs.push({ song, key, catName: SONGS[key].info.name }));
+    });
+  }
   const results = [];
-  keys.forEach(key => {
-    if (!SONGS[key] || !SONGS[key].songs) return;
-    SONGS[key].songs.forEach(song => {
+  pairs.forEach(({ song, key, catName }) => {
       const titleHit = song._l.includes(q);
       const authorHit = normText(song.author).includes(q);
       const keyHit = normText(song.key).includes(q);
@@ -2188,7 +2267,7 @@ async function doSearch(q) {
       else if (searchFilter === 'number') pass = numHit;
       else if (searchFilter === 'lyrics') pass = false;
       else pass = (titleHit || authorHit || keyHit || numHit);
-      if (pass) { results.push({...song, cat: key, catName: SONGS[key].info.name, matchField: 'title', matchLabel: 'Title'}); return; }
+      if (pass) { results.push({...song, cat: key, catName: catName, matchField: 'title', matchLabel: 'Title'}); return; }
       if (song._ll.length && (searchFilter === 'all' || searchFilter === 'lyrics')) {
         for (let vi = 0; vi < song._ll.length; vi++) {
           const lineIdx = song._ll[vi].indexOf(q);
@@ -2200,13 +2279,12 @@ async function doSearch(q) {
             const start = Math.max(0, li - 1);
             const end = Math.min(allLines.length, li + 3);
             const context = allLines.slice(start, end).join('\n');
-            results.push({...song, cat: key, catName: SONGS[key].info.name, matchField: 'verse', matchLabel: vlabel, snippet: context});
+            results.push({...song, cat: key, catName: catName, matchField: 'verse', matchLabel: vlabel, snippet: context});
             return;
           }
         }
       }
     });
-  });
   // ponytail: sort results (relevance = insertion order, which is book order).
   if (searchSort === 'number') results.sort((a, b) => (parseInt(a.number)||0) - (parseInt(b.number)||0));
   else if (searchSort === 'alpha') results.sort((a, b) => (a.title||'').localeCompare(b.title||'', undefined, {sensitivity:'base'}));
@@ -2231,7 +2309,8 @@ async function doSearch(q) {
     const item = document.createElement('div');
     item.className = 'song-item search-item fade-in';
     item.style.animationDelay = Math.min(i*0.02,0.5)+'s';
-    item.onclick = () => { currentCat = song.cat; currentList = SONGS[song.cat].songs; openSong(song); };
+    // ponytail: from a list-scoped search, prev/next stays inside that list.
+    item.onclick = () => { currentCat = song.cat; currentList = scopedList || SONGS[song.cat].songs; openSong(song); };
     const meta = [song.author, song.catName].filter(Boolean).join(' • ');
     const num = song.number ? '#'+song.number : '';
     const snippet = song.snippet
@@ -2297,6 +2376,19 @@ function applyTheme() {
   }
   document.documentElement.setAttribute('data-theme', isLight ? 'light' : '');
   updateThemeButtons(mode);
+  applyStatusBar(isLight);
+}
+
+// ponytail: the native Android status bar follows the app theme. Content is kept
+// below the bar (setOverlaysWebView(false) — no-op on Android 15+, where edge-to-
+// edge is enforced and the CSS env(safe-area-inset-top) padding on the nav takes
+// over), the bar's background matches the theme, and icons stay readable.
+function applyStatusBar(isLight) {
+  const SB = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.StatusBar;
+  if (!SB) return; // web build / test stub
+  SB.setOverlaysWebView({ overlay: false }).catch(() => {});
+  SB.setBackgroundColor({ color: isLight ? '#f8f9fc' : '#0f0f13' }).catch(() => {});
+  SB.setStyle({ style: isLight ? 'DARK' : 'LIGHT' }).catch(() => {});
 }
 
 function setTheme(mode) {

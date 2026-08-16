@@ -11,7 +11,8 @@
       "icon": "assets/logo.png"
     },
     "CapacitorUpdater": {
-      "autoUpdate": false
+      "autoUpdate": false,
+      "publicKey": "-----BEGIN RSA PUBLIC KEY-----\\nMIIBCgKCAQEAoXuhHXx5c0aMt/sqF9FJdxGzqmOZg4QUWMuzn0o6ysl8fnOug6DB\\n3r3KptsA3JXYNBdAirw0qoOK5eQ/TT2Qu5Asnef/H+59+286ibz2Yg6xthLKi+Qj\\nV0MOqjIZYwGuNKnhXQ59McyTRsghZ4xMjvHstLYuqOP7UOAGSSMsOdkePLOSDp3p\\nLvKzRh6Jl0KnMEYG29oT0M3G+SItUAKmUzOsGsOPP/wOA0TwRRAmH2DT2nYVcCGc\\nQmf5yuTVAaD1UPpOFCUgQyQaFqBanBRTE59eZBbVm4elEhqfAZzEGXzx28+tY42b\\n45469ACT+rRS9prCemapLCO4PvNX/IfHOwIDAQAB\\n-----END RSA PUBLIC KEY-----"
     }
   }
 }

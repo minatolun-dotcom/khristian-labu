@@ -53,6 +53,8 @@ flowchart TD
 - **Gzip speedup** — web/APK fetch `songs.json.gzip` (630KB) via `DecompressionStream`, falling back to plain `songs.json` (2.2MB).
 - **Hybrid app** — the APK is a native Android shell running the web assets in a Chromium WebView: installs like a real app, works offline, but the UI is web tech (not Kotlin/native UI).
 - **Centered, responsive UI** — homepage group cards centered on desktop/tablet; menu popup is a centered modal (two-column landscape layout on desktop, single column on mobile).
+- **Status bar (APK)** — the `@capacitor/status-bar` plugin keeps the app below the Android status bar (`setOverlaysWebView(false)`), colors it to match the theme, and picks light/dark icons; on Android 15+ (forced edge-to-edge) the nav's `env(safe-area-inset-top)` padding takes over.
+- **Reader bar** — the floating font/line-spacing controls are fixed to the viewport bottom; the song's bottom padding guarantees the last lyric line stops well above it, and the bar is hidden entirely when the lyrics fit on one screen (nothing to scroll).
 
 ## App updates (free, self-hosted distribution)
 
@@ -70,7 +72,7 @@ flowchart LR
 
 - **Web users**: the Pages build updates automatically on every push (no action needed).
 - **APK users**: `@capgo/capacitor-updater` runs in **manual mode** (`autoUpdate: false`, no cloud). On launch (max once/day) and via Settings → "Check for update", the app calls the CORS-enabled GitHub Releases API, compares `tag_name` to the embedded `APP_VERSION`, and if newer asks "Update now?" — then downloads the release's `www-latest.zip` bundle (showing a **live progress card** from the plugin's `download` events) and applies it in place (`notifyAppReady` marks the bundle healthy; broken bundles auto-roll-back).
-- **Bundle packaging**: the workflow zips `www/` into `www-latest.zip` and attaches it to every tagged Release (the zip is the same content shipped in the APK).
+- **Bundle packaging + signing**: the workflow zips `www/` into `www-latest.zip` and — when the `OTA_SIGNING_PRIVATE_KEY` secret is set — **code-signs** it via `@capgo/cli bundle encrypt` (AES-encrypts the zip, RSA-signs the checksum + per-bundle session key). The APK ships the matching **public key** (`capacitor.config.json` → `CapacitorUpdater.publicKey`), and the plugin verifies the signature before installing — a tampered or forged bundle is rejected. The per-bundle `sessionKey`/`checksum` ride in the release's `ota-session.json` asset (safe to publish: they're RSA-encrypted and only verifiable with the private key). Without the secret set, the bundle is attached unsigned and installs with no verification (legacy behavior). Keypair: RSA-2048, private key must be **PKCS#1** (`BEGIN RSA PRIVATE KEY`) for the CLI; public key is the matching PKCS#1 `RSA PUBLIC KEY` form.
 - **Native caveat**: OTA updates the web bundle only — if a future release adds a new Capacitor *native* plugin, users must install that APK once; pure content/JS changes (the vast majority) never require it.
 - **Web banner**: the dismissible "Update available → download APK" banner remains for web visitors who want the Android app.
 - **Free tier**: GitHub Releases + API are free; the unauthenticated API limit (60 req/hr per IP) is ample for occasional client checks.

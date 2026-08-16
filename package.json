@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "sync": "cp index.html logo.png songs.json songs.json.gzip manifest.webmanifest sw.js icon-192.png icon-512.png www/ && cp -r assets www/ 2>/dev/null || true && npx cap sync",
-    "build": "npm run sync && npx cap build android"
+    "build": "npm run sync && npx cap build android",
+    "test": "python3 scripts/validate_data.py && node scripts/e2e_full.mjs",
+    "test:data": "python3 scripts/validate_data.py"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +21,7 @@
     "@capacitor/core": "^8.4.1",
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/share": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.3",
     "@capawesome/capacitor-google-sign-in": "^0.1.2",
     "@capgo/capacitor-updater": "^8.51.10"
   },

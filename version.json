@@ -1,6 +1,6 @@
 {
-  "version": "1.3.0",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.3.0/khristian-labu.apk",
-  "notes": "In-app OTA updates (no more downloading the APK from GitHub), WhatsApp share with full-song screenshots, Google Drive backup/restore, reader scroll memory + verse jump, search normalization, and more. See release notes on GitHub.",
-  "updatedAt": "2026-08-16T00:00:00Z"
+  "version": "1.4.0",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.0/khristian-labu.apk",
+  "notes": "Signed OTA updates (tamper-proof in-app updates), Android status bar fix (app no longer under the bar), lyrics stop cleanly above the reader bar, reader bar hidden for one-screen songs, iOS home-screen icon, load-failure retry, playlist-scoped search, and more. See release notes on GitHub.",
+  "updatedAt": "2026-08-16T12:00:00Z"
 }

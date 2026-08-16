@@ -3,6 +3,10 @@ android/
 www/
 khristian-labu.keystore
 
+# ─── secrets (never commit) ───
+secret
+*.pem
+
 # ─── build/deploy artifacts (not served by GitHub Pages) ───
 release-assets/
 apk/

@@ -66,7 +66,7 @@ await section('load & home', async () => {
   ok('corpus loads (5,719)', (await page.textContent('#statSongs')).includes('5,7'));
   ok('6 group cards', (await page.locator('#groupGrid .cat-card').count()) === 6);
   ok('fav/recents row renders', await page.locator('#favRecentRow').count() === 1);
-  ok('stats books = 6', (await page.textContent('#statBooks')).trim() === '6');
+  ok('stats books = 17 (books, not collections)', (await page.textContent('#statBooks')).trim() === '17');
   // group → category → list → detail
   await page.locator('#groupGrid .cat-card').first().click();
   await page.waitForSelector('#categoryGrid .cat-card');
@@ -130,6 +130,41 @@ await section('reader features', async () => {
   await page.goBack();
   await page.waitForSelector('#searchResults .song-item');
   ok('wa fab hidden in search view', !(await page.locator('#waFabWrap .wa-fab').isVisible()));
+  // reader bottom bar: visible on a long song, lyrics stop above it, hides when nothing scrolls
+  await page.locator('#searchInput').fill('pakai vannoi');
+  await page.waitForTimeout(600);
+  const idx2 = await page.evaluate(() => {
+    const items = [...document.querySelectorAll('#searchResults .song-item')];
+    return items.findIndex(it => /PAKAI/.test(it.querySelector('.si-title')?.textContent || ''));
+  });
+  await page.locator('#searchResults .song-item').nth(Math.max(idx2, 0)).click();
+  await page.waitForSelector('#songDetail .verse');
+  await page.waitForTimeout(300);
+  ok('reader bar visible on long song', await page.locator('#readerControlsHost .reader-controls').isVisible());
+  // max font + max line-height at end of scroll: the last lyric line clears the fixed bar
+  await page.evaluate(() => { setReaderFont(28); setReaderLH(2.4); });
+  await page.waitForTimeout(400);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await page.waitForTimeout(400);
+  const clearance = await page.evaluate(() => {
+    const bar = document.querySelector('#readerControlsHost .reader-controls').getBoundingClientRect();
+    const verses = document.querySelectorAll('#songDetail .verse');
+    const last = verses[verses.length - 1].getBoundingClientRect();
+    return Math.round(bar.top - last.bottom);
+  });
+  ok('lyrics stop well above the bar at max font (' + clearance + 'px)', clearance > 40, 'clearance=' + clearance);
+  // when lyrics fit on one screen the bar hides (nothing to scroll)
+  await page.evaluate(() => {
+    document.getElementById('songDetail').innerHTML =
+      '<div class="song-actions-row"></div><div class="song-detail-header"><h1>Short</h1></div><div class="verse" id="sv0"><p>One line.</p></div>';
+    scheduleReaderControlsCheck();
+  });
+  await page.waitForTimeout(300);
+  ok('reader bar hides when lyrics fit without scrolling', !(await page.locator('#readerControlsHost .reader-controls').isVisible()));
+  // reopening a scrollable song brings the bar back
+  await page.evaluate(() => renderSongDetail(currentList[currentSongIdx]));
+  await page.waitForTimeout(400);
+  ok('reader bar returns on scrollable song', await page.locator('#readerControlsHost .reader-controls').isVisible());
   await page.close();
 });
 
@@ -253,6 +288,17 @@ await section('playlists', async () => {
   await page.locator('#songGrid .song-item').first().click();
   await page.waitForSelector('#songGrid .song-item');
   ok('playlist opens with 1 song', (await page.textContent('#songGrid')).includes(songTitle));
+  // playlist-scoped search: while the playlist is open, results stay inside it
+  await page.fill('#searchInput', songTitle.slice(0, 6));
+  await page.waitForTimeout(900);
+  const scopeHeader = await page.textContent('#searchResults .song-list-header').catch(() => '');
+  const scopeCount = await page.locator('#searchResults .song-item').count();
+  ok('search scoped to open playlist', scopeHeader.includes('in E2E List') && scopeCount >= 1 && scopeCount <= 1, (scopeHeader || '').trim().slice(0, 110) + ' | results=' + scopeCount);
+  // back to the playlist, then rename
+  await page.fill('#searchInput', '');
+  await page.waitForTimeout(400);
+  await page.goBack();
+  await page.waitForSelector('#songGrid .song-item');
   // rename via prompt
   page.once('dialog', d => d.accept('E2E Renamed'));
   await page.locator('#listHeader').locator('a:has-text("Rename")').click();
@@ -374,6 +420,42 @@ await section('theme', async () => {
   await page.close();
 });
 
+// ═══════════════ 8b. STATUS BAR (APK) ═══════════════
+await section('status bar', async () => {
+  const page = await newPage();
+  await page.addInitScript(() => {
+    window.__sbCalls = [];
+    window.Capacitor = {
+      Plugins: {
+        StatusBar: {
+          setOverlaysWebView: async o => window.__sbCalls.push(['overlay', o]),
+          setBackgroundColor: async o => window.__sbCalls.push(['bg', o]),
+          setStyle: async o => window.__sbCalls.push(['style', o]),
+        },
+      },
+    };
+  });
+  await waitLoaded(page);
+  const onLoad = await page.evaluate(() => window.__sbCalls);
+  ok('status bar overlay disabled on launch (app below the bar)', onLoad.some(c => c[0] === 'overlay' && c[1].overlay === false), JSON.stringify(onLoad));
+  ok('status bar color + icon style set on launch', onLoad.some(c => c[0] === 'style') && onLoad.some(c => c[0] === 'bg'), JSON.stringify(onLoad));
+  // theme switch re-applies the status bar to match
+  await openSettings(page);
+  await page.locator('#themeDark').click();
+  await page.waitForTimeout(300);
+  const afterDark = await page.evaluate(() => window.__sbCalls);
+  const lastBg = [...afterDark].reverse().find(c => c[0] === 'bg');
+  const lastStyle = [...afterDark].reverse().find(c => c[0] === 'style');
+  ok('dark theme → dark status bar, light icons', lastBg && lastBg[1].color === '#0f0f13' && lastStyle && lastStyle[1].style === 'LIGHT', JSON.stringify({ lastBg, lastStyle }));
+  await page.locator('#themeLight').click();
+  await page.waitForTimeout(300);
+  const afterLight = await page.evaluate(() => window.__sbCalls);
+  const lb = [...afterLight].reverse().find(c => c[0] === 'bg');
+  const ls = [...afterLight].reverse().find(c => c[0] === 'style');
+  ok('light theme → light status bar, dark icons', lb && lb[1].color === '#f8f9fc' && ls && ls[1].style === 'DARK', JSON.stringify({ lb, ls }));
+  await page.close();
+});
+
 // ═══════════════ 9. SETTINGS + GOOGLE SECTION ═══════════════
 await section('settings & google', async () => {
   const page = await newPage();
@@ -445,7 +527,13 @@ await section('ota update', async () => {
     window.fetch = async (url, opts) => {
       if (String(url).includes('api.github.com/repos/')) {
         window.__apiCalls++;
-        return { ok: true, json: async () => ({ tag_name: 'v9.9.9', assets: [{ name: 'khristian-labu.apk' }] }) };
+        return { ok: true, json: async () => ({ tag_name: 'v9.9.9', assets: [
+          { name: 'khristian-labu.apk' },
+          { name: 'ota-session.json', browser_download_url: 'https://github.com/x/releases/download/v9.9.9/ota-session.json' },
+        ] }) };
+      }
+      if (String(url).includes('ota-session.json')) {
+        return { ok: true, json: async () => ({ version: '9.9.9', sessionKey: 'sk-test', checksum: 'cs-test' }) };
       }
       return realFetch(url, opts);
     };
@@ -464,6 +552,7 @@ await section('ota update', async () => {
   await page.waitForFunction(() => window.__otaCalls.some(c => c[0] === 'set'), null, { timeout: 10000 });
   const dl = await page.evaluate(() => window.__otaCalls.find(c => c[0] === 'download'));
   ok('download called with the release zip url', !!dl && dl[1].url.endsWith('/releases/download/v9.9.9/www-latest.zip') && dl[1].version === '9.9.9', JSON.stringify(dl && dl[1]));
+  ok('signed release passes sessionKey/checksum to download', !!dl && dl[1].sessionKey === 'sk-test' && dl[1].checksum === 'cs-test', JSON.stringify(dl && dl[1]));
   ok('set applied after download', true);
   await page.waitForFunction(() => !document.getElementById('otaProgress')?.classList.contains('show'), null, { timeout: 5000 });
   ok('ota progress card hides after update', true);
@@ -477,6 +566,37 @@ await section('ota update', async () => {
   await page.waitForTimeout(600);
   ok('forced check bypasses throttle', (await page.evaluate(() => window.__apiCalls)) > callsBefore);
   await page.close();
+
+  // unsigned release (no ota-session.json asset) → download omits session data
+  const page2 = await newPage();
+  await page2.addInitScript(() => {
+    window.__otaCalls = [];
+    window.Capacitor = {
+      Plugins: {
+        CapacitorUpdater: {
+          notifyAppReady: async () => {},
+          addListener: async () => ({ remove: async () => {} }),
+          download: async o => { window.__otaCalls.push(['download', o]); return { id: 'b', version: o.version }; },
+          set: async () => { window.__otaCalls.push(['set']); },
+        },
+      },
+    };
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (url, opts) => {
+      if (String(url).includes('api.github.com/repos/')) {
+        return { ok: true, json: async () => ({ tag_name: 'v8.8.8', assets: [{ name: 'khristian-labu.apk' }] }) };
+      }
+      return realFetch(url, opts);
+    };
+  });
+  await waitLoaded(page2);
+  await page2.evaluate(() => { localStorage.removeItem('labu_ota_last_check'); checkOtaUpdate(true); });
+  await page2.waitForSelector('#confirmModal.open', { timeout: 10000 });
+  await page2.locator('#confirmBtn').click();
+  await page2.waitForFunction(() => window.__otaCalls.some(c => c[0] === 'set'), null, { timeout: 10000 });
+  const dl2 = await page2.evaluate(() => window.__otaCalls.find(c => c[0] === 'download'));
+  ok('unsigned release downloads with no session data', !!dl2 && !('sessionKey' in dl2[1]) && !('checksum' in dl2[1]), JSON.stringify(dl2 && dl2[1]));
+  await page2.close();
 });
 
 // ═══════════════ 10. HISTORY API ═══════════════
@@ -577,11 +697,15 @@ await section('pwa offline', async () => {
 
 // ═══════════════ 13. DATA FETCH FAILURE ═══════════════
 await section('data failure', async () => {
+  let corpusFails = 0;
   const failServer = http.createServer((req, res) => {
     let p = decodeURIComponent(req.url.split('?')[0]);
     if (p === '/') p = '/index.html';
     const file = path.join(ROOT, p);
-    if (p.endsWith('songs.json') || p.endsWith('songs.json.gzip') || p.endsWith('groups.json')) { res.writeHead(503); res.end('down'); return; }
+    if (p.endsWith('songs.json') || p.endsWith('songs.json.gzip') || p.endsWith('groups.json')) {
+      corpusFails++;
+      if (corpusFails <= 3) { res.writeHead(503); res.end('down'); return; } // fail the whole first attempt (meta + gzip + json), recover for the retry
+    }
     if (!file.startsWith(ROOT) || !fs.existsSync(file)) { res.writeHead(404); res.end(); return; }
     res.writeHead(200, { 'Content-Type': 'text/html' });
     fs.createReadStream(file).pipe(res);
@@ -594,6 +718,12 @@ await section('data failure', async () => {
   const desc = await page.textContent('#heroDesc');
   ok('data fetch failure surfaces friendly error', desc.includes('Failed to load'), desc.slice(0, 90));
   ok('error state marks stats', s === '!', s);
+  const retryVisible = await page.locator('#retryDataBtn').isVisible().catch(() => false);
+  ok('retry button appears on load failure', retryVisible);
+  // retry after the server recovers → corpus loads in place
+  await page.locator('#retryDataBtn').click();
+  await page.waitForFunction(() => document.getElementById('statSongs')?.textContent.includes('5,7'), null, { timeout: 30000 });
+  ok('retry loads the corpus in place', (await page.textContent('#statSongs')).includes('5,7'));
   await page.close();
   failServer.close();
 });
