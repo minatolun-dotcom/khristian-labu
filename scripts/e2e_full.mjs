@@ -155,18 +155,27 @@ await section('reader features', async () => {
     return Math.round(bar.top - last.bottom);
   });
   ok('lyrics stop well above the bar at max font (' + clearance + 'px)', clearance > 40, 'clearance=' + clearance);
-  // when lyrics fit on one screen the bar hides (nothing to scroll)
+  // when lyrics fit on one screen the bar STAYS but the page scroll is LOCKED;
+  // growing the font past the fold unlocks it again
   await page.evaluate(() => {
+    setReaderFont(17); setReaderLH(1.6); // back to defaults before the fit test
     document.getElementById('songDetail').innerHTML =
-      '<div class="song-actions-row"></div><div class="song-detail-header"><h1>Short</h1></div><div class="verse" id="sv0"><p>One line.</p></div>';
+      '<div class="song-actions-row"></div><div class="song-detail-header"><h1>Short</h1></div><div class="verse" id="sv0"><p>' + Array(15).fill('One line of lyrics.').join('<br>') + '</p></div>';
     scheduleReaderControlsCheck();
   });
   await page.waitForTimeout(300);
-  ok('reader bar hides when lyrics fit without scrolling', !(await page.locator('#readerControlsHost .reader-controls').isVisible()));
-  // reopening a scrollable song brings the bar back
-  await page.evaluate(() => renderSongDetail(currentList[currentSongIdx]));
+  ok('reader bar stays visible on a one-screen song', await page.locator('#readerControlsHost .reader-controls').isVisible());
+  ok('page scroll locked when lyrics fit on one screen', await page.evaluate(() => document.documentElement.classList.contains('scroll-locked')));
+  await page.evaluate(() => window.scrollTo(0, 500));
+  await page.waitForTimeout(200);
+  ok('cannot scroll while locked', (await page.evaluate(() => window.scrollY)) === 0);
+  // increasing size/spacing so the lyrics no longer fit → scroll works again
+  await page.evaluate(() => { setReaderFont(28); setReaderLH(2.4); });
   await page.waitForTimeout(400);
-  ok('reader bar returns on scrollable song', await page.locator('#readerControlsHost .reader-controls').isVisible());
+  ok('font increase unlocks scroll when lyrics overflow', await page.evaluate(() => !document.documentElement.classList.contains('scroll-locked')));
+  await page.evaluate(() => window.scrollTo(0, 200));
+  await page.waitForTimeout(200);
+  ok('scrolling works again after unlock', (await page.evaluate(() => window.scrollY)) > 0);
   await page.close();
 });
 

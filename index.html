@@ -42,6 +42,9 @@
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:'Inter','Noto Sans Myanmar',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;transition:background var(--transition),color var(--transition);overflow-x:clip;}
 html{overflow-x:clip;}
+/* ponytail: when a song's lyrics fit on one screen the page scroll is locked — there
+   is nothing to scroll; growing the font/line-spacing unlocks it again. */
+html.scroll-locked{overflow:hidden;}
 body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(124,106,239,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(124,106,239,0.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
 [data-theme="light"] body::before{background:linear-gradient(rgba(37,99,235,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(37,99,235,0.04) 1px,transparent 1px);background-size:40px 40px;}
 body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 10% 0%,rgba(124,106,239,0.12) 0%,transparent 40%),radial-gradient(ellipse at 90% 100%,rgba(167,139,250,0.08) 0%,transparent 40%);pointer-events:none;z-index:0;}
@@ -250,8 +253,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 }
 /* ponytail: per-song reader controls in one bottom row (font size + line spacing).
    Both persist via localStorage. */
-.reader-controls{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));z-index:40;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:8px 16px;box-shadow:var(--shadow);max-width:calc(100vw - 24px);flex-wrap:nowrap;justify-content:center;overflow-x:auto;}
-.reader-controls.hidden{display:none;}
+.reader-controls{position:fixed;left:50%;transform:translateX(-50%);bottom:env(safe-area-inset-bottom);z-index:40;display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:8px 16px;box-shadow:var(--shadow);max-width:calc(100vw - 24px);flex-wrap:nowrap;justify-content:center;overflow-x:auto;}
 .reader-controls .rc-sep{width:1px;height:20px;background:var(--border);flex:none;}
 .reader-controls svg{width:16px;height:16px;color:var(--text3);flex:none;}
 .reader-controls input[type=range]{width:110px;accent-color:var(--accent);flex:none;}
@@ -486,11 +488,11 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .verse-jump .vj:hover{background:var(--accent);color:#fff;border-color:var(--accent);}
 @media(max-width:768px){.verse-jump{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}.verse-jump::-webkit-scrollbar{display:none;}}
 /* ─── WHATSAPP SHARE FAB (song detail) ─── */
-.wa-fab{position:fixed;right:24px;bottom:24px;z-index:60;width:56px;height:56px;border-radius:50%;border:none;background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(37,211,102,0.4);transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);}
+.wa-fab{position:fixed;right:24px;bottom:calc(env(safe-area-inset-bottom) + 52px);z-index:60;width:56px;height:56px;border-radius:50%;border:none;background:#25d366;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(37,211,102,0.4);transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);}
 .wa-fab:hover{transform:scale(1.08);}
 .wa-fab:active{transform:scale(0.95);}
 .wa-fab svg{width:28px;height:28px;fill:#fff;}
-.wa-menu{position:fixed;right:24px;bottom:92px;z-index:60;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,0.35);display:none;flex-direction:column;min-width:230px;animation:slideUp 0.15s ease-out;}
+.wa-menu{position:fixed;right:24px;bottom:calc(env(safe-area-inset-bottom) + 116px);z-index:60;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:6px;box-shadow:0 12px 32px rgba(0,0,0,0.35);display:none;flex-direction:column;min-width:230px;animation:slideUp 0.15s ease-out;}
 .wa-menu.open{display:flex;}
 .wa-menu button{display:flex;align-items:center;gap:10px;padding:8px;border:none;background:none;color:var(--text);font-size:0.85rem;font-family:inherit;cursor:pointer;border-radius:10px;text-align:left;transition:background 0.15s;}
 .wa-menu button:hover{background:var(--bg3);}
@@ -974,7 +976,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.4.2'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.4.3'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1471,28 +1473,27 @@ let readerLH = parseFloat(localStorage.getItem('labu-reader-lh') || '1.6');
 function setReaderFont(v){ readerFont = parseInt(v,10); localStorage.setItem('labu-reader-font', v); document.documentElement.style.setProperty('--reader-font', v+'px'); const d=document.getElementById('songDetail'); if(d) d.style.setProperty('--reader-font', v+'px'); const t=document.getElementById('readerFontVal'); if(t) t.textContent=v+'px'; scheduleReaderControlsCheck(); }
 function setReaderLH(v){ readerLH = parseFloat(v); localStorage.setItem('labu-reader-lh', v); document.documentElement.style.setProperty('--reader-lh', v); const d=document.getElementById('songDetail'); if(d) d.style.setProperty('--reader-lh', v); scheduleReaderControlsCheck(); }
 
-// ponytail: when a song's lyrics fit on one screen there is nothing to scroll, so
-// the floating reader bar (font-size + line-spacing sliders) is hidden — it would
-// otherwise hover over the page for no reason. Re-checked on resize/orientation
-// change and whenever the font size or line height changes.
+// ponytail: the reader bar (font-size + line-spacing sliders) is always visible on
+// every song. But when the lyrics fit on one screen there is nothing to scroll, so
+// the page scroll is LOCKED — increasing the font size or line spacing past the fold
+// unlocks it again. Re-checked on resize/orientation change and whenever the font
+// size or line height changes.
 function scheduleReaderControlsCheck() {
   requestAnimationFrame(() => requestAnimationFrame(updateReaderControls));
 }
 function updateReaderControls() {
-  const bar = document.querySelector('#readerControlsHost .reader-controls');
-  if (!bar || currentView !== 'detail') return;
   const detail = document.getElementById('songDetail');
   const verses = detail ? detail.querySelectorAll('.verse') : [];
   const last = verses[verses.length - 1];
-  if (!last) return;
   // Absolute bottom of the last lyric line (scroll-independent). ~56px ≈ the bar's
-  // height (38px) + its 12px bottom offset + a little margin.
-  const lastBottom = last.getBoundingClientRect().bottom + window.scrollY;
-  const fits = lastBottom <= window.innerHeight - 56;
-  bar.classList.toggle('hidden', fits);
+  // height (38px) + a little margin.
+  const fits = !!last && (last.getBoundingClientRect().bottom + window.scrollY) <= window.innerHeight - 56;
+  const lock = currentView === 'detail' && fits;
+  document.documentElement.classList.toggle('scroll-locked', lock);
+  if (lock && window.scrollY > 0) window.scrollTo(0, 0); // show the full song from the top
 }
 // Orientation/size changes (rotation, fold, split-screen) can make a song fit or
-// stop fitting — re-evaluate the reader bar while the reader is open.
+// stop fitting — re-evaluate the scroll lock while the reader is open.
 window.addEventListener('resize', () => { if (currentView === 'detail') scheduleReaderControlsCheck(); });
 window.addEventListener('orientationchange', () => { if (currentView === 'detail') scheduleReaderControlsCheck(); });
 
@@ -1510,6 +1511,8 @@ function showView(v) {
   // ponytail: reader controls belong only to the detail view. Toggle the host
   // (it lives outside #songDetail so position:fixed anchors to the viewport).
   document.getElementById('readerControlsHost').style.display = (v === 'detail' ? '' : 'none');
+  // ponytail: never leave the scroll lock on outside the song reader.
+  if (v !== 'detail') document.documentElement.classList.remove('scroll-locked');
   // ponytail: WhatsApp share FAB belongs to the detail view only.
   const wf = document.getElementById('waFabWrap');
   if (wf) { wf.style.display = (v === 'detail' ? '' : 'none'); if (v !== 'detail') closeWaMenu(); }
