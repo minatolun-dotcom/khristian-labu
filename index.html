@@ -1001,7 +1001,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.4.9'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.0'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1343,6 +1343,9 @@ function idbGetAll(store) {
 function applyEdit(e) {
   // Structural edits (user-made songbooks/books) are stored with cat === null.
   if (e.cat === null) { applyStruct(e); return; }
+  // ponytail: an edit invalidates every cached list snapshot (rows + nodes) so the
+  // next visit re-renders fresh instead of showing stale cached DOM.
+  _listCache = {}; _listNodes = {}; _renderedListKey = null;
   const arr = SONGS[e.cat] && SONGS[e.cat].songs;
   if (!arr) return;
   const i = arr.findIndex(s => s.id === e.id);
@@ -1725,7 +1728,7 @@ function toggleFav(songId) {
   const idx = favorites.indexOf(songId);
   if (idx === -1) favorites.push(songId); else favorites.splice(idx, 1);
   localStorage.setItem('labu_favs', JSON.stringify(favorites));
-  delete _listCache['fav'];
+  delete _listCache['fav']; delete _listNodes['fav'];
   renderCategories();
   renderFavRecents();
 }
@@ -1747,6 +1750,7 @@ async function openFavs() {
   showView('list');
   document.getElementById('listHeader').innerHTML = '<h2>Favorites</h2><p>'+songs.length+' favorited songs</p>';
   renderSongList(songs);
+  _renderedListKey = 'fav';
   restoreScroll('fav');
   saveListCache('fav');
   document.getElementById('searchInput').value = '';
@@ -1956,6 +1960,7 @@ async function openCategory(key) {
     : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>';
   document.getElementById('listHeader').innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;"><div style="display:flex;align-items:center;gap:8px;"><span style="display:flex;width:28px;height:28px;color:'+catColor+'">'+catSvgOf(key)+'</span><h2>'+SONGS[key].info.name+'</h2></div><button onclick="toggleSort()" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-size:0.8rem;font-family:inherit;cursor:pointer;transition:all 0.15s;">'+sortSvg+' Sort: '+(listSortMode==='num'?'Number':'Name')+'</button></div><p style="margin-top:4px;">'+(SONGS[key].info.description||'')+' · '+currentList.length+' songs</p>';
   renderSongList(currentList);
+  _renderedListKey = key;
   restoreScroll(key);
   saveListCache(key);
   document.getElementById('searchInput').value = '';
@@ -1970,6 +1975,7 @@ function toggleSort() {
 
 function renderSongList(songs) {
   const grid = document.getElementById('songGrid');
+  _stashCurrentList(); // keep the outgoing list's rows so back-nav re-attaches them
   grid.innerHTML = '';
   if (!songs.length) { grid.innerHTML = '<div class="no-results"><div class="icon">'+SVG.search+'</div><p>No songs found</p></div>'; return; }
   const bookName = currentCat ? SONGS[currentCat].info.name : '';
@@ -2151,21 +2157,87 @@ function restoreScroll(key) {
   requestAnimationFrame(() => window.scrollTo(0, y));
 }
 
+// ponytail: which list's rows are currently rendered in #songGrid. Leaving the list
+// view does NOT clear the grid (the view container is just display:none), so when
+// back/forward nav returns to the SAME list we can show it without touching the DOM.
+let _renderedListKey = null;
+// ponytail: per-key cache of the list's rendered DOM. We keep BOTH the header/grid
+// HTML strings (fallback) and the actual detached row nodes (so re-showing any
+// previously-viewed list re-attaches existing nodes — no HTML re-parse, no re-fade).
+let _listNodes = {};
+const _LIST_NODE_CACHE_MAX = 6; // bound memory: keep the most recent few lists' nodes
+function _stashCurrentList() {
+  const grid = document.getElementById('songGrid');
+  const key = _renderedListKey;
+  if (!key || !_listCache[key] || !grid) return;
+  const frag = document.createDocumentFragment();
+  while (grid.firstChild) frag.appendChild(grid.firstChild);
+  _listNodes[key] = frag;
+  const ks = Object.keys(_listNodes);
+  if (ks.length > _LIST_NODE_CACHE_MAX) ks.slice(0, ks.length - _LIST_NODE_CACHE_MAX).forEach(k => delete _listNodes[k]);
+}
 // ponytail: cache the rendered list so back-nav re-shows it without a rebuild/re-fade.
 function saveListCache(key) {
   const grid = document.getElementById('songGrid');
   const header = document.getElementById('listHeader');
   if (grid && header) _listCache[key] = { header: header.innerHTML, grid: grid.innerHTML };
 }
+// ponytail: rebuild currentList for a restored list key so tapping a row opens the
+// right song (the cached DOM rows carry dataset.sid; the click handler resolves it
+// against currentList, which the history state does not carry for list views).
+function _listFor(key) {
+  if (currentListKind === 'cat' && key && SONGS[key]) return SONGS[key].songs;
+  if (currentListKind === 'fav') return getFavSongs();
+  if (currentListKind === 'recent') {
+    const out = [];
+    recents.forEach(id => CAT_ORDER.forEach(k => {
+      const s = SONGS[k].songs.find(x => x.id === id);
+      if (s) out.push({ ...s, cat: k, catName: SONGS[k].info.name });
+    }));
+    return out;
+  }
+  if (currentListKind === 'playlist' && currentPlaylistId) {
+    const pl = playlists.find(p => p.id === currentPlaylistId);
+    const out = [];
+    if (pl) pl.songs.forEach(id => CAT_ORDER.forEach(k => {
+      const s = SONGS[k].songs.find(x => x.id === id);
+      if (s) out.push({ ...s, cat: k, catName: SONGS[k].info.name });
+    }));
+    return out;
+  }
+  return null;
+}
 function restoreList(key) {
+  const grid = document.getElementById('songGrid');
+  // ponytail: the rows for this exact list are still in #songGrid (nothing cleared
+  // them when we left) — just re-show the view, no DOM churn, no re-fade.
+  if (_renderedListKey === key && _listCache[key] && grid && grid.children.length) {
+    const songs = _listFor(key); if (songs) currentList = songs;
+    showView('list');
+    restoreScroll(key);
+    return true;
+  }
+  // ponytail: a different list, but we've rendered it before — re-attach its cached
+  // rows as live nodes (fast; skips HTML parsing entirely).
+  const nodes = _listNodes[key];
+  if (nodes && grid && nodes.childNodes.length) {
+    document.getElementById('listHeader').innerHTML = _listCache[key].header;
+    grid.replaceChildren(nodes);
+    _renderedListKey = key;
+    const songs = _listFor(key); if (songs) currentList = songs;
+    showView('list');
+    restoreScroll(key);
+    return true;
+  }
   const c = _listCache[key];
   if (!c) return false;
   showView('list');
   document.getElementById('listHeader').innerHTML = c.header;
-  const grid = document.getElementById('songGrid');
   grid.innerHTML = c.grid;
   // drop the fade-in class so the restored list doesn't re-animate.
   grid.querySelectorAll('.fade-in').forEach(e => e.classList.remove('fade-in'));
+  _renderedListKey = key;
+  const songs = _listFor(key); if (songs) currentList = songs;
   restoreScroll(key);
   return true;
 }
@@ -3433,8 +3505,8 @@ async function openRecents() {
   currentCat = null; currentList = songs; currentListKind = 'recent'; currentGroup = null;
   showView('list');
   document.getElementById('listHeader').innerHTML = '<h2>History</h2><p>'+songs.length+' recently viewed song'+(songs.length!==1?'s':'')+'</p>';
-  if (songs.length) { renderSongList(songs); restoreScroll('recent'); saveListCache('recent'); }
-  else { document.getElementById('songGrid').innerHTML = '<div class="no-results"><div class="icon">'+SVG.clock+'</div><p>No songs viewed yet</p></div>'; }
+  if (songs.length) { renderSongList(songs); _renderedListKey = 'recent'; restoreScroll('recent'); saveListCache('recent'); }
+  else { _stashCurrentList(); document.getElementById('songGrid').innerHTML = '<div class="no-results"><div class="icon">'+SVG.clock+'</div><p>No songs viewed yet</p></div>'; _renderedListKey = 'recent'; }
   document.getElementById('searchInput').value = '';
   _rv.listKind = 'recent'; _rv.cat = null; _rv.pid = null;
   navPush();
@@ -3447,7 +3519,10 @@ function openPlaylists() {
   showView('list');
   document.getElementById('listHeader').innerHTML = '<h2>Custom Lists</h2><p>'+playlists.length+' playlist'+(playlists.length!==1?'s':'')+'</p>';
   const grid = document.getElementById('songGrid');
+  _stashCurrentList();
   grid.innerHTML = '';
+  _renderedListKey = 'playlists';
+  saveListCache('playlists');
   if (!playlists.length) { grid.innerHTML = '<div class="no-results"><div class="icon">'+SVG.list+'</div><p>No playlists yet. Create one from the sidebar or song detail.</p></div>'; navPush(); return; }
   playlists.forEach(pl => {
     const item = document.createElement('div');
@@ -3476,6 +3551,7 @@ async function openPlaylist(pid) {
   showView('list');
   document.getElementById('listHeader').innerHTML = '<h2>'+esc(pl.name)+'</h2><p>'+songs.length+' song'+(songs.length!==1?'s':'')+' · <a onclick="renamePlaylist(\''+pid+'\')" style="color:var(--accent);cursor:pointer;font-size:0.8rem;">Rename</a> · <a onclick="deletePlaylist(\''+pid+'\')" style="color:var(--red);cursor:pointer;font-size:0.8rem;">Delete</a></p>';
   renderSongList(songs);
+  _renderedListKey = 'playlist:'+pid;
   restoreScroll('playlist:'+pid);
   saveListCache('playlist:'+pid);
   document.getElementById('searchInput').value = '';

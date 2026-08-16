@@ -1,6 +1,6 @@
 {
-  "version": "1.4.9",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.4.9/khristian-labu.apk",
-  "notes": "Fixed the real reason in-app updates silently failed: the update's signature/session data (ota-session.json) is served from a CDN that blocks cross-origin reads, so the app could never load it inside the Android webview and fell back to the manual APK download every time. The session fetch now goes through Capacitor's native HTTP plugin, which has no such restriction — signed OTA updates actually install now. Pure content update — applies in-app via OTA.",
-  "updatedAt": "2026-08-16T21:00:00Z"
+  "version": "1.5.0",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.5.0/khristian-labu.apk",
+  "notes": "Song lists no longer rebuild every time you navigate back and forward — the rendered rows are kept and re-shown instantly, so the app feels much snappier. Also includes the OTA fix from 1.4.9: in-app updates now actually install instead of silently falling back to the manual APK download. Pure content update — applies in-app via OTA.",
+  "updatedAt": "2026-08-16T22:00:00Z"
 }

@@ -123,6 +123,44 @@ await section('view hiding', async () => {
   await page.close();
 });
 
+// ═══════════════ 1c. LIST DOM PERSISTENCE (back/forward must not rebuild rows) ═══════════════
+await section('list dom persistence', async () => {
+  const page = await newPage({ width: 390, height: 844 });
+  await waitLoaded(page);
+  // count #songGrid childList mutations (row additions) across navigation
+  await page.evaluate(() => {
+    window.__rowAdds = 0;
+    new MutationObserver(muts => {
+      for (const m of muts) if (m.type === 'childList' && m.addedNodes.length && m.target.id === 'songGrid') window.__rowAdds++;
+    }).observe(document.getElementById('songGrid'), { childList: true });
+  });
+  await page.locator('#groupGrid .cat-card').first().click();
+  await page.waitForSelector('#categoryGrid .cat-card');
+  await page.locator('#categoryGrid .cat-card').first().click();
+  await page.waitForSelector('#songGrid .song-item');
+  const rows = await page.evaluate(() => document.querySelectorAll('#songGrid .song-item').length);
+  const addsAfterFirst = await page.evaluate(() => window.__rowAdds);
+  // open song → back → forward → back: the list rows must NOT be rebuilt
+  await page.locator('#songGrid .song-item').first().click();
+  await page.waitForSelector('#songDetail .verse');
+  await page.goBack();
+  await page.waitForSelector('#songGrid .song-item');
+  await page.goForward();
+  await page.waitForSelector('#songDetail .verse');
+  await page.goBack();
+  await page.waitForSelector('#songGrid .song-item');
+  await page.goBack();
+  await page.waitForSelector('#categoryGrid .cat-card');
+  await page.goForward();
+  await page.waitForSelector('#songGrid .song-item');
+  const addsAfter = await page.evaluate(() => window.__rowAdds);
+  const rowsAfter = await page.evaluate(() => document.querySelectorAll('#songGrid .song-item').length);
+  ok('list renders its rows once (' + rows + ' rows, ' + addsAfterFirst + ' adds)', addsAfterFirst === rows);
+  ok('back/forward nav does NOT rebuild the list rows', addsAfter === addsAfterFirst, addsAfterFirst + ' → ' + addsAfter);
+  ok('restored list still opens its songs', rowsAfter === rows, 'rows ' + rows + ' → ' + rowsAfter);
+  await page.close();
+});
+
 // ═══════════════ 2. READER FEATURES (scroll memory, verse jump, WhatsApp FAB) ═══════════════
 await section('reader features', async () => {
   const page = await newPage();
