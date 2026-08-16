@@ -543,6 +543,39 @@ await section('theme', async () => {
   await page.close();
 });
 
+// ═══════════════ 8c. READER FONT FAMILY (Settings) ═══════════════
+await section('reader font family', async () => {
+  const page = await newPage();
+  await waitLoaded(page);
+  // open a song so a .verse p exists to measure the applied font
+  await page.locator('#groupGrid .cat-card').first().click();
+  await page.waitForSelector('#categoryGrid .cat-card');
+  await page.locator('#categoryGrid .cat-card').first().click();
+  await page.waitForSelector('#songGrid .song-item');
+  await page.locator('#songGrid .song-item').first().click();
+  await page.waitForSelector('#songDetail .verse p');
+  const family = () => page.evaluate(() => getComputedStyle(document.querySelector('#songDetail .verse p')).fontFamily);
+  const baseFamily = await family();
+  ok('song text uses the default (Inter) font', baseFamily.includes('Inter'), baseFamily);
+  // settings has the three font options
+  await openSettings(page);
+  ok('settings has font options', await page.locator('#fontDefault').isVisible() && await page.locator('#fontOutfit').isVisible() && await page.locator('#fontSerif').isVisible());
+  // clicking Serif applies it to the open song's verses
+  await page.locator('#fontSerif').click();
+  await page.waitForTimeout(300);
+  const serif = await family();
+  ok('serif font applies to song text', serif.includes('Georgia'), serif);
+  ok('serif choice persists in localStorage', (await page.evaluate(() => localStorage.getItem('labu-reader-family'))) === 'serif');
+  ok('serif button highlighted as active', (await page.evaluate(() => document.getElementById('fontSerif').style.background)) === 'var(--accent)');
+  // switching back to Default restores Inter
+  await page.locator('#fontDefault').click();
+  await page.waitForTimeout(300);
+  const def = await family();
+  ok('default font restores Inter', def.includes('Inter'), def);
+  ok('default choice persists in localStorage', (await page.evaluate(() => localStorage.getItem('labu-reader-family'))) === 'default');
+  await page.close();
+});
+
 // ═══════════════ 8b. STATUS BAR (APK) ═══════════════
 await section('status bar', async () => {
   const page = await newPage();

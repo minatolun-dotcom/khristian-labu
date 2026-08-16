@@ -244,7 +244,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .verse-type.v{background:var(--accent-glow);color:var(--accent);}.verse-type.c{background:rgba(52,211,153,0.12);color:var(--green);}
 .verse.c p{font-weight:600;font-style:italic;padding-left:1.5rem;}
 .verse-type.b{background:rgba(251,191,36,0.12);color:var(--amber);}.verse-type.p{background:rgba(251,113,133,0.12);color:var(--rose);}.verse-type.pc{background:rgba(167,139,250,0.12);color:#a78bfa;}
-.verse p{font-size:var(--reader-font,1.05rem);line-height:var(--reader-lh,1.6);color:var(--text);margin:0;white-space:pre-line;}
+.verse p{font-size:var(--reader-font,1.05rem);line-height:var(--reader-lh,1.6);font-family:var(--reader-family,inherit);color:var(--text);margin:0;white-space:pre-line;}
 .verse{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
 .no-results{text-align:center;padding:4rem 2rem;color:var(--text3);}.no-results .icon{margin-bottom:1rem;display:flex;justify-content:center;}.no-results .icon svg{width:48px;height:48px;}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
@@ -924,6 +924,14 @@ Second verse line 2"></textarea>
           <button onclick="setTheme('system')" id="themeSystem" style="flex:1;padding:8px 0;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;font-family:inherit;transition:all 0.15s;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>System</button>
         </div>
       </div>
+      <div style="padding:0.75rem 1rem;background:var(--bg3);border-radius:8px;">
+        <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.9rem;color:var(--text);margin-bottom:0.6rem;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;"><path d="M4 7V5h16v2"/><path d="M9 19h6M12 5v14"/></svg> Song text font</div>
+        <div style="display:flex;gap:6px;" id="fontOptions">
+          <button onclick="setReaderFamily('default')" id="fontDefault" style="flex:1;padding:8px 0;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.8rem;cursor:pointer;font-family:inherit;transition:all 0.15s;">Default</button>
+          <button onclick="setReaderFamily('outfit')" id="fontOutfit" style="flex:1;padding:8px 0;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.8rem;cursor:pointer;font-family:'Outfit',sans-serif;transition:all 0.15s;">Outfit</button>
+          <button onclick="setReaderFamily('serif')" id="fontSerif" style="flex:1;padding:8px 0;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:0.8rem;cursor:pointer;font-family:Georgia,serif;transition:all 0.15s;">Serif</button>
+        </div>
+      </div>
       <div style="display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1rem;background:var(--bg3);border-radius:8px;">
         <span style="display:flex;align-items:center;gap:0.6rem;font-size:0.9rem;color:var(--text);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg> Keep screen on</span>
         <div style="display:flex;gap:6px;">
@@ -1002,7 +1010,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.2'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.3'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1099,6 +1107,7 @@ async function init() {
   await loadMeta();
   renderGroups();
   applyTheme();
+  setReaderFamily(readerFamily); // apply the saved song-text font choice (Settings)
   // ponytail: admin login removed — all users can manage songs
   renderSidebarGroups();
   const av = document.getElementById('appVersion'); if (av) av.textContent = APP_VERSION;
@@ -1573,6 +1582,34 @@ let _listCache = {};
 // ponytail: per-song reader sizing, persisted across sessions.
 let readerFont = parseInt(localStorage.getItem('labu-reader-font') || '17', 10);
 let readerLH = parseFloat(localStorage.getItem('labu-reader-lh') || '1.6');
+// ponytail: the reader font family is a Settings choice (Default/Inter, Outfit,
+// Serif) applied to the lyric text via --reader-family. Persisted in localStorage
+// and included in backups, so it survives reinstall/restore. The font-size and
+// line-height stay per-song slider controls in the footer.
+let readerFamily = localStorage.getItem('labu-reader-family') || 'default';
+const READER_FAMILIES = {
+  default: "inherit",
+  outfit: "'Outfit','Noto Sans Myanmar',-apple-system,sans-serif",
+  serif: "Georgia,'Noto Sans Myanmar',serif",
+};
+function setReaderFamily(v){
+  if (!(v in READER_FAMILIES)) v = 'default';
+  readerFamily = v;
+  localStorage.setItem('labu-reader-family', v);
+  document.documentElement.style.setProperty('--reader-family', READER_FAMILIES[v]);
+  updateFontButtons(v);
+}
+function updateFontButtons(active){
+  ['default','outfit','serif'].forEach(m => {
+    const btn = document.getElementById('font' + m.charAt(0).toUpperCase() + m.slice(1));
+    if (btn) {
+      const isActive = m === active;
+      btn.style.background = isActive ? 'var(--accent)' : 'var(--bg)';
+      btn.style.color = isActive ? '#fff' : 'var(--text)';
+      btn.style.borderColor = isActive ? 'var(--accent)' : 'var(--border)';
+    }
+  });
+}
 function setReaderFont(v){ readerFont = parseInt(v,10); localStorage.setItem('labu-reader-font', v); document.documentElement.style.setProperty('--reader-font', v+'px'); const d=document.getElementById('songDetail'); if(d) d.style.setProperty('--reader-font', v+'px'); const t=document.getElementById('readerFontVal'); if(t) t.textContent=v+'px'; scheduleReaderControlsCheck(); }
 function setReaderLH(v){ readerLH = parseFloat(v); localStorage.setItem('labu-reader-lh', v); document.documentElement.style.setProperty('--reader-lh', v); const d=document.getElementById('songDetail'); if(d) d.style.setProperty('--reader-lh', v); scheduleReaderControlsCheck(); }
 
@@ -3692,7 +3729,7 @@ async function buildBackupPayload() {
     exportedAt: new Date().toISOString(),
     favorites, recents, playlists, searchHistory,
     theme: localStorage.getItem('labu-theme') || 'system',
-    readerFont, readerLH,
+    readerFont, readerLH, readerFamily,
     edits
   };
 }
@@ -3726,6 +3763,7 @@ async function applyBackup(data) {
     if (data.theme) localStorage.setItem('labu-theme', data.theme);
     if (data.readerFont != null) localStorage.setItem('labu-reader-font', data.readerFont);
     if (data.readerLH != null) localStorage.setItem('labu-reader-lh', data.readerLH);
+    if (data.readerFamily) localStorage.setItem('labu-reader-family', data.readerFamily);
     const db = await _idbOpen();
     const tx = db.transaction('edits', 'readwrite');
     tx.objectStore('edits').clear();

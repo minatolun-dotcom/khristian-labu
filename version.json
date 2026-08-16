@@ -1,9 +1,6 @@
 {
-  "version": "1.5.2",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.5.2/khristian-labu.apk",
-  "notes": "Fix: the reader footer (font/alignment sliders + song actions) now stays pinned to the bottom of the screen for short songs too — previously it floated up right after the last lyric line when the lyrics were shorter than the screen. Lyrics behavior is unchanged: long songs still scroll the final line fully above the footer.",
-  "updatedAt": "2026-08-16T17:22:53Z",
-  "sessionKey": "un0j9T3wUa4CfBwJ0s9ayw==:n23751vVKsQgN62F56gqJuTLKb+xWiWxTxJG3X8nYcffW4mQOETcfdDXXPRB0PmP5ZpP9SF6CbSy/yv3hpyY2i6m0Gmi+xbYEffp4S+T8yevfcot5iUSd9KJT0fXx82KZBNFz4QUkc56XsnP9DFODDzPc+zgTwrEegIcFydWWHuGTbkg6+RUdc60a0GIEFjfcW83Y8U+RjVmbtLu1VJmvSsBLlGEXgtwlL4Fh3pHRcbpfJOfyIhOUj1VCTFuZcPEWrki9mCYRmCaYb8ySsmcWwayxPr2q6PSbSz7Fak82rfm5NZOadd2zrOJR81IURO6q2dT+QmkpHWfS9q5KGDacQ==",
-  "checksum": "50310913e8f26832bdbbdcb20598cbf0d8f519b870fa3e33d1b4c4ca901d6accff794c8b5d567853ef15a1224650a1590fb9fef6958fcbb845199c2a7dc6ee48afe203ef2b295e090f87587aa670e00fb8c41a294a5c01a7bff41527c6ba1ddb55a9f12480ed16350f867b4bc01601ab306ebe9305aa0a0e27289f35e29d81cb281633f467f62cc91d6608a1378fe6b6ab43d29b168091a63e908c069e1e10250650613282d038e0d5a10f6e07d820f037ce24c651ecac69ccb4a950d6400c151c13c4b4095c05f71556041083fb2a733a3f147f84784224c6f7ac168a93c00aec9a69e975636e4da1f19d96d91bc6ff9905bfcaf92902d8cb63ad6d260de361",
-  "otaVersion": "1.5.2"
+  "version": "1.5.3",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.5.3/khristian-labu.apk",
+  "notes": "New: choose the song text font in Settings (Default/Inter, Outfit, or Serif) — the choice persists on your device and in Google backups. Font size and line spacing remain the sliders in the song footer.",
+  "updatedAt": "2026-08-16T17:35:38Z"
 }
