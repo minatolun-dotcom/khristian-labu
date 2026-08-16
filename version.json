@@ -1,9 +1,6 @@
 {
-  "version": "1.5.3",
-  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.5.3/khristian-labu.apk",
-  "notes": "New: choose the song text font in Settings (Default/Inter, Outfit, or Serif) — the choice persists on your device and in Google backups. Font size and line spacing remain the sliders in the song footer.",
-  "updatedAt": "2026-08-16T17:35:38Z",
-  "sessionKey": "MmGdJVHwRBdBnghcm4u87w==:KRAi1U+KzzmM/yG46BgAIvM9oXrVvWovWn1oozdH0Rt2UusMzoODPOZVXah1LaygfW9MjACmVEJt3YU+IRhhvOCkUtLNkumrdlTFED94cCt3ZpVaOu+YWEfwwtdr9YsfQ2HyClpIxCCktAjll17CCovblRlc0ee/pzhoHR1XV/EhzunCxyo2u9Xh+ATjDs2lrcKdm2aDJXOZPVv7/+9w99PfTRtRVWHZNH5OP15oEIfdqakfyXxOloO6ezeUZ15sRlGcVV8H70jJ1pQFmUIHsJ+abP/tHpI/LHUi0BNMMIRHsGxaezDyfhJCd8OlaK7WJOwJ6g6SWlKax2f4SHlTQA==",
-  "checksum": "24a050e4f95f07d943e201e3aeda52ea36e0ab88f4a01260bcc7358d3ea314ef19cd065a30e7b38a011cbfd117ebb3b275630fc5537557f6eae15e020f78aa7f926f635368d54624fd93be3479b30af200a384184c9fa65fe6a52594e6b88223c0a3d62c9437c2d57fa92e35939c7a8803f8298f559c3feff1b3d2cb8a41b2eccef36d9781b72a19c5b084f51fb985943e8096793fc7d310ab07441a077ecb639adda6a794c8fd42799454d3a1c533ee22653a7efeae5df78e4f687d2814bcd066750836f418a4500d51e02b1185d00dc8b767892874dc3328115411dd1f3be6115a8617eee79dcf07d5bb62aa9139416f83492e1c2faa2ea51bfefac0c73c27",
-  "otaVersion": "1.5.3"
+  "version": "1.5.4",
+  "apkUrl": "https://github.com/minatolun-dotcom/khristian-labu/releases/download/v1.5.4/khristian-labu.apk",
+  "notes": "Slightly tighter spacing between verse blocks (verses, choruses, bridges) so the lyric page reads more compactly.",
+  "updatedAt": "2026-08-16T17:43:08Z"
 }
