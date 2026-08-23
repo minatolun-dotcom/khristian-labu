@@ -1055,7 +1055,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.18'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.19'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1228,28 +1228,57 @@ function bannerUpdateClick(url) {
 function otaPlugin() {
   return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorUpdater) || null;
 }
-// ponytail: the native Capacitor bridge populates window.Capacitor.Plugins
-// ASYNCHRONOUSLY, after the WebView finishes loading — not at script boot. Reading
-// Capacitor.Plugins.CapacitorUpdater too early (e.g. during init()) yields undefined,
-// which made the OTA path think the plugin was absent and ALWAYS fall back to the
-// GitHub-download banner even though the plugin is bundled in the APK. Poll briefly
-// for the plugin instead. On web (no window.Capacitor) resolve null immediately so
-// the web-only download banner is unchanged.
+// ponytail: the APK's native-bridge.js provides the Capacitor native bridge
+// plumbing (nativePromise / nativeCallback) but NEVER loads plugin JS modules, so
+// Capacitor.Plugins stays empty and Capacitor.Plugins.CapacitorUpdater is undefined
+// on the device — which is why OTA always fell back to the GitHub-download banner.
+// We register the plugin ourselves with a thin proxy that forwards every method to
+// the native bridge (this is exactly what @capacitor/core's registerPlugin does).
+// Only do this on a real native shell (isNativePlatform) so the web/PWA build keeps
+// its no-plugin behavior and still shows the web-only GitHub download banner.
+function registerNativePlugin(name) {
+  const cap = window.Capacitor;
+  if (!cap || !cap.Plugins || typeof cap.nativePromise !== 'function') return;
+  if (cap.Plugins[name]) return;
+  const native = typeof cap.isNativePlatform !== 'function' || cap.isNativePlatform();
+  if (!native) return;
+  const makeAddListener = (eventName, callback) => {
+    const callbackId = cap.nativeCallback(name, 'addListener', { eventName: eventName }, callback);
+    const remove = () => { try { cap.nativeCallback(name, 'removeListener', { eventName: eventName, callbackId: callbackId }, callback); } catch (e) {} };
+    const p = Promise.resolve({ remove: remove });
+    p.remove = remove; // allow both `await addListener()` and `.then(h => h.remove())`
+    return p;
+  };
+  cap.Plugins[name] = new Proxy({}, {
+    get: function (_, prop) {
+      // ponytail: never expose `then`/symbol props, or Promise.resolve(plugin)
+      // treats the proxy as a thenable and hangs forever on adoption.
+      if (prop === 'then' || typeof prop === 'symbol') return undefined;
+      if (prop === 'addListener') return makeAddListener;
+      if (prop === 'removeListener' || prop === 'removeAllListeners')
+        return function (options, callback) { return cap.nativeCallback(name, prop, options, callback); };
+      return function (options) { return cap.nativePromise(name, prop, options); };
+    }
+  });
+}
+// ponytail: wait for the native bridge to inject window.Capacitor, then REGISTER
+// the requested plugin (so Capacitor.Plugins[name] actually exists) and resolve it.
+// On web (no window.Capacitor, or a non-native shell) resolve null so the caller
+// falls back to the web-only GitHub download banner.
 function whenPluginReady(name, timeoutMs) {
   return new Promise(resolve => {
     timeoutMs = timeoutMs || 8000;
     const t0 = Date.now();
     (function check() {
       const C = window.Capacitor;
-      // ponytail: the native bridge injects window.Capacitor (and populates
-      // Capacitor.Plugins) AFTER the page's inline scripts run at boot. So we must
-      // poll for window.Capacitor itself, not bail when it's momentarily absent —
-      // the original early-return is what made every APK install wrongly fall back
-      // to the GitHub-download banner. On a real shell it appears within ~1s.
-      if (C && C.Plugins && C.Plugins[name]) return resolve(C.Plugins[name]);
+      const native = C && (typeof C.isNativePlatform !== 'function' || C.isNativePlatform());
+      if (native) {
+        registerNativePlugin(name);
+        if (C.Plugins && C.Plugins[name]) return resolve(C.Plugins[name]);
+      }
       // ponytail: on a plain browser/PWA window.Capacitor never appears — stop after
-      // 2.5s so the web update banner still shows promptly instead of burning 8s.
-      if (!C && Date.now() - t0 > 2500) return resolve(null);
+      // 3s so the web update banner still shows promptly instead of burning 8s.
+      if (!native && Date.now() - t0 > 3000) return resolve(null);
       if (Date.now() - t0 > timeoutMs) return resolve(null);
       setTimeout(check, 100);
     })();
