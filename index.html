@@ -291,6 +291,15 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 
 /* ─── MODAL ─── */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);z-index:200;align-items:center;justify-content:center;padding:1rem;}
+.gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:0.75rem;}
+.gallery-item{position:relative;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border);background:var(--bg3);}
+.gallery-item img{width:100%;aspect-ratio:3/5;object-fit:cover;display:block;}
+.gallery-meta{padding:6px 8px;}
+.gallery-title{display:block;font-size:0.75rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.gallery-date{font-size:0.65rem;color:var(--text3);}
+.gallery-actions{display:flex;gap:4px;padding:0 8px 6px;}
+.gallery-actions button{flex:1;padding:5px 0;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;}
+.gallery-actions button:hover{border-color:var(--accent);color:var(--accent);}
 .modal-overlay.open{display:flex;}
 /* ponytail: the confirm dialog must always sit on top — it can open from inside
    Settings/playlist/edit modals (e.g. the OTA update prompt, deletes, restore). */
@@ -961,6 +970,9 @@ Second verse line 2"></textarea>
       <button class="sidebar-item" onclick="closeModal('settingsModal');closeSidebar();openAdmin()" style="background:var(--bg3);border-radius:8px;padding:0.75rem 1rem;border:1px solid var(--border);">
         <span class="si-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span><span class="si-label">Manage Songs</span>
       </button>
+      <button class="sidebar-item" onclick="openGallery()" style="background:var(--bg3);border-radius:8px;padding:0.75rem 1rem;border:1px solid var(--border);">
+        <span class="si-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></span><span class="si-label">Saved Images</span>
+      </button>
       <button class="sidebar-item" onclick="manualCheckUpdate()" style="background:var(--bg3);border-radius:8px;padding:0.75rem 1rem;border:1px solid var(--border);">
         <span class="si-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span><span class="si-label">Check for update</span>
       </button>
@@ -1002,6 +1014,19 @@ Second verse line 2"></textarea>
   </div>
 </div>
 
+<!-- IMAGE GALLERY MODAL -->
+<div class="modal-overlay" id="galleryModal" onclick="if(event.target===this)closeModal('galleryModal')">
+  <div class="modal" style="max-width:520px;max-height:85vh;">
+    <div class="modal-header">
+      <h3>Saved Images</h3>
+      <button class="modal-close" onclick="closeModal('galleryModal')">&times;</button>
+    </div>
+    <div class="modal-body" style="overflow-y:auto;max-height:70vh;">
+      <div id="galleryGrid" class="gallery-grid"></div>
+    </div>
+  </div>
+</div>
+
 <div class="toast-container" id="toastContainer"></div>
 <!-- OTA download progress (APK in-app updates) — centered so it clears the reader bar + FAB -->
 <div class="ota-progress" id="otaProgress">
@@ -1029,7 +1054,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.8'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.9'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -3567,7 +3592,7 @@ function atRoot() {
   return currentView === 'home' && !currentGroup && currentHomeGrid !== 'categoryGrid';
 }
 function onHardwareBack() {
-  const overlays = ['confirmModal', 'exportModal', 'playlistModal', 'songModal', 'songbookModal', 'bookModal', 'settingsModal', 'sidebarModal'];
+  const overlays = ['confirmModal', 'exportModal', 'playlistModal', 'songModal', 'songbookModal', 'bookModal', 'settingsModal', 'sidebarModal', 'galleryModal', 'imagePreviewModal'];
   for (const id of overlays) {
     const el = document.getElementById(id);
     if (el && el.classList.contains('open')) {
@@ -4128,7 +4153,103 @@ async function confirmImageShare() {
   const blob = _pendingImageBlob, song = _pendingImageSong;
   _pendingImageBlob = null; _pendingImageSong = null;
   if (!blob || !song) return;
+  // Auto-save to gallery before sharing
+  saveSongImage(blob, song).catch(() => {});
   await shareImageBlob(blob, song);
+}
+// ─── IMAGE GALLERY (IndexedDB) ───
+const _imgDBName = 'labu-image-gallery';
+function openImgDB() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(_imgDBName, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('images', { keyPath: 'id', autoIncrement: true });
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+async function saveSongImage(blob, song) {
+  try {
+    const b64 = await blobToBase64(blob);
+    const db = await openImgDB();
+    const tx = db.transaction('images', 'readwrite');
+    tx.objectStore('images').add({ title: song.title || 'Song', number: song.number || '', base64: b64, ts: Date.now() });
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+    db.close();
+  } catch (e) { /* gallery save is best-effort */ }
+}
+async function getSavedImages() {
+  const db = await openImgDB();
+  const tx = db.transaction('images', 'readonly');
+  const items = await new Promise((res, rej) => {
+    const req = tx.objectStore('images').getAll();
+    req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error);
+  });
+  db.close();
+  return items.reverse(); // newest first
+}
+async function deleteSavedImage(id) {
+  const db = await openImgDB();
+  const tx = db.transaction('images', 'readwrite');
+  tx.objectStore('images').delete(id);
+  await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = rej; });
+  db.close();
+}
+async function openGallery() {
+  closeModal('settingsModal');
+  const items = await getSavedImages();
+  const container = document.getElementById('galleryGrid');
+  if (!items.length) {
+    container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text3);font-size:0.85rem;">No saved images yet.<br>Share a song as an image and it will appear here.</div>';
+  } else {
+    container.innerHTML = items.map(it => {
+      const date = new Date(it.ts).toLocaleDateString();
+      return '<div class="gallery-item" data-id="' + it.id + '">'
+        + '<img src="data:image/png;base64,' + it.base64 + '" loading="lazy" />'
+        + '<div class="gallery-meta"><span class="gallery-title">' + (it.title || 'Song') + (it.number ? ' #' + it.number : '') + '</span><span class="gallery-date">' + date + '</span></div>'
+        + '<div class="gallery-actions">'
+        + '<button onclick="shareGalleryImage(' + it.id + ')" title="Share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button>'
+        + '<button onclick="removeGalleryImage(' + it.id + ')" title="Delete" style="color:var(--red);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>'
+        + '</div></div>';
+    }).join('');
+  }
+  openModal('galleryModal');
+}
+async function shareGalleryImage(id) {
+  const db = await openImgDB();
+  const tx = db.transaction('images', 'readonly');
+  const item = await new Promise((res, rej) => {
+    const req = tx.objectStore('images').get(id);
+    req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error);
+  });
+  db.close();
+  if (!item) return;
+  const blob = await (await fetch('data:image/png;base64,' + item.base64)).blob();
+  const file = new File([blob], 'song-' + (item.number || item.id) + '.png', { type: 'image/png' });
+  const native = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  if (native) {
+    const fs = window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+    const share = window.Capacitor.Plugins && window.Capacitor.Plugins.Share;
+    if (fs && share) {
+      const name = 'gallery-' + Date.now() + '.png';
+      try {
+        await fs.writeFile({ path: name, data: item.base64, directory: 'CACHE', recursive: true });
+        const uri = await fs.getUri({ path: name, directory: 'CACHE' });
+        await share.share({ title: item.title, files: [uri.uri], dialogTitle: 'Share song image' });
+      } finally { try { await fs.deleteFile({ path: name, directory: 'CACHE' }); } catch (e) {} }
+      return;
+    }
+  }
+  if (navigator.share) { try { await navigator.share({ files: [file], title: item.title }); return; } catch (e) { if (e?.name === 'AbortError') return; } }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'song-' + (item.number || id) + '.png'; document.body.appendChild(a); a.click(); a.remove();
+}
+async function removeGalleryImage(id) {
+  await deleteSavedImage(id);
+  const el = document.querySelector('.gallery-item[data-id="' + id + '"]');
+  if (el) el.remove();
+  if (!document.querySelectorAll('.gallery-item').length) {
+    document.getElementById('galleryGrid').innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text3);font-size:0.85rem;">No saved images yet.</div>';
+  }
+  toast('Image deleted', 'success');
 }
 async function shareSongImage() {
   closeWaMenu();
