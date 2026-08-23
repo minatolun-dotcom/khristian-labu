@@ -52,7 +52,7 @@ body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse
 [data-theme="light"] body::after{background:radial-gradient(ellipse at 10% 0%,rgba(37,99,235,0.06) 0%,transparent 40%),radial-gradient(ellipse at 90% 100%,rgba(59,130,246,0.04) 0%,transparent 40%);}
 ::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
 input,textarea,select,button{font-family:inherit;}
-body.capture-mode::before,body.capture-mode::after{display:none!important;}
+
 
 /* ─── NAV ─── */
 /* ponytail: Android 15/16 force edge-to-edge (transparent status bar), and the WebView
@@ -1029,7 +1029,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.7'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.8'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -4041,23 +4041,49 @@ async function captureFullSong() {
   // interactive chrome (action row, verse jump, back link) so the image is just the lyric.
   const clone = src.cloneNode(true);
   clone.querySelectorAll('.song-actions-row, .verse-jump, .song-detail-back').forEach(el => el.remove());
-  const wrap = document.createElement('div');
   const isLight = document.documentElement.getAttribute('data-theme') === 'light';
   const bg = isLight ? '#f8f9fc' : '#0f0f13';
-  wrap.style.cssText = 'position:absolute;left:-10000px;top:0;width:' + src.offsetWidth + 'px;z-index:-1;pointer-events:none;background:' + bg + ';';
-  // Ensure the clone itself has an opaque background so body::before/::after
-  // gradient overlays (position:fixed inset:0) don't bleed into the screenshot.
-  clone.style.background = bg;
-  clone.style.color = isLight ? '#1a1a2e' : '#e8e6f0';
+  const textColor = isLight ? '#1a1a2e' : '#e8e6f0';
+  // Build a fully self-contained wrapper with inline styles that override
+  // every ancestor background/shadow/overlay — the image is only the lyrics.
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:absolute;left:-10000px;top:0;width:' + src.offsetWidth + 'px;z-index:-1;pointer-events:none;background:' + bg + ';color:' + textColor + ';';
+  clone.style.cssText = 'background:' + bg + ';color:' + textColor + ';box-shadow:none;border:none;opacity:1;transform:none;';
+  // Strip any inline hover/interactive transforms from verse children
+  clone.querySelectorAll('.verse').forEach(v => { v.style.cssText = 'background:transparent;transform:none;'; });
+  clone.querySelectorAll('.verse p').forEach(p => { p.style.color = textColor; });
+  clone.querySelectorAll('.verse-type').forEach(vt => { /* keep verse-type badge colors */ });
+  clone.querySelectorAll('.song-detail-header').forEach(h => { h.style.borderBottomColor = isLight ? '#e2e4ea' : '#2a2a36'; });
   wrap.appendChild(clone);
   document.body.appendChild(wrap);
-  // Temporarily hide body pseudo-element overlays during capture
-  document.body.classList.add('capture-mode');
+  // Inject style that suppresses ALL body/html backgrounds and pseudo-elements during capture
+  const capStyle = document.createElement('style');
+  capStyle.id = 'capture-suppress';
+  capStyle.textContent = 'body::before,body::after{display:none!important;background:none!important;}'
+    + 'body{background:transparent!important;}'
+    + 'html{background:transparent!important;}'
+    + 'nav{display:none!important;}'
+    + '#waFabWrap,#otaProgress,#toastContainer{display:none!important;}';
+  document.head.appendChild(capStyle);
   try {
-    const canvas = await html2canvas(clone, { scale: 2, useCORS: true, logging: false, backgroundColor: bg });
-    return await new Promise(res => canvas.toBlob(res, 'image/png'));
+    const canvas = await html2canvas(clone, {
+      scale: 2, useCORS: true, logging: false,
+      backgroundColor: bg,
+      ignoreElements: el => el.id === 'capture-suppress'
+    });
+    // ponytail: flatten to opaque RGB so no transparent pixels survive into the
+    // shared PNG — on some devices/WhatsApp transparent pixels composite against
+    // a black background, creating a visible dark overlay.
+    const flatCanvas = document.createElement('canvas');
+    flatCanvas.width = canvas.width;
+    flatCanvas.height = canvas.height;
+    const fctx = flatCanvas.getContext('2d');
+    fctx.fillStyle = bg;
+    fctx.fillRect(0, 0, flatCanvas.width, flatCanvas.height);
+    fctx.drawImage(canvas, 0, 0);
+    return await new Promise(res => flatCanvas.toBlob(res, 'image/png'));
   } finally {
-    document.body.classList.remove('capture-mode');
+    capStyle.remove();
     wrap.remove();
   }
 }
