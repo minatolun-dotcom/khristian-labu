@@ -1055,7 +1055,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.16'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.17'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1237,14 +1237,21 @@ function otaPlugin() {
 // the web-only download banner is unchanged.
 function whenPluginReady(name, timeoutMs) {
   return new Promise(resolve => {
-    if (!window.Capacitor) return resolve(null);
     timeoutMs = timeoutMs || 8000;
     const t0 = Date.now();
     (function check() {
-      const p = window.Capacitor.Plugins && window.Capacitor.Plugins[name];
-      if (p) return resolve(p);
+      const C = window.Capacitor;
+      // ponytail: the native bridge injects window.Capacitor (and populates
+      // Capacitor.Plugins) AFTER the page's inline scripts run at boot. So we must
+      // poll for window.Capacitor itself, not bail when it's momentarily absent —
+      // the original early-return is what made every APK install wrongly fall back
+      // to the GitHub-download banner. On a real shell it appears within ~1s.
+      if (C && C.Plugins && C.Plugins[name]) return resolve(C.Plugins[name]);
+      // ponytail: on a plain browser/PWA window.Capacitor never appears — stop after
+      // 2.5s so the web update banner still shows promptly instead of burning 8s.
+      if (!C && Date.now() - t0 > 2500) return resolve(null);
       if (Date.now() - t0 > timeoutMs) return resolve(null);
-      setTimeout(check, 150);
+      setTimeout(check, 100);
     })();
   });
 }
@@ -1450,7 +1457,13 @@ async function checkForUpdate() {
   // APK: updates apply in-app via OTA — the GitHub download banner is web-only.
   // ponytail: wait for the bridge to register the plugin; reading it synchronously
   // at boot yields undefined and wrongly triggers the web download banner.
-  if (await whenPluginReady('CapacitorUpdater')) { checkOtaUpdate(false); return; }
+  const diagCap = !!(window.Capacitor);
+  const diagP = !!(window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorUpdater);
+  otaStep('OTA diag: window.Capacitor=' + diagCap + ' plugin=' + diagP);
+  const Up = await whenPluginReady('CapacitorUpdater');
+  otaStep('OTA diag: plugin after wait=' + !!Up);
+  if (Up) { checkOtaUpdate(false); return; }
+  otaStep('OTA diag: plugin absent after wait → web fallback banner');
   const info = await fetchUpdateInfo();
   if (!info) return;
   const latest = info.version;
