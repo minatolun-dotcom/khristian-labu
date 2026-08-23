@@ -1055,7 +1055,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.13'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.14'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -4115,7 +4115,17 @@ async function captureFullSong() {
     const canvas = await html2canvas(clone, {
       scale: 2, useCORS: true, logging: false,
       backgroundColor: bg,
-      ignoreElements: el => el.id === 'capture-hide-chrome'
+      ignoreElements: el => el.id === 'capture-hide-chrome',
+      // ponytail: WebView html2canvas composites fixed body::before/::after (grid + radial
+      // accents) ON TOP of the captured subtree, and a live class toggle isn't reliably
+      // honored there. Inject the hide straight into the render clone so it works on any engine.
+      onclone: (clonedDoc) => {
+        const s = clonedDoc.createElement('style');
+        s.textContent = 'body::before,body::after{display:none!important;background:none!important;}' +
+          '.modal-overlay{display:none!important;}';
+        clonedDoc.head.appendChild(s);
+        clonedDoc.body.classList.add('capture-mode');
+      }
     });
     // ponytail: flatten to opaque RGB so no transparent pixels survive into the
     // shared PNG — on some devices/WhatsApp transparent pixels composite against
