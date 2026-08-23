@@ -50,6 +50,7 @@ body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(1
 [data-theme="light"] body::before{background:linear-gradient(rgba(37,99,235,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(37,99,235,0.04) 1px,transparent 1px);background-size:40px 40px;}
 body::after{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 10% 0%,rgba(124,106,239,0.12) 0%,transparent 40%),radial-gradient(ellipse at 90% 100%,rgba(167,139,250,0.08) 0%,transparent 40%);pointer-events:none;z-index:0;}
 [data-theme="light"] body::after{background:radial-gradient(ellipse at 10% 0%,rgba(37,99,235,0.06) 0%,transparent 40%),radial-gradient(ellipse at 90% 100%,rgba(59,130,246,0.04) 0%,transparent 40%);}
+body.capture-mode::before,body.capture-mode::after{display:none!important;background:none!important;}
 ::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
 input,textarea,select,button{font-family:inherit;}
 
@@ -1054,7 +1055,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.10'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.11'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -4082,20 +4083,18 @@ async function captureFullSong() {
   clone.querySelectorAll('.song-detail-header').forEach(h => { h.style.borderBottomColor = '#e2e4ea'; });
   wrap.appendChild(clone);
   document.body.appendChild(wrap);
-  // Inject style that suppresses ALL body/html backgrounds and pseudo-elements during capture
-  const capStyle = document.createElement('style');
-  capStyle.id = 'capture-suppress';
-  capStyle.textContent = 'body::before,body::after{display:none!important;background:none!important;}'
-    + 'body{background:transparent!important;}'
-    + 'html{background:transparent!important;}'
-    + 'nav{display:none!important;}'
-    + '#waFabWrap,#otaProgress,#toastContainer{display:none!important;}';
-  document.head.appendChild(capStyle);
+  // Hide body pseudo-element overlays (grid/radials) via permanent CSS rule
+  document.body.classList.add('capture-mode');
+  // Hide chrome elements during capture
+  const hideStyle = document.createElement('style');
+  hideStyle.id = 'capture-hide-chrome';
+  hideStyle.textContent = 'nav,#waFabWrap,#otaProgress,#toastContainer{display:none!important;}';
+  document.head.appendChild(hideStyle);
   try {
     const canvas = await html2canvas(clone, {
       scale: 2, useCORS: true, logging: false,
       backgroundColor: bg,
-      ignoreElements: el => el.id === 'capture-suppress'
+      ignoreElements: el => el.id === 'capture-hide-chrome'
     });
     // ponytail: flatten to opaque RGB so no transparent pixels survive into the
     // shared PNG — on some devices/WhatsApp transparent pixels composite against
@@ -4109,7 +4108,8 @@ async function captureFullSong() {
     fctx.drawImage(canvas, 0, 0);
     return await new Promise(res => flatCanvas.toBlob(res, 'image/png'));
   } finally {
-    capStyle.remove();
+    hideStyle.remove();
+    document.body.classList.remove('capture-mode');
     wrap.remove();
   }
 }
