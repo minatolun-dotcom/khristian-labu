@@ -212,6 +212,21 @@ await section('reader features', async () => {
   ok('wa menu opens with 2 options', (await page.locator('#waMenu button').count()) === 2);
   ok('text share option present', (await page.locator('#waMenu').textContent()).includes('Share as text'));
   ok('image share option present', (await page.locator('#waMenu').textContent()).includes('Share as image'));
+  // click image share → preview modal should open (html2canvas takes time)
+  await page.locator('#waMenu button').nth(1).click();
+  await page.waitForSelector('#imagePreviewModal.open', { timeout: 25000 }).catch(() => {});
+  const previewOpen = await page.locator('#imagePreviewModal.open').count() > 0;
+  ok('image preview modal opens on share-as-image', previewOpen);
+  if (previewOpen) {
+    ok('preview has image', (await page.locator('#imgPreviewPic').getAttribute('src'))?.length > 10);
+    ok('preview has share button', await page.locator('#imgPreviewShareBtn').isVisible());
+    // close the preview
+    await page.locator('#imagePreviewModal .modal-close').click();
+    await page.waitForTimeout(300);
+  } else {
+    // force-close any lingering modal/menu so subsequent tests aren't blocked
+    await page.evaluate(() => { document.getElementById('imagePreviewModal')?.classList.remove('open'); document.getElementById('waMenu')?.classList.remove('open'); });
+  }
   // close menu, go back to search view → FAB hidden
   await page.keyboard.press('Escape').catch(() => {});
   await page.goBack();

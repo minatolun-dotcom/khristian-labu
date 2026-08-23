@@ -294,7 +294,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .modal-overlay.open{display:flex;}
 /* ponytail: the confirm dialog must always sit on top — it can open from inside
    Settings/playlist/edit modals (e.g. the OTA update prompt, deletes, restore). */
-#confirmModal{z-index:280;}
+#confirmModal{z-index:280;}#imagePreviewModal{z-index:290;}
 .modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);width:100%;max-width:480px;max-height:90vh;overflow-y:auto;animation:slideUp 0.3s ease-out;}
 .modal-header{display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);}
 .modal-header h3{font-size:1.1rem;font-weight:600;}
@@ -851,6 +851,23 @@ Second verse line 2"></textarea>
   </div>
 </div>
 
+<!-- IMAGE PREVIEW MODAL -->
+<div class="modal-overlay" id="imagePreviewModal">
+  <div class="modal" style="max-width:420px;max-height:85vh;">
+    <div class="modal-header">
+      <h3 id="imgPreviewTitle">Share Image</h3>
+      <button class="modal-close" onclick="closeImagePreview()">&times;</button>
+    </div>
+    <div class="modal-body" style="text-align:center;overflow-y:auto;max-height:60vh;padding:0.5rem;">
+      <img id="imgPreviewPic" style="max-width:100%;border-radius:var(--radius-sm);border:1px solid var(--border);" />
+    </div>
+    <div class="modal-footer" style="justify-content:center;gap:0.75rem;">
+      <button class="btn btn-ghost" onclick="closeImagePreview()">Cancel</button>
+      <button class="btn btn-primary" id="imgPreviewShareBtn" onclick="confirmImageShare()">Share</button>
+    </div>
+  </div>
+</div>
+
 <!-- EXPORT MODAL -->
 <div class="modal-overlay" id="exportModal">
   <div class="modal">
@@ -1012,7 +1029,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.6'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.7'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -4077,6 +4094,16 @@ async function shareImageBlob(blob, song) {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   toast('Image downloaded — share it from your gallery', 'success');
 }
+let _pendingImageBlob = null;
+let _pendingImageSong = null;
+function closeImagePreview() { closeModal('imagePreviewModal'); _pendingImageBlob = null; _pendingImageSong = null; }
+async function confirmImageShare() {
+  closeModal('imagePreviewModal');
+  const blob = _pendingImageBlob, song = _pendingImageSong;
+  _pendingImageBlob = null; _pendingImageSong = null;
+  if (!blob || !song) return;
+  await shareImageBlob(blob, song);
+}
 async function shareSongImage() {
   closeWaMenu();
   const song = currentList[currentSongIdx];
@@ -4085,7 +4112,15 @@ async function shareSongImage() {
   try {
     const blob = await captureFullSong();
     if (!blob) { toast('Could not capture the song image', 'error'); return; }
-    await shareImageBlob(blob, song);
+    // Show preview modal so the user can confirm before sharing
+    _pendingImageBlob = blob;
+    _pendingImageSong = song;
+    const url = URL.createObjectURL(blob);
+    document.getElementById('imgPreviewTitle').textContent = song.title || 'Share Image';
+    const img = document.getElementById('imgPreviewPic');
+    img.src = url;
+    img.onload = () => URL.revokeObjectURL(url);
+    openModal('imagePreviewModal');
   } catch (e) {
     toast('Screenshot failed: ' + (e && e.message ? e.message : e), 'error');
   }
