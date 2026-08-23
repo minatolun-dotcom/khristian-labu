@@ -1054,7 +1054,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.9'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.10'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -4064,21 +4064,22 @@ async function captureFullSong() {
   if (!src) return null;
   // ponytail: render a pristine clone off-screen at the song's real width, stripped of
   // interactive chrome (action row, verse jump, back link) so the image is just the lyric.
+  // ponytail: share card is always light — a dark card reads as a black overlay in WhatsApp's dark chat
+  const bg = '#f8f9fc';
+  const textColor = '#1a1a2e';
   const clone = src.cloneNode(true);
   clone.querySelectorAll('.song-actions-row, .verse-jump, .song-detail-back').forEach(el => el.remove());
-  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-  const bg = isLight ? '#f8f9fc' : '#0f0f13';
-  const textColor = isLight ? '#1a1a2e' : '#e8e6f0';
   // Build a fully self-contained wrapper with inline styles that override
   // every ancestor background/shadow/overlay — the image is only the lyrics.
   const wrap = document.createElement('div');
+  wrap.setAttribute('data-theme', 'light');
   wrap.style.cssText = 'position:absolute;left:-10000px;top:0;width:' + src.offsetWidth + 'px;z-index:-1;pointer-events:none;background:' + bg + ';color:' + textColor + ';';
   clone.style.cssText = 'background:' + bg + ';color:' + textColor + ';box-shadow:none;border:none;opacity:1;transform:none;';
   // Strip any inline hover/interactive transforms from verse children
   clone.querySelectorAll('.verse').forEach(v => { v.style.cssText = 'background:transparent;transform:none;'; });
   clone.querySelectorAll('.verse p').forEach(p => { p.style.color = textColor; });
   clone.querySelectorAll('.verse-type').forEach(vt => { /* keep verse-type badge colors */ });
-  clone.querySelectorAll('.song-detail-header').forEach(h => { h.style.borderBottomColor = isLight ? '#e2e4ea' : '#2a2a36'; });
+  clone.querySelectorAll('.song-detail-header').forEach(h => { h.style.borderBottomColor = '#e2e4ea'; });
   wrap.appendChild(clone);
   document.body.appendChild(wrap);
   // Inject style that suppresses ALL body/html backgrounds and pseudo-elements during capture
