@@ -82,11 +82,15 @@ jobs:
             # --no-code-check: this app ships as a single index.html (no .js files), which
             # the CLI's notifyAppReady() scan can't see — the call IS present, guarded.
             ZJSON=$(npx --yes @capgo/cli@latest bundle zip org.khristianlabu.app --path ./www --bundle "${TAG#v}" --json --no-code-check)
+            echo "$ZJSON" > /tmp/ota-zip.json
             ZIP=$(echo "$ZJSON" | python3 -c "import sys,json;print(json.load(sys.stdin)['filename'])")
             CS=$(echo "$ZJSON" | python3 -c "import sys,json;print(json.load(sys.stdin)['checksum'])")
             npx --yes @capgo/cli@latest bundle encrypt "$ZIP" "$CS" --key /tmp/ota-private.pem --json > /tmp/ota-session.json
             mv "${ZIP}_encrypted.zip" www-latest.zip
-            python3 -c "import json; j=json.load(open('/tmp/ota-session.json')); json.dump({'version':'${TAG#v}','sessionKey':j['ivSessionKey'],'checksum':j['checksum']}, open('ota-session.json','w'))"
+            # ponytail: plugin verifies sha256 of the decrypted bundle (= $CS from bundle
+            # zip). bundle encrypt's own checksum field is a different format, so using it
+            # broke every OTA. Keep $CS as the checksum.
+            python3 -c "import json; z=json.load(open('/tmp/ota-zip.json')); s=json.load(open('/tmp/ota-session.json')); json.dump({'version':z['bundle'],'sessionKey':s['ivSessionKey'],'checksum':z['checksum']}, open('ota-session.json','w'))"
             rm -f /tmp/ota-private.pem "$ZIP"
             echo "OTA bundle signed — ota-session.json written"
           else

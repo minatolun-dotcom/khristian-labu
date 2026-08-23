@@ -569,7 +569,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 </nav>
 <div id="updateBanner" class="update-banner" hidden>
   <span class="upd-text">New version <b id="updVer"></b> available</span>
-  <a id="updBtn" class="upd-btn" target="_blank" rel="noopener" onclick="return openApkDownload(this.href)">Update</a>
+  <a id="updBtn" class="upd-btn" target="_blank" rel="noopener" onclick="return bannerUpdateClick(this.href)">Update</a>
   <button class="upd-close" onclick="dismissUpdate()" aria-label="Dismiss">×</button>
   <div id="otaStepDetail" style="display:none;margin-top:6px;font-size:0.72rem;color:var(--text3);word-break:break-word;"></div>
   <div id="otaErrorDetail" style="display:none;margin-top:4px;font-size:0.72rem;color:var(--amber);word-break:break-word;"></div>
@@ -1055,7 +1055,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.12'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.13'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1215,6 +1215,13 @@ function otaStep(msg) {
   const el = document.getElementById('otaStepDetail');
   if (el) { el.textContent = 'Step: ' + msg; el.style.display = 'block'; }
 }
+// ponytail: the banner's Update button. On the APK with a working OTA plugin, run the
+// in-app install directly (the banner click is already explicit intent). Only after an
+// OTA failure do we fall back to opening the APK in the browser for a manual install.
+function bannerUpdateClick(url) {
+  if (otaPlugin() && window.__ota && !window.__otaFellBack) { runOtaInstall(); return false; }
+  return openApkDownload(url);
+}
 function otaPlugin() {
   return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorUpdater) || null;
 }
@@ -1333,59 +1340,71 @@ async function checkOtaUpdate(force) {
       if (!sessionKey || !checksum) sessBroken = true;
     } catch (e) { sessBroken = true; /* release is signed but session data is unreachable */ }
   }
+  // ponytail: stash the installer context so the banner's Update button can also kick
+  // off the SAME in-app install (no second confirm), and a failed install can fall back
+  // to the browser-download banner.
+  window.__ota = { Up, latest, url, sessionKey, checksum, sessBroken, info };
+  window.__otaFellBack = false;
   // ponytail: ask first (per the app's UX), then download + reload in place.
   try {
-    confirmDangerous('Update to version ' + latest + ' is available. Download and restart the app now?', 'Update now', async () => {
-      // live download progress via the plugin's 'download' events (0-100%).
-      const prog = document.getElementById('otaProgress');
-      const fill = document.getElementById('otaProgressFill');
-      const pct = document.getElementById('otaProgressPct');
-      let listener = null;
-      if (Up.addListener) {
-        try { listener = await Up.addListener('download', e => {
-          const p = Math.max(0, Math.min(100, Math.round((e && e.percent) || 0)));
-          if (fill) fill.style.width = p + '%';
-          if (pct) pct.textContent = p + '%';
-        }); } catch (e) { /* progress is a nicety — never block the update on it */ }
-      }
-      if (prog) prog.classList.add('show');
-      try {
-        // ponytail: the release is signed but the session data couldn't be fetched —
-        // downloading the encrypted bundle without keys is guaranteed to fail, so go
-        // straight to the APK download instead of a confusing failed install.
-        if (sessBroken) throw new Error('signed bundle session data unavailable');
-        // ponytail: pass the per-bundle session data only when the release is signed;
-        // unsigned (legacy) bundles install with no verification.
-        const dOpts = { version: latest, url: url };
-        if (sessionKey && checksum) { dOpts.sessionKey = sessionKey; dOpts.checksum = checksum; }
-        otaStep('downloading bundle');
-        const v = await Up.download(dOpts);
-        otaStep('applying update');
-        await Up.set(v); // applies the new bundle and reloads the app in place
-      } catch (e) {
-        // ponytail: OTA can't install a signed bundle on an APK built before signing
-        // (no public key) — and a failed/rolled-back install shows nothing. Fall back
-        // to the APK-download banner so those users can still get the new version.
-        const errMsg = (e && e.message) ? e.message : String(e);
-        otaStep('failed installing ' + latest + ': ' + errMsg.slice(0, 120));
-        toast('In-app update failed — use the Download button instead', 'error');
-        console.error('[OTA update]', errMsg);
-        // ponytail: surface the REAL failure reason on screen (previously console-only,
-        // so a device-side failure looked identical to "no update"). The banner shows
-        // it too, so users can report exactly what went wrong.
-        try {
-          const de = document.getElementById('otaErrorDetail');
-          if (de) { de.textContent = 'OTA error: ' + errMsg.slice(0, 200); de.style.display = 'block'; }
-        } catch (e2) {}
-        try {
-          showUpdateBanner(latest, info.apkUrl);
-        } catch (e2) { /* banner is best-effort */ }
-      } finally {
-        if (prog) prog.classList.remove('show');
-        if (listener && listener.remove) { try { await listener.remove(); } catch (e) {} }
-      }
-    });
+    confirmDangerous('Update to version ' + latest + ' is available. Download and restart the app now?', 'Update now', runOtaInstall);
   } catch (e) { if (force) toast('Could not check for updates (offline?)', 'error'); }
+}
+
+// ponytail: the actual in-app install (download + apply the OTA bundle). Shared by the
+// confirm modal AND the banner's Update button, so both paths update in place.
+async function runOtaInstall() {
+  const o = window.__ota;
+  if (!o) return;
+  const { Up, latest, url, sessionKey, checksum, sessBroken, info } = o;
+  const prog = document.getElementById('otaProgress');
+  const fill = document.getElementById('otaProgressFill');
+  const pct = document.getElementById('otaProgressPct');
+  let listener = null;
+  if (Up.addListener) {
+    try { listener = await Up.addListener('download', e => {
+      const p = Math.max(0, Math.min(100, Math.round((e && e.percent) || 0)));
+      if (fill) fill.style.width = p + '%';
+      if (pct) pct.textContent = p + '%';
+    }); } catch (e) { /* progress is a nicety — never block the update on it */ }
+  }
+  if (prog) prog.classList.add('show');
+  try {
+    // ponytail: the release is signed but the session data couldn't be fetched —
+    // downloading the encrypted bundle without keys is guaranteed to fail, so go
+    // straight to the APK download instead of a confusing failed install.
+    if (sessBroken) throw new Error('signed bundle session data unavailable');
+    // ponytail: pass the per-bundle session data only when the release is signed;
+    // unsigned (legacy) bundles install with no verification.
+    const dOpts = { version: latest, url: url };
+    if (sessionKey && checksum) { dOpts.sessionKey = sessionKey; dOpts.checksum = checksum; }
+    otaStep('downloading bundle');
+    const v = await Up.download(dOpts);
+    otaStep('applying update');
+    await Up.set(v); // applies the new bundle and reloads the app in place
+  } catch (e) {
+    // ponytail: OTA can't install a signed bundle on an APK built before signing
+    // (no public key) — and a failed/rolled-back install shows nothing. Fall back
+    // to the APK-download banner so those users can still get the new version.
+    const errMsg = (e && e.message) ? e.message : String(e);
+    otaStep('failed installing ' + latest + ': ' + errMsg.slice(0, 120));
+    toast('In-app update failed — use the Download button instead', 'error');
+    console.error('[OTA update]', errMsg);
+    // ponytail: surface the REAL failure reason on screen (previously console-only,
+    // so a device-side failure looked identical to "no update"). The banner shows
+    // it too, so users can report exactly what went wrong.
+    try {
+      const de = document.getElementById('otaErrorDetail');
+      if (de) { de.textContent = 'OTA error: ' + errMsg.slice(0, 200); de.style.display = 'block'; }
+    } catch (e2) {}
+    // ponytail: OTA failed → fall back to the browser-download banner. Mark the
+    // fallback so the banner's Update button goes straight to the APK (no loop).
+    window.__otaFellBack = true;
+    try { showUpdateBanner(latest, info.apkUrl); } catch (e2) {}
+  } finally {
+    if (prog) prog.classList.remove('show');
+    if (listener && listener.remove) { try { await listener.remove(); } catch (e) {} }
+  }
 }
 
 async function manualCheckUpdate() {
@@ -1395,9 +1414,10 @@ async function manualCheckUpdate() {
   if (!info) { toast('Could not check for updates', 'error'); return; }
   const latest = info.version;
   if (compareVer(latest, APP_VERSION) > 0) {
-    if (localStorage.getItem('labu_update_dismissed') !== latest) {
-      showUpdateBanner(latest, info.apkUrl);
-    }
+    // ponytail: always surface the actionable banner on a manual check, even if the
+    // user dismissed the auto banner earlier — otherwise "Check for update" only
+    // toasts and there's no way back into the update from the app.
+    showUpdateBanner(latest, info.apkUrl);
     toast('Update available: v' + latest, 'success');
   } else {
     toast('You are on the latest version (' + APP_VERSION + ')', 'success');
