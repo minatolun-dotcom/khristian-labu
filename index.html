@@ -1055,7 +1055,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.21'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.22'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -4167,11 +4167,22 @@ async function captureFullSong() {
   // every ancestor background/shadow/overlay — the image is only the lyrics.
   const wrap = document.createElement('div');
   wrap.setAttribute('data-theme', isLight ? 'light' : 'dark');
-  wrap.style.cssText = 'position:absolute;left:-10000px;top:0;width:' + src.offsetWidth + 'px;z-index:-1;pointer-events:none;background:' + bg + ';color:' + textColor + ';';
+  // ponytail: no negative z-index (root-stacking quirk) and overflow hidden (stray
+  // scrollbar stripe on the right edge of shared images).
+  wrap.style.cssText = 'position:absolute;left:-10000px;top:0;width:' + src.offsetWidth + 'px;overflow:hidden;pointer-events:none;background:' + bg + ';color:' + textColor + ';';
   clone.style.cssText = 'background:' + bg + ';color:' + textColor + ';box-shadow:none;border:none;opacity:1;transform:none;';
-  // Strip any inline hover/interactive transforms from verse children
-  clone.querySelectorAll('.verse').forEach(v => { v.style.cssText = 'background:transparent;transform:none;'; });
+  // ponytail: paint verses OPAQUE with the card bg. Transparent verse layers let
+  // underlying composited layers bleed through html2canvas in some engines — the
+  // "translucent black/white overlay" users saw on shared lyrics images
+  // (pixel-proven: opaque verse bg == zero drifted pixels).
+  clone.querySelectorAll('.verse').forEach(v => { v.style.cssText = 'background:' + bg + ';transform:none;'; });
   clone.querySelectorAll('.verse p').forEach(p => { p.style.color = textColor; });
+  // ponytail: freeze entrance animations (.verse/.header use fade-in). Sharing right
+  // after opening a song used to snapshot verses mid-fade — text rendered
+  // semi-transparent, reading as a hazy overlay over the lyrics.
+  const s0 = document.createElement('style');
+  s0.textContent = '#songDetail *{animation:none!important;transition:none!important;opacity:1!important;}';
+  document.head.appendChild(s0);
   clone.querySelectorAll('.verse-type').forEach(vt => { /* keep verse-type badge colors */ });
   clone.querySelectorAll('.song-detail-header').forEach(h => { h.style.borderBottomColor = isLight ? '#e2e4ea' : '#2a2a36'; });
   wrap.appendChild(clone);
@@ -4187,14 +4198,24 @@ async function captureFullSong() {
     const canvas = await html2canvas(clone, {
       scale: 2, useCORS: true, logging: false,
       backgroundColor: bg,
+      // ponytail: pin the render window to the card — html2canvas otherwise uses
+      // viewport/scroll metrics, which bleeds a scrollbar stripe into the right
+      // edge of the shared image on some engines.
+      scrollX: 0, scrollY: 0, windowWidth: src.offsetWidth, windowHeight: src.scrollHeight + 64,
       ignoreElements: el => el.id === 'capture-hide-chrome',
       // ponytail: WebView html2canvas composites fixed body::before/::after (grid + radial
       // accents) ON TOP of the captured subtree, and a live class toggle isn't reliably
       // honored there. Inject the hide straight into the render clone so it works on any engine.
       onclone: (clonedDoc) => {
         const s = clonedDoc.createElement('style');
+        // ponytail: hide chrome IN THE CLONE. The live hideStyle <style> tag is
+        // stripped from the clone by ignoreElements (it excludes the tag itself,
+        // killing its rules), so without this the sticky nav — rgba(0.85) black in
+        // dark / white in light, plus backdrop blur — paints a translucent band
+        // over the top of every shared image. This was THE "overlay" users saw.
         s.textContent = 'body::before,body::after{display:none!important;background:none!important;}' +
-          '.modal-overlay{display:none!important;}';
+          '.modal-overlay{display:none!important;}' +
+          'nav,#waFabWrap,#otaProgress,#toastContainer,.toast{display:none!important;}';
         clonedDoc.head.appendChild(s);
         clonedDoc.body.classList.add('capture-mode');
       }
@@ -4212,6 +4233,7 @@ async function captureFullSong() {
     return await new Promise(res => flatCanvas.toBlob(res, 'image/png'));
   } finally {
     hideStyle.remove();
+    s0.remove();
     document.body.classList.remove('capture-mode');
     wrap.remove();
   }

@@ -6,9 +6,10 @@
   "scripts": {
     "sync": "cp index.html logo.png songs.json songs.json.gzip manifest.webmanifest sw.js icon-192.png icon-512.png www/ && cp -r assets www/ 2>/dev/null || true && npx cap sync",
     "build": "npm run sync && npx cap build android",
-    "test": "python3 scripts/validate_data.py && node scripts/test_ota_bridge.mjs && node scripts/e2e_full.mjs",
+    "test": "python3 scripts/validate_data.py && node scripts/test_ota_bridge.mjs && node scripts/test_share_image.mjs && node scripts/e2e_full.mjs",
     "test:data": "python3 scripts/validate_data.py",
-    "test:ota": "node scripts/test_ota_bridge.mjs"
+    "test:ota": "node scripts/test_ota_bridge.mjs",
+    "test:share": "node scripts/test_share_image.mjs"
   },
   "keywords": [],
   "author": "",
