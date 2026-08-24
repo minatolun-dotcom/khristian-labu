@@ -62,25 +62,46 @@ jobs:
       # ponytail: package the web bundle for in-app OTA updates. @capgo/capacitor-updater
       # runs in manual mode (autoUpdate:false, no cloud): CI attaches www-latest.zip to
       # every tagged GitHub Release, and the app downloads + applies it in place.
-      # ponytail: bundles ship UNSIGNED (plain zip + plain sha256). The signed flow
-      # broke OTA for every release: (a) the public key in capacitor.config.json was
-      # double-escaped so the plugin silently disabled verification, and (b) the CI
-      # mirrored the plain sha256 where the plugin requires the RSA-signed one. Both
-      # devices-with-broken-key and fixed-key installs accept unsigned bundles, and
-      # integrity is still pinned by sha256 over HTTPS from the same GitHub trust
-      # domain that publishes the APK itself.
+      #
+      # ponytail: the zip ships UNENCRYPTED but the checksum ships RSA-SIGNED
+      # (PKCS1, raw sha256 bytes, hex — the plugin's "V3" format). This is the only
+      # combination every shipped APK accepts:
+      #   - APKs <= 1.5.22 have a double-escaped publicKey the plugin fails to parse,
+      #     so verification is disabled and the signature is ignored (plain compare).
+      #   - APKs >= 1.5.23 parse the key, and decryptChecksum REJECTS a plain sha256
+      #     ("checksum is not encrypted") but accepts the signed one.
+      # Encrypting the zip itself is pointless here — bundle and checksum travel the
+      # same GitHub trust domain that publishes the APK.
       - name: Package OTA bundle
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           TAG: ${{ github.ref_name }}
+          OTA_SIGNING_PRIVATE_KEY: ${{ secrets.OTA_SIGNING_PRIVATE_KEY }}
         run: |
           cd www
           zip -rq ../www-latest.zip .
           cd ..
           ls -lh www-latest.zip
           CS=$(sha256sum www-latest.zip | cut -d' ' -f1)
-          echo "{\"version\":\"${TAG#v}\",\"sessionKey\":\"\",\"checksum\":\"$CS\"}" > ota-session.json
-          echo "OTA bundle packaged (unsigned) — sha256 $CS"
+          if [ -n "$OTA_SIGNING_PRIVATE_KEY" ]; then
+            echo "$OTA_SIGNING_PRIVATE_KEY" > /tmp/ota-private.pem
+            chmod 600 /tmp/ota-private.pem
+            SIGNED=$(node -e "
+              const crypto=require('crypto'),fs=require('fs');
+              const sig=crypto.privateEncrypt(
+                {key:fs.readFileSync('/tmp/ota-private.pem'),padding:crypto.constants.RSA_PKCS1_PADDING},
+                Buffer.from('$CS','hex'));
+              process.stdout.write(sig.toString('hex'));
+            ")
+            rm -f /tmp/ota-private.pem
+            CHK="$SIGNED"
+            echo "checksum signed (V3 hex)"
+          else
+            CHK="$CS"
+            echo "OTA_SIGNING_PRIVATE_KEY not set — plain checksum (works only on APKs with unparseable key)"
+          fi
+          echo "{\"version\":\"${TAG#v}\",\"sessionKey\":\"\",\"checksum\":\"$CHK\"}" > ota-session.json
+          echo "OTA bundle packaged — checksum $CHK"
 
       # ponytail: the heavy Android/Gradle build only runs on version tags or manual
       # dispatch. Plain pushes to main just update the web app (Pages serves main root),
