@@ -305,7 +305,7 @@ jobs:
           git config user.email "labu-ci@users.noreply.github.com"
           git fetch origin main
           git checkout -f origin/main
-          cp www-latest.zip .
+          # www-latest.zip is already at the repo root (Package step); just stage it
           git add www-latest.zip
           git commit -m "chore: mirror OTA bundle for v${TAG} to Pages" || echo "nothing to commit"
           git push origin HEAD:main

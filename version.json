@@ -1,6 +1,11 @@
 {
+<<<<<<< HEAD
   "version": "1.5.27",
   "otaVersion": "1.5.28",
+=======
+  "version": "1.5.29",
+  "otaVersion": "1.5.29",
+>>>>>>> 3b0d985 (fix: Pages-mirror step died on self-copy — www-latest.zip already at root (v1.5.29))
   "sessionKey": "",
   "checksum": "6f1974ad9fdc62213186f5307a8cda62755e2bf91a739bce43e5aa2fce4975a400f3ebf0f7082352257609081343d563bc24310f04a664e9c7308c45e8c537adddc4049d2be24b9965c363d5d01a0ce38c2bd230d132fb000a7784f8de556c474b6bc70d6f699ec8305d54c6a07921bcb579d93312f8cbfb25f0d1c6e6947e264f01a70c44a4eb98d3cac050e50b617e8db27370b1985ada9d2c72ffba869051e0bb7f33eaf896b72207eddee971f0b514a5fef6c704fa425ceafa0b154c8bcaa4b531698b93d62241ddc3cadca1cfd9aabf1c5d7c39daf1c5cc5df3680b40e0a9ab0a0bf1087304a9174cea4f1c5d191d13af3fc5cb55df9f9d90714798492e"
 }
