@@ -393,7 +393,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .toast{padding:12px 20px;border-radius:var(--radius-sm);background:var(--card);border:1px solid var(--border);color:var(--text);font-size:0.85rem;animation:slideUp 0.3s ease-out;box-shadow:0 8px 24px rgba(0,0,0,0.3);}
 /* ponytail: in-app OTA download progress card (APK). Centered so it never
    overlaps the reader controls or the WhatsApp FAB. */
-.ota-progress{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:80;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;box-shadow:0 12px 32px rgba(0,0,0,0.35);min-width:250px;max-width:calc(100vw - 32px);display:none;flex-direction:column;gap:8px;font-size:0.82rem;}
+.ota-progress{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:500;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;box-shadow:0 12px 32px rgba(0,0,0,0.35);min-width:250px;max-width:calc(100vw - 32px);display:none;flex-direction:column;gap:8px;font-size:0.82rem;}
 .ota-progress.show{display:flex;}
 .ota-progress .op-label{display:flex;justify-content:space-between;gap:12px;color:var(--text2);font-weight:500;}
 .ota-progress .op-track{height:6px;border-radius:999px;background:var(--bg3);overflow:hidden;}
@@ -1056,7 +1056,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.25'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.26'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1388,7 +1388,7 @@ async function checkOtaUpdate(force) {
   // release asset when version.json carried no session info at all.
   if (info.session && info.session.version === latest) {
     sessionKey = info.session.sessionKey; checksum = info.session.checksum;
-    otaStep(sessionKey ? 'session data loaded from version.json' : 'unsigned bundle — no session keys');
+    otaStep(sessionKey ? 'session data loaded from version.json' : 'checksum-signed bundle, no session keys');
   } else if (info.assets.includes('ota-session.json')) {
     otaStep('fetching session data from release');
     try {
@@ -1438,7 +1438,17 @@ async function runOtaInstall() {
     const dOpts = { version: latest, url: url };
     if (sessionKey && checksum) { dOpts.sessionKey = sessionKey; dOpts.checksum = checksum; }
     otaStep('downloading bundle');
-    const v = await Up.download(dOpts);
+    // ponytail: the native downloader enforces a 20s response timeout baked into
+    // already-shipped APKs — mid-download drops retry cleanly from scratch.
+    let v = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try { v = await Up.download(dOpts); break; }
+      catch (e) {
+        if (attempt === 3) throw e;
+        otaStep('download attempt ' + attempt + ' failed — retrying');
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    }
     otaStep('applying update');
     await Up.set(v); // applies the new bundle and reloads the app in place
   } catch (e) {
@@ -1610,8 +1620,12 @@ async function fetchSongsJSON() {
     } catch (e) { /* fall through to plain */ }
   }
   const res = await fetch('songs.json' + qs);
-  if (!res.ok) throw new Error('HTTP ' + res.status + ' loading songs.json');
-  return await res.json();
+  if (res.ok) return await res.json();
+  // ponytail: OTA bundles exclude plain songs.json (20s native download timeout) —
+  // old WebViews without DecompressionStream fall back to the Pages copy (CORS-open).
+  const pages = await fetch('https://minatolun-dotcom.github.io/khristian-labu/songs.json' + qs);
+  if (!pages.ok) throw new Error('HTTP ' + pages.status + ' loading songs.json');
+  return await pages.json();
 }
 
 async function loadSongs() {
