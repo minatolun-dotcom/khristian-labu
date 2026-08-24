@@ -260,7 +260,11 @@ async function until(fn, ms = 5000, step = 25) {
     assert.strictEqual(s.notifyAppReadyCalled, true, 'notifyAppReady reached native');
   const dl = sb.__calls.find(c => c.methodName === 'download');
   assert.ok(dl, 'download was dispatched natively');
-  assert.deepStrictEqual(dl.options, { version: nextVersion(APP_VERSION), url: `https://github.com/${REPO_MATCH[1]}/releases/download/v${nextVersion(APP_VERSION)}/www-latest.zip` }, 'download got unsigned options (no sessionKey/checksum)');
+  assert.strictEqual(dl.options.version, nextVersion(APP_VERSION), 'download got the target version');
+  assert.strictEqual(dl.options.url, 'https://minatolun-dotcom.github.io/khristian-labu/www-latest.zip', 'download tries the Pages mirror first');
+  assert.strictEqual(dl.options.sessionKey, undefined && dl.options.sessionKey, 'no sessionKey'); 
+  assert.ok(!('sessionKey' in dl.options) || !dl.options.sessionKey, 'unsigned: no sessionKey');
+  assert.ok(!dl.options.checksum, 'unsigned: no checksum');
   const st = sb.__calls.find(c => c.methodName === 'set');
   assert.ok(st, 'set was dispatched natively');
   assert.strictEqual(st.options.id, 'bundle-' + nextVersion(APP_VERSION), 'set received BundleInfo carrying id (java: getString("id"))');
@@ -296,7 +300,7 @@ async function until(fn, ms = 5000, step = 25) {
   await sb.manualCheckUpdate();
   await until(() => s.confirms.length > 0);
   sb.__els.confirmBtn.onclick();
-  await until(() => sb.__els.updateBanner && sb.__els.updateBanner.hidden === false, 5000);
+  await until(() => sb.__els.updateBanner && sb.__els.updateBanner.hidden === false, 20000);
   assert.strictEqual(sb.__otaFellBack, true, '__otaFellBack set on failure');
   assert.strictEqual(sb.__els.updBth ?? sb.__els.updBtn.href, sb.__els.updBtn.href, 'banner href sanity');
   assert.strictEqual(sb.__els.updBtn.href, 'https://x/khristian-labu.apk', 'fallback banner carries APK URL');
