@@ -1055,7 +1055,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.20'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.21'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1238,7 +1238,12 @@ function otaPlugin() {
 // its no-plugin behavior and still shows the web-only GitHub download banner.
 function registerNativePlugin(name) {
   const cap = window.Capacitor;
-  if (!cap || !cap.Plugins || typeof cap.nativePromise !== 'function') return;
+  if (!cap || typeof cap.nativePromise !== 'function') return;
+  // ponytail: this no-build app ships ONLY native-bridge.js (no @capacitor/core),
+  // which NEVER initializes cap.Plugins — every reference to it in the runtime is
+  // optional-chained. Create it here or registration (and every plugin guard)
+  // silently no-ops forever.
+  if (!cap.Plugins) cap.Plugins = {};
   if (cap.Plugins[name]) return;
   const native = typeof cap.isNativePlatform !== 'function' || cap.isNativePlatform();
   if (!native) return;
