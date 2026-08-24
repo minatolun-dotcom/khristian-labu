@@ -1056,7 +1056,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.23'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.24'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -4102,6 +4102,9 @@ function toggleWaMenu(e) {
   const m = document.getElementById('waMenu'), f = document.getElementById('waFab');
   if (m) m.classList.toggle('open');
   if (f) f.classList.toggle('active');
+  // ponytail: warm the capture engine while the menu is open — first "Share as
+  // image" otherwise pays script load + parse on top of the render.
+  if (m && m.classList.contains('open')) loadHtml2canvas().catch(() => {});
 }
 function closeWaMenu() {
   const m = document.getElementById('waMenu'); if (m) m.classList.remove('open');
@@ -4184,10 +4187,12 @@ async function captureFullSong() {
   document.body.appendChild(wrap);
   // Hide body pseudo-element overlays (grid/radials) via permanent CSS rule
   document.body.classList.add('capture-mode');
-  // Hide chrome elements during capture
+  // Hide chrome during capture. ponytail: nav must be visibility:hidden, NOT
+  // display:none — it's position:sticky IN FLOW, so removing it yanks the whole
+  // page up by its height for the duration of the capture (the "page jumps" bug).
   const hideStyle = document.createElement('style');
   hideStyle.id = 'capture-hide-chrome';
-  hideStyle.textContent = 'nav,#waFabWrap,#otaProgress,#toastContainer{display:none!important;}';
+  hideStyle.textContent = 'nav{visibility:hidden!important;}#waFabWrap,#otaProgress,#toastContainer{display:none!important;}';
   document.head.appendChild(hideStyle);
   try {
     const canvas = await html2canvas(clone, {
@@ -4210,7 +4215,7 @@ async function captureFullSong() {
         // over the top of every shared image. This was THE "overlay" users saw.
         s.textContent = 'body::before,body::after{display:none!important;background:none!important;}' +
           '.modal-overlay{display:none!important;}' +
-          'nav,#waFabWrap,#otaProgress,#toastContainer,.toast{display:none!important;}';
+          'nav{visibility:hidden!important;}#waFabWrap,#otaProgress,#toastContainer,.toast{display:none!important;}';
         clonedDoc.head.appendChild(s);
         clonedDoc.body.classList.add('capture-mode');
       }
@@ -4388,6 +4393,11 @@ async function shareSongImage() {
     const img = document.getElementById('imgPreviewPic');
     img.src = url;
     img.onload = () => URL.revokeObjectURL(url);
+    // ponytail: the canvas work blocks the main thread for seconds — without this
+    // yield the browser's first paint already lands past the modal transition, so
+    // the dialog "suddenly" appears instead of sliding up. Two rAFs = one painted
+    // pre-open frame, then the animation runs.
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
     openModal('imagePreviewModal');
   } catch (e) {
     toast('Screenshot failed: ' + (e && e.message ? e.message : e), 'error');
