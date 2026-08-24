@@ -295,20 +295,47 @@ jobs:
       # ponytail: mirror the bundle itself onto GitHub Pages. Some networks stall or
       # block release-assets.githubusercontent.com (the 302 target of release download
       # URLs), so the app tries the Pages copy first — same host that already serves
-      # version.json to every device. Surgical two-file commit onto fresh origin/main.
+      # version.json to every device. Committed via the Contents API (the git-push
+      # variant failed silently; this pattern mirrors version.json reliably).
       - name: Mirror bundle to Pages
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git config user.name "labu-ci"
-          git config user.email "labu-ci@users.noreply.github.com"
-          git fetch origin main
-          git checkout -f origin/main
-          # www-latest.zip is already at the repo root (Package step); just stage it
-          git add www-latest.zip
-          git commit -m "chore: mirror OTA bundle for v${TAG} to Pages" || echo "nothing to commit"
-          git push origin HEAD:main
+          python3 - <<'PYEOF'
+          import json, base64, os, urllib.request, urllib.error
+
+          repo = os.environ.get('GITHUB_REPOSITORY', 'minatolun-dotcom/khristian-labu')
+          token = os.environ['GH_TOKEN']
+          tag = os.environ['TAG'].lstrip('v')
+          content = base64.b64encode(open('www-latest.zip', 'rb').read()).decode()
+
+          headers = {'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json', 'User-Agent': 'labu-ci', 'Content-Type': 'application/json'}
+          sha = None
+          try:
+              req = urllib.request.Request(
+                  f'https://api.github.com/repos/{repo}/contents/www-latest.zip',
+                  headers=headers,
+              )
+              cur = json.load(urllib.request.urlopen(req))
+              sha = cur['sha']
+          except urllib.error.HTTPError as e:
+              if e.code != 404:
+                  print('WARN: could not check existing zip:', e.code)
+          payload = {'message': f'chore: mirror OTA bundle for v{tag} to Pages', 'content': content}
+          if sha:
+              payload['sha'] = sha
+          put = urllib.request.Request(
+              f'https://api.github.com/repos/{repo}/contents/www-latest.zip',
+              data=json.dumps(payload).encode(), method='PUT', headers=headers,
+          )
+          try:
+              urllib.request.urlopen(put)
+              print('www-latest.zip mirrored to Pages for', tag)
+          except urllib.error.HTTPError as e:
+              print('WARN: could not mirror zip:', e.code, e.read()[:300])
+          PYEOF
 
       # Note: version.json and APP_VERSION are committed directly in the repo
       # (see index.html). We do NOT push back to main from CI — that reset main
