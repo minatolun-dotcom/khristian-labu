@@ -1,13 +1,6 @@
 {
-<<<<<<< HEAD
-  "version": "1.5.23",
-  "otaVersion": "1.5.23",
-  "sessionKey": "",
-  "checksum": "38a57c2f85bf90473dd4fd9c984ad7e74b62bbba200f4fb01b9dadb2f5c56f39"
-=======
   "version": "1.5.24",
   "otaVersion": "1.5.24",
-  "sessionKey": "GCpEkqVAT1mStjeu9Mr2wQ==:OMs6CbkpBoYoKuIHZlBDC7ZsNhBSC9/cEIaId05Bcq97VSQxIZlB3+aEx6ynlB/lq8+792c1HegQnvReUbyFxpU0VQJSNCdSd7uXCPn0U9WG3EvpSuGFDNFU0qaB50OdjitXkxW5+QglbnRl4sOJs3ZFEvgiCdwPtQPjpSIcqJw4IiAzcIrXnZ/d7+corCB56YR319xL6W+j8+F+Rl1tqyxVN79kd5GK/vsypB8s8BEQgd2hCLkdORFase1yZx18XvQ2PUjHX3gTk55L6IOVOXXjrRin9ptISr+X/lwF7YxT6UWUycut/uXnXCmpeEy4XgBS6hBAH3VGlY3iTzd8hA==",
-  "checksum": "ab3cbc952c4eebc6e028671eb5eeaf904bb7af2155dc31cd63997b02de4fd3e8"
->>>>>>> 3137b1c (fix: page jump + janky modal on share-as-image (v1.5.24))
+  "sessionKey": "",
+  "checksum": "93993e31becb26ebecd223d8756fa6fd16d144f8aee8b865bbccd95b5a39e4cf"
 }
