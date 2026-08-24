@@ -115,6 +115,45 @@ await page.goto(URL, { waitUntil: 'load' });
 // Intentional badge pills cluster ~230. Anything between = suspicious.
 const VEIL_CLUSTER_LIMIT = 800;
 let fails = 0;
+
+// capture must not shift the page: nav is sticky IN FLOW — display:none'ing it
+// during capture used to yank the whole page up by its height mid-capture.
+{
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.evaluate(() => { localStorage.setItem('labu-theme', 'dark'); applyTheme(); });
+  await openSong(page);
+  await new Promise(r => setTimeout(r, 700));
+  const before = await page.evaluate(() => ({
+    navH: document.querySelector('nav').offsetHeight,
+    detailTop: document.getElementById('detailView').getBoundingClientRect().top,
+    scrollY: scrollY,
+  }));
+  const pending = page.evaluate(() => captureFullSong());
+  let sawNavHidden = false, maxTopDelta = 0;
+  while (true) {
+    const s = await Promise.race([
+      pending.then(() => 'done'),
+      new Promise(r => setTimeout(() => r('poll'), 60)),
+    ]);
+    if (s === 'done') break;
+    const now = await page.evaluate(() => ({
+      navH: document.querySelector('nav').offsetHeight,
+      detailTop: document.getElementById('detailView').getBoundingClientRect().top,
+    }));
+    if (now.navH !== before.navH) sawNavHidden = true;
+    maxTopDelta = Math.max(maxTopDelta, Math.abs(now.detailTop - before.detailTop));
+  }
+  await pending;
+  const after = await page.evaluate(() => ({
+    navH: document.querySelector('nav').offsetHeight,
+    detailTop: document.getElementById('detailView').getBoundingClientRect().top,
+  }));
+  if (sawNavHidden) { console.error('FAIL: nav lost its layout slot during capture'); fails++; }
+  if (maxTopDelta !== 0) { console.error(`FAIL: detail view moved ${maxTopDelta}px during capture`); fails++; }
+  if (after.navH !== before.navH) { console.error('FAIL: nav not restored after capture'); fails++; }
+  console.log(`no-jump              nav ${before.navH}px stable, detailTop stable (maxΔ ${maxTopDelta}px)`);
+}
+
 fails += (await captureAndScan(page, 'dark', 'dark-settled', 700)) > VEIL_CLUSTER_LIMIT ? 1 : 0;
 fails += (await captureAndScan(page, 'light', 'light-settled', 700)) > VEIL_CLUSTER_LIMIT ? 1 : 0;
 // worst case: share immediately after opening a song (animations would be mid-fade)
