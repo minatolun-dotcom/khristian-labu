@@ -399,7 +399,8 @@ nav{position:sticky;top:0;z-index:100;background:rgba(15,15,19,0.85);backdrop-fi
 .ota-progress .op-track{height:6px;border-radius:999px;background:var(--bg3);overflow:hidden;}
 .ota-progress .op-fill{height:100%;width:0%;border-radius:999px;background:var(--accent);transition:width 0.2s ease;}
 .toast.success{border-color:var(--green);}.toast.error{border-color:var(--red);}
-.update-banner{position:fixed;top:calc(64px + var(--sat, 0px));left:50%;transform:translateX(-50%);z-index:300;display:flex;align-items:center;gap:0.75rem;padding:0.55rem 0.6rem 0.55rem 1rem;background:var(--card);border:1px solid var(--accent);border-radius:999px;box-shadow:0 10px 30px rgba(0,0,0,0.35);font-size:0.85rem;max-width:calc(100% - 2rem);}
+.update-banner{position:fixed;top:calc(64px + var(--sat, 0px));left:50%;transform:translateX(-50%);z-index:300;display:flex;flex-wrap:wrap;align-items:center;gap:0.35rem 0.75rem;padding:0.55rem 0.6rem 0.55rem 1rem;background:var(--card);border:1px solid var(--accent);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,0.35);font-size:0.85rem;max-width:calc(100% - 2rem);}
+#otaStepDetail,#otaErrorDetail{flex:1 1 100%;}
 .update-banner[hidden]{display:none;}
 .upd-text{color:var(--text);white-space:nowrap;}
 .upd-text b{color:var(--accent);}
@@ -1055,7 +1056,7 @@ Second verse line 2"></textarea>
 <script>
 // ─── DATA ───
 const DATA_VERSION = 19; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
-const APP_VERSION = '1.5.22'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.23'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -1382,18 +1383,12 @@ async function checkOtaUpdate(force) {
   // the ota-session.json asset. Missing session data = unsigned legacy bundle:
   // pass nothing and the plugin installs it as-is (older APKs have no public key).
   let sessionKey = '', checksum = '', sessBroken = false;
-  // ponytail: the static version.json carries the same sessionKey/checksum (the
-  // release process mirrors them into it), so we can read them from the CORS-open
-  // static host WITHOUT touching the CORS-blocked release CDN at all. That is the
-  // primary path — it works in every webview (a plain fetch to raw.githubusercontent
-  // already succeeded for version.json itself). Only if the static file has no
-  // session data do we fall back to the release asset via CapacitorHttp (native).
-  // ponytail: only trust the static session if it belongs to the target version —
-  // between the version.json bump and the post-build mirror, version.json can carry
-  // the PREVIOUS release's session data, which would decrypt-fail the new bundle.
-  if (info.session && info.session.sessionKey && info.session.checksum && info.session.version === latest) {
+  // ponytail: session data rides in version.json (CORS-open). Empty sessionKey =
+  // unsigned bundle — install as-is, no keys needed; only fetch the CORS-blocked
+  // release asset when version.json carried no session info at all.
+  if (info.session && info.session.version === latest) {
     sessionKey = info.session.sessionKey; checksum = info.session.checksum;
-    otaStep('session data loaded from version.json');
+    otaStep(sessionKey ? 'session data loaded from version.json' : 'unsigned bundle — no session keys');
   } else if (info.assets.includes('ota-session.json')) {
     otaStep('fetching session data from release');
     try {

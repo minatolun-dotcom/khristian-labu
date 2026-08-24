@@ -129,7 +129,7 @@ function makeSandbox(opts) {
       if (String(url).includes('version.json')) {
         return { ok: true, json: async () => ({
           version: opts.latestVersion, apkUrl: 'https://x/khristian-labu.apk',
-          sessionKey: opts.sessionKey ?? 'sk-test', checksum: opts.checksum ?? 'cs-test',
+          sessionKey: opts.sessionKey ?? '', checksum: opts.checksum ?? '',
         }) };
       }
       return { ok: false };
@@ -260,7 +260,7 @@ async function until(fn, ms = 5000, step = 25) {
     assert.strictEqual(s.notifyAppReadyCalled, true, 'notifyAppReady reached native');
   const dl = sb.__calls.find(c => c.methodName === 'download');
   assert.ok(dl, 'download was dispatched natively');
-  assert.deepStrictEqual(dl.options, { version: nextVersion(APP_VERSION), url: `https://github.com/${REPO_MATCH[1]}/releases/download/v${nextVersion(APP_VERSION)}/www-latest.zip`, sessionKey: 'sk-test', checksum: 'cs-test' }, 'download got exact signed options');
+  assert.deepStrictEqual(dl.options, { version: nextVersion(APP_VERSION), url: `https://github.com/${REPO_MATCH[1]}/releases/download/v${nextVersion(APP_VERSION)}/www-latest.zip` }, 'download got unsigned options (no sessionKey/checksum)');
   const st = sb.__calls.find(c => c.methodName === 'set');
   assert.ok(st, 'set was dispatched natively');
   assert.strictEqual(st.options.id, 'bundle-' + nextVersion(APP_VERSION), 'set received BundleInfo carrying id (java: getString("id"))');
@@ -270,6 +270,22 @@ async function until(fn, ms = 5000, step = 25) {
   assert.strictEqual((sb.__els.updateBanner || { hidden: true }).hidden !== false, true, 'NO fallback banner on success');
   assert.strictEqual(sb.__state.appliedBundle, 'bundle-' + nextVersion(APP_VERSION), 'native applied the bundle');
   console.log('A ✓ full in-app OTA install works against the REAL bridge');
+}
+
+// ── Scenario A2: signed bundle — session keys ride through ────────────────────
+{
+  const sb = makeSandbox({ latestVersion: nextVersion(APP_VERSION), sessionKey: 'iv:enc', checksum: 'signedsum' });
+  boot(sb, 'A2');
+  const s = sb.__state;
+  await sb.manualCheckUpdate();
+  await until(() => s.confirms.length > 0);
+  sb.__els.confirmBtn.onclick();
+  await until(() => s.reloaded, 5000);
+  const dl2 = sb.__calls.find(c => c.methodName === 'download');
+  assert.strictEqual(dl2.options.sessionKey, 'iv:enc', 'signed: sessionKey passed through');
+  assert.strictEqual(dl2.options.checksum, 'signedsum', 'signed: checksum passed through');
+  assert.strictEqual(sb.__state.appliedBundle, 'bundle-' + nextVersion(APP_VERSION), 'signed: install completes');
+  console.log('A2 ✓ signed-bundle session keys ride through');
 }
 
 // ── Scenario B: download fails → falls back to APK banner ─────────────────────
