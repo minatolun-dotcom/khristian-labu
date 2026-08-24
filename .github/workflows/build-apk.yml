@@ -81,12 +81,13 @@ jobs:
           cd www
           zip -rq ../www-latest.zip .
           cd ..
-          # ponytail: drop plain songs.json from the OTA bundle (~4.5MB of the 6.7MB).
-          # The plugin enforces a 20s response timeout baked into already-shipped APKs,
-          # and big bundles died mid-download (~70%) on mobile. The gzip copy stays;
-          # WebViews without DecompressionStream fall back to the GitHub Pages copy of
-          # songs.json (fetchSongsJSON tries relative, then the Pages URL).
-          zip -dq www-latest.zip songs.json
+          # ponytail: slim the OTA bundle — the plugin enforces a 20s response
+          # timeout baked into already-shipped APKs, and big bundles died mid-download
+          # (~70%) on mobile. Excluded: plain songs.json (5MB; the no-Decompression-
+          # Stream fallback fetches the GitHub Pages copy instead), assets/logo.svg
+          # (1.6MB, build-time icon source) and assets/logo.png (1.1MB duplicate of
+          # the root copy nothing references). Everything referenced at runtime stays.
+          zip -dq www-latest.zip songs.json assets/logo.svg assets/logo.png
           ls -lh www-latest.zip
           CS=$(sha256sum www-latest.zip | cut -d' ' -f1)
           if [ -n "$OTA_SIGNING_PRIVATE_KEY" ]; then
