@@ -83,11 +83,12 @@ jobs:
           cd ..
           # ponytail: slim the OTA bundle — the plugin enforces a 20s response
           # timeout baked into already-shipped APKs, and big bundles died mid-download
-          # (~70%) on mobile. Excluded: plain songs.json (5MB; the no-Decompression-
-          # Stream fallback fetches the GitHub Pages copy instead), assets/logo.svg
-          # (1.6MB, build-time icon source) and assets/logo.png (1.1MB duplicate of
-          # the root copy nothing references). Everything referenced at runtime stays.
-          zip -dq www-latest.zip songs.json assets/logo.svg assets/logo.png
+          # (~70%) on mobile. Excluded: the corpus entirely (plain songs.json 5MB +
+          # songs.json.gzip 1.4MB — devices load it from IndexedDB (DATA_VERSION-keyed)
+          # or the Pages copy; the APK still ships both), assets/logo.svg (1.6MB,
+          # build-time icon source) and assets/logo.png (1.1MB duplicate of the root
+          # copy nothing references). Bundle stays ~0.4MB — fits 20s even at 0.3Mbps.
+          zip -dq www-latest.zip songs.json songs.json.gzip assets/logo.svg assets/logo.png
           ls -lh www-latest.zip
           CS=$(sha256sum www-latest.zip | cut -d' ' -f1)
           if [ -n "$OTA_SIGNING_PRIVATE_KEY" ]; then

@@ -748,7 +748,7 @@ await section('ota update', async () => {
   ok('ota progress card shows live percent', true);
   await page.waitForFunction(() => window.__otaCalls.some(c => c[0] === 'set'), null, { timeout: 10000 });
   const dl = await page.evaluate(() => window.__otaCalls.find(c => c[0] === 'download'));
-  ok('download called with the release zip url', !!dl && dl[1].url.endsWith('/releases/download/v9.9.9/www-latest.zip') && dl[1].version === '9.9.9', JSON.stringify(dl && dl[1]));
+  ok('download called with the Pages zip url (Pages-first, release CDN fallback)', !!dl && dl[1].url === 'https://minatolun-dotcom.github.io/khristian-labu/www-latest.zip' && dl[1].version === '9.9.9', JSON.stringify(dl && dl[1]));
   // the session data comes from the CORS-open static version.json (mirrored by CI) —
   // NOT the release CDN, which sends no CORS headers and would die in the webview
   // (the "shows the old way" bug). CapacitorHttp is only a fallback now.
