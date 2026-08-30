@@ -1616,26 +1616,35 @@ function recordStruct(id, op, payload) {
   idbPut('edits', { id: id, cat: null, op: op, song: payload }, id).catch(() => {});
 }
 
-// ponytail: fetch the gzipped corpus (630KB vs 2.2MB); fall back to plain JSON if unavailable
+// ponytail: fetch the gzipped corpus; OTA bundles exclude it entirely (native
+// 20s download timeout on old APKs — the gzip alone blew past it on slow links).
+// Devices with a warm IndexedDB cache (DATA_VERSION-keyed) never fetch. A 404
+// (corpus absent from the bundle) falls back to the CORS-open Pages copy; a 5xx
+// is a real outage → surface the error + Retry, never silently re-download.
+// Plain songs.json stays last (5MB) for WebViews without DecompressionStream.
 async function fetchSongsJSON() {
   const qs = DATA_VERSION ? ('?v=' + DATA_VERSION) : '';
+  const PAGES = 'https://minatolun-dotcom.github.io/khristian-labu/';
   if (typeof DecompressionStream !== 'undefined') {
-    try {
-      const res = await fetch('songs.json.gzip' + qs);
-      if (res.ok) {
-        const ds = new DecompressionStream('gzip');
-        const buf = await new Response(res.body.pipeThrough(ds)).text();
-        return JSON.parse(buf);
-      }
-    } catch (e) { /* fall through to plain */ }
+    for (const u of ['songs.json.gzip' + qs, PAGES + 'songs.json.gzip' + qs]) {
+      try {
+        const res = await fetch(u);
+        if (res.ok) {
+          const ds = new DecompressionStream('gzip');
+          const buf = await new Response(res.body.pipeThrough(ds)).text();
+          return JSON.parse(buf);
+        }
+        if (res.status !== 404) break; // 5xx: real outage, don't rescue from Pages
+      } catch (e) { /* next source */ }
+    }
   }
   const res = await fetch('songs.json' + qs);
   if (res.ok) return await res.json();
-  // ponytail: OTA bundles exclude plain songs.json (20s native download timeout) —
-  // old WebViews without DecompressionStream fall back to the Pages copy (CORS-open).
-  const pages = await fetch('https://minatolun-dotcom.github.io/khristian-labu/songs.json' + qs);
-  if (!pages.ok) throw new Error('HTTP ' + pages.status + ' loading songs.json');
-  return await pages.json();
+  if (res.status === 404) {
+    const pages = await fetch(PAGES + 'songs.json' + qs);
+    if (pages.ok) return await pages.json();
+  }
+  throw new Error('HTTP ' + res.status + ' loading songs.json');
 }
 
 async function loadSongs() {
