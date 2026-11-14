@@ -40,7 +40,7 @@ async function newPage(vp = { width: 1280, height: 800 }, extra = {}) {
     // the shared sandbox IP) and app-level caught-error logs (e.g. a test stub making
     // the OTA download fail on purpose) — the app handles those; real JS errors still fail.
     if (/Failed to load resource: the server responded with a status of (403|404|429|5\d\d)/.test(m.text())) return;
-    if (/^\[(OTA update|Khristian Labu)\]/.test(m.text())) return;
+    if (/^\[Khristian Labu\]/.test(m.text())) return;
     allErrors.push('[' + page.url() + '] console: ' + m.text().slice(0, 200));
   });
   page.on('pageerror', e => allErrors.push('[' + currentSection + '] pageerror: ' + e.message.slice(0, 200) + ' | ' + (e.stack || '').split('\n').slice(1, 3).join(' ~ ')));
@@ -54,11 +54,15 @@ async function section(name, fn) {
   currentSection = name;
   try { await fn(); } catch (e) { results.push(`FAIL  ${name} (crashed: ${e.message})`); }
 }
+async function openReaderMenu(page) {
+  await page.locator('#waFabWrap .wa-fab').click();
+  await page.waitForSelector('#waMenu.open');
+}
 async function openSettings(page) {
   await page.locator('#menuBtn').click();
   await page.waitForSelector('#sidebarModal.open');
   await page.locator('#sidebarModal').locator('text=Settings').click();
-  await page.waitForSelector('#settingsModal.open');
+  await page.waitForSelector('#settingsView.active');
 }
 
 // ═══════════════ 1. LOAD + HOME + NAV ═══════════════
@@ -67,7 +71,7 @@ await section('load & home', async () => {
   await waitLoaded(page);
   ok('corpus loads (5,719)', (await page.textContent('#statSongs')).includes('5,7'));
   ok('6 group cards', (await page.locator('#groupGrid .cat-card').count()) === 6);
-  ok('fav/recents row renders', await page.locator('#favRecentRow').count() === 1);
+  ok('home drops fav/recents shortcuts', (await page.locator('#favRecentRow').count()) === 0);
   ok('stats books = 17 (books, not collections)', (await page.textContent('#statBooks')).trim() === '17');
   // group → category → list → detail
   await page.locator('#groupGrid .cat-card').first().click();
@@ -209,11 +213,13 @@ await section('reader features', async () => {
   ok('wa fab visible in detail', await page.locator('#waFabWrap .wa-fab').isVisible());
   await page.locator('#waFabWrap .wa-fab').click();
   await page.waitForSelector('#waMenu.open');
-  ok('wa menu opens with 2 options', (await page.locator('#waMenu button').count()) === 2);
-  ok('text share option present', (await page.locator('#waMenu').textContent()).includes('Share as text'));
-  ok('image share option present', (await page.locator('#waMenu').textContent()).includes('Share as image'));
+  const menuTxt = await page.locator('#waMenu').textContent();
+  ok('action menu opens with share + song actions', (await page.locator('#waMenu .fab-item').count()) === 5, String(await page.locator('#waMenu .fab-item').count()));
+  ok('text share option present', menuTxt.includes('Share as text'));
+  ok('image share option present', menuTxt.includes('Share as image'));
+  ok('song actions are in the menu', menuTxt.includes('Edit song') && menuTxt.includes('Add to playlist') && menuTxt.includes('favourites'));
   // click image share → preview modal should open (html2canvas takes time)
-  await page.locator('#waMenu button').nth(1).click();
+  await page.locator('#waMenu [data-action="image"]').click();
   await page.waitForSelector('#imagePreviewModal.open', { timeout: 25000 }).catch(() => {});
   const previewOpen = await page.locator('#imagePreviewModal.open').count() > 0;
   ok('image preview modal opens on share-as-image', previewOpen);
@@ -257,10 +263,11 @@ await section('reader features', async () => {
       vh: window.innerHeight,
       actionsInFooter: !!footer.querySelector('.reader-actions'),
       actionsInSong: !!document.getElementById('songDetail').querySelector('.song-actions-row'),
+      menuActions: document.querySelectorAll('#waMenu .fab-item').length,
     };
   });
   ok('lyrics clip above the separate footer (container bottom ' + footerLayout + ')', footerLayout.clipOK && footerLayout.footerBelow, JSON.stringify(footerLayout));
-  ok('song actions moved into the footer', footerLayout.actionsInFooter && !footerLayout.actionsInSong);
+  ok('song actions live in the floating menu', !footerLayout.actionsInFooter && !footerLayout.actionsInSong && footerLayout.menuActions >= 5);
   // max font + max line-height at the end of container scroll: last line clears the footer
   await page.evaluate(() => { setReaderFont(28); setReaderLH(2.4); });
   await page.waitForTimeout(400);
@@ -291,7 +298,8 @@ await section('reader features', async () => {
     const last = verses[verses.length - 1].getBoundingClientRect();
     return Math.round(footer.top - last.bottom);
   });
-  ok('no dead zone between lyrics and footer on one-screen song (gap=' + shortGap + 'px)', shortGap < 160, 'gap=' + shortGap);
+  // the footer no longer holds the action row, so the leftover slack grows a little
+  ok('no dead zone between lyrics and footer on one-screen song (gap=' + shortGap + 'px)', shortGap < 180, 'gap=' + shortGap);
   ok('container scroll locked when lyrics fit on one screen', await page.evaluate(() => document.getElementById('songScroll').classList.contains('scroll-locked')));
   await page.evaluate(() => { const sc = document.getElementById('songScroll'); sc.scrollTop = 500; });
   await page.waitForTimeout(200);
@@ -370,11 +378,12 @@ await section('favorites & recents', async () => {
   await page.locator('#songGrid .song-item').first().click();
   await page.waitForSelector('#songDetail .verse');
   const favTitle = (await page.locator('#songDetail .song-header-center h1').textContent()).trim();
-  // toggle favorite
-  await page.locator('.song-action-btn[title="Favorite"]').click();
+  // toggle favorite (floating action menu)
+  await openReaderMenu(page);
+  await page.locator('#waMenu [data-action="fav"]').click();
   await page.waitForTimeout(300);
-  const favSvg = await page.locator('.song-action-btn[title="Favorite"]').innerHTML();
-  ok('fav toggled (icon filled)', favSvg.includes('fill="var(--red)"'), favSvg.slice(0, 80));
+  const favSvg = await page.locator('#waMenu [data-action="fav"]').innerHTML();
+  ok('fav toggled (icon filled)', favSvg.includes('fill="var(--warm)"'), favSvg.slice(0, 80));
   // favorites view
   await page.goBack(); await page.waitForSelector('#songGrid .song-item');
   await page.goBack(); await page.waitForSelector('#categoryGrid .cat-card');
@@ -385,10 +394,11 @@ await section('favorites & recents', async () => {
   // unfavorite → favorites list (cache invalidated by design) becomes empty
   await page.locator('#songGrid .song-item').first().click();
   await page.waitForSelector('#songDetail .verse');
-  await page.locator('.song-action-btn[title="Favorite"]').click();
+  await openReaderMenu(page);
+  await page.locator('#waMenu [data-action="fav"]').click();
   await page.waitForTimeout(300);
   await page.goBack();
-  await page.waitForFunction(() => document.getElementById('listHeader')?.textContent.includes('Favorites'), null, { timeout: 5000 });
+  await page.waitForFunction(() => document.getElementById('listHeader')?.textContent.includes('Favourites'), null, { timeout: 5000 });
   await page.waitForTimeout(300);
   ok('unfavorited → empty favorites', (await page.locator('#songGrid .song-item').count()) === 0);
   // recents view shows the viewed song
@@ -410,7 +420,8 @@ await section('playlists', async () => {
   await page.waitForSelector('#songDetail .verse');
   const songTitle = (await page.locator('#songDetail .song-header-center h1').textContent()).trim();
   // add to a new playlist via the chooser (Create also adds the current song)
-  await page.locator('.song-action-btn[title="Add to playlist"]').click();
+  await openReaderMenu(page);
+  await page.locator('#waMenu [data-action="playlist"]').click();
   await page.waitForSelector('#playlistModal.open');
   await page.fill('#newPlaylistInput', 'E2E List');
   await page.locator('#playlistModal').locator('button:has-text("Create")').click();
@@ -456,7 +467,7 @@ await section('admin CRUD', async () => {
   const page = await newPage();
   await waitLoaded(page);
   await openSettings(page);
-  await page.locator('#settingsModal').locator('text=Manage Songs').click();
+  await page.locator('#settingsView').locator('text=Manage Songs').click();
   await page.waitForSelector('#adminView.active');
   await page.waitForFunction(() => document.querySelectorAll('#adminSongList .admin-song-row').length >= 200, null, { timeout: 15000 });
   // add song
@@ -512,7 +523,7 @@ await section('exports', async () => {
   const page = await newPage();
   await waitLoaded(page);
   await openSettings(page);
-  await page.locator('#settingsModal').locator('text=Manage Songs').click();
+  await page.locator('#settingsView').locator('text=Manage Songs').click();
   await page.waitForSelector('#adminView.active');
   await page.waitForFunction(() => document.querySelectorAll('#adminSongList .admin-song-row').length >= 200, null, { timeout: 15000 });
   // single song → txt
@@ -572,18 +583,22 @@ await section('reader font family', async () => {
   const family = () => page.evaluate(() => getComputedStyle(document.querySelector('#songDetail .verse p')).fontFamily);
   const baseFamily = await family();
   ok('song text uses the default (Inter) font', baseFamily.includes('Inter'), baseFamily);
-  // settings has the three font options
+  // settings has a font dropdown with a deep set of lyric fonts
   await openSettings(page);
-  ok('settings has font options', await page.locator('#fontDefault').isVisible() && await page.locator('#fontOutfit').isVisible() && await page.locator('#fontSerif').isVisible());
-  // clicking Serif applies it to the open song's verses
-  await page.locator('#fontSerif').click();
+  ok('settings has a font dropdown', await page.locator('#fontSelectBtn').isVisible());
+  await page.locator('#fontSelectBtn').click();
+  ok('font dropdown opens a glass menu', await page.locator('#fontSelectMenu').isVisible());
+  ok('font dropdown offers lyric fonts', (await page.locator('#fontSelectMenu .font-dd-opt').count()) >= 12);
+  // choosing a serif applies it to the open song's verses
+  await page.locator('#fontSelectMenu .font-dd-opt[data-value="librebaskerville"]').click();
   await page.waitForTimeout(300);
   const serif = await family();
-  ok('serif font applies to song text', serif.includes('Georgia'), serif);
-  ok('serif choice persists in localStorage', (await page.evaluate(() => localStorage.getItem('labu-reader-family'))) === 'serif');
-  ok('serif button highlighted as active', (await page.evaluate(() => document.getElementById('fontSerif').style.background)) === 'var(--accent)');
+  ok('serif font applies to song text', serif.includes('Libre Baskerville'), serif);
+  ok('serif choice persists in localStorage', (await page.evaluate(() => localStorage.getItem('labu-reader-family'))) === 'librebaskerville');
+  ok('font dropdown reflects the active choice', (await page.locator('#fontSelectLabel').innerText()) === 'Libre Baskerville');
   // switching back to Default restores Inter
-  await page.locator('#fontDefault').click();
+  await page.locator('#fontSelectBtn').click();
+  await page.locator('#fontSelectMenu .font-dd-opt[data-value="default"]').click();
   await page.waitForTimeout(300);
   const def = await family();
   ok('default font restores Inter', def.includes('Inter'), def);
@@ -628,13 +643,13 @@ await section('status bar', async () => {
   const afterDark = await page.evaluate(() => window.__sbCalls);
   const lastBg = [...afterDark].reverse().find(c => c[0] === 'bg');
   const lastStyle = [...afterDark].reverse().find(c => c[0] === 'style');
-  ok('dark theme → dark status bar, light icons', lastBg && lastBg[1].color === '#0f0f13' && lastStyle && lastStyle[1].style === 'LIGHT', JSON.stringify({ lastBg, lastStyle }));
+  ok('dark theme → dark status bar, light icons', lastBg && lastBg[1].color === '#090A10' && lastStyle && lastStyle[1].style === 'LIGHT', JSON.stringify({ lastBg, lastStyle }));
   await page.locator('#themeLight').click();
   await page.waitForTimeout(300);
   const afterLight = await page.evaluate(() => window.__sbCalls);
   const lb = [...afterLight].reverse().find(c => c[0] === 'bg');
   const ls = [...afterLight].reverse().find(c => c[0] === 'style');
-  ok('light theme → light status bar, dark icons', lb && lb[1].color === '#f8f9fc' && ls && ls[1].style === 'DARK', JSON.stringify({ lb, ls }));
+  ok('light theme → light status bar, dark icons', lb && lb[1].color === '#F2F5FB' && ls && ls[1].style === 'DARK', JSON.stringify({ lb, ls }));
   await page.close();
 });
 
@@ -645,7 +660,7 @@ await section('settings & google', async () => {
   await openSettings(page);
   const ver = (await page.textContent('#appVersion')).trim();
   ok('version shown in settings (' + ver + ')', ver.length > 0);
-  ok('backup/restore + google buttons present', (await page.locator('#settingsModal').getByText('Backup data').count()) > 0 && (await page.locator('#settingsModal').getByText('Restore from backup').count()) > 0);
+  ok('backup/restore + google buttons present', (await page.locator('#settingsView').getByText('Backup data').count()) > 0 && (await page.locator('#settingsView').getByText('Restore from backup').count()) > 0);
   const g = await page.evaluate(() => ({
     section: !!document.getElementById('googleSection'),
     signedOut: getComputedStyle(document.getElementById('googleSignedOut')).display !== 'none',
@@ -666,7 +681,7 @@ await section('settings & google', async () => {
     email: document.getElementById('googleEmail').textContent,
   }));
   ok('account row when signed in', !g2.signedOut && g2.signedIn && g2.name === 'E2E Tester' && g2.email === 'e2e@test.dev');
-  ok('backup/restore google buttons', (await page.locator('#googleSection').getByText('Backup to Google').count()) > 0 && (await page.locator('#googleSection').getByText('Restore from Google').count()) > 0);
+  ok('backup/restore google buttons', (await page.locator('#googleSection').getByText('Back up', { exact: true }).count()) > 0 && (await page.locator('#googleSection').getByText('Restore', { exact: true }).count()) > 0);
   // payload builder includes all data
   const payload = await page.evaluate(async () => {
     favorites.push('PAYLOAD_TEST_ID');
@@ -679,288 +694,53 @@ await section('settings & google', async () => {
   await page.close();
 });
 
-// ═══════════════ 9b. IN-APP OTA UPDATE (APK) ═══════════════
-await section('ota update', async () => {
+// ═══════════════ 9b. UPDATE CHECK (banner → GitHub releases) ═══════════════
+await section('update check', async () => {
   const page = await newPage();
-  // simulate the APK: inject the CapacitorUpdater plugin + a fake newer release
   await page.addInitScript(() => {
-    window.__otaCalls = [];
-    window.__apiCalls = 0;
-    window.Capacitor = {
-      Plugins: {
-        CapacitorUpdater: {
-          notifyAppReady: async () => { window.__otaCalls.push('notifyAppReady'); },
-          addListener: async (name, fn) => { window.__downloadHandler = fn; return { remove: async () => { window.__downloadHandler = null; } }; },
-          download: async o => {
-            window.__otaCalls.push(['download', o]);
-            const h = window.__downloadHandler;
-            if (h) h({ percent: 25, bundle: { id: 'x' } });
-            await new Promise(r => setTimeout(r, 150));
-            if (h) h({ percent: 80, bundle: { id: 'x' } });
-            await new Promise(r => setTimeout(r, 150));
-            if (h) h({ percent: 100, bundle: { id: 'x' } });
-            return { id: 'bundle-9.9.9', version: o.version };
-          },
-          set: async v => { window.__otaCalls.push(['set', v]); },
-        },
-      },
-    };
-      const realFetch = window.fetch.bind(window);
+    window.__opened = [];
+    window.open = u => { window.__opened.push(u); return null; };
+    const realFetch = window.fetch.bind(window);
     window.fetch = async (url, opts) => {
-      // static update source (version.json on raw + Pages) is checked first now; it
-      // carries the release's sessionKey/checksum (mirrored post-release by CI) so the
-      // app never needs the CORS-blocked release CDN for the session data.
-      if (String(url).includes('version.json')) {
-        window.__apiCalls++;
-        return { ok: true, json: async () => ({ version: '9.9.9', apkUrl: 'https://github.com/x/releases/download/v9.9.9/khristian-labu.apk', sessionKey: 'sk-static', checksum: 'cs-static', otaVersion: '9.9.9' }) };
-      }
-      if (String(url).includes('api.github.com/repos/')) {
-        window.__apiCalls++;
-        return { ok: true, json: async () => ({ tag_name: 'v9.9.9', assets: [
-          { name: 'khristian-labu.apk' },
-          { name: 'ota-session.json', browser_download_url: 'https://github.com/x/releases/download/v9.9.9/ota-session.json' },
-        ] }) };
-      }
-      if (String(url).includes('ota-session.json')) {
-        return { ok: true, json: async () => ({ version: '9.9.9', sessionKey: 'sk-test', checksum: 'cs-test' }) };
-      }
+      if (String(url).includes('version.json')) return { ok: true, json: async () => ({ version: '9.9.9' }) };
       return realFetch(url, opts);
-    };
-    // the APK's native HTTP plugin — only a FALLBACK now: the session comes from the
-    // CORS-open static version.json, so CapacitorHttp should NOT be needed. Track calls
-    // to prove the primary path avoids it entirely (the release CDN is CORS-blocked).
-    window.Capacitor.Plugins.CapacitorHttp = {
-      request: async o => { window.__httpCalls = (window.__httpCalls || 0) + 1; return { status: 200, data: { version: '9.9.9', sessionKey: 'sk-http', checksum: 'cs-http' } }; },
     };
   });
   await waitLoaded(page);
-  // notifyAppReady must fire early on boot or the plugin rolls the update back
-  ok('notifyAppReady called on boot (no rollback)', await page.evaluate(() => window.__otaCalls.includes('notifyAppReady')));
-  // on launch, the update check routes to OTA and asks before downloading
-  await page.waitForSelector('#confirmModal.open', { timeout: 15000 });
-  const msg = await page.textContent('#confirmMsg');
-  ok('ota prompt asks to update to newer version', msg.includes('9.9.9'), msg.slice(0, 90));
-  ok('no download before user confirms', (await page.evaluate(() => window.__otaCalls.filter(c => c[0] === 'download').length)) === 0);
-  // confirm → downloads the bundle then applies (set reloads the app)
-  await page.locator('#confirmBtn').click();
-  await page.waitForFunction(() => document.getElementById('otaProgress')?.classList.contains('show'), null, { timeout: 5000 });
-  await page.waitForFunction(() => document.getElementById('otaProgressPct')?.textContent.includes('80%'), null, { timeout: 5000 });
-  ok('ota progress card shows live percent', true);
-  await page.waitForFunction(() => window.__otaCalls.some(c => c[0] === 'set'), null, { timeout: 10000 });
-  const dl = await page.evaluate(() => window.__otaCalls.find(c => c[0] === 'download'));
-  ok('download called with the Pages zip url (Pages-first, release CDN fallback)', !!dl && dl[1].url === 'https://minatolun-dotcom.github.io/khristian-labu/www-latest.zip' && dl[1].version === '9.9.9', JSON.stringify(dl && dl[1]));
-  // the session data comes from the CORS-open static version.json (mirrored by CI) —
-  // NOT the release CDN, which sends no CORS headers and would die in the webview
-  // (the "shows the old way" bug). CapacitorHttp is only a fallback now.
-  ok('session comes from static version.json (CORS-open), no CDN fetch', (await page.evaluate(() => window.__httpCalls || 0)) === 0, 'httpCalls=' + (await page.evaluate(() => window.__httpCalls || 0)));
-  ok('signed release passes sessionKey/checksum to download', !!dl && dl[1].sessionKey === 'sk-static' && dl[1].checksum === 'cs-static', JSON.stringify(dl && dl[1]));
-  ok('set applied after download', true);
-  await page.waitForFunction(() => !document.getElementById('otaProgress')?.classList.contains('show'), null, { timeout: 5000 });
-  ok('ota progress card hides after update', true);
-  // daily throttle: a second background check makes no API call
-  const callsBefore = await page.evaluate(() => window.__apiCalls);
-  await page.evaluate(() => checkOtaUpdate(false));
-  await page.waitForTimeout(400);
-  ok('background check throttled to once/day', (await page.evaluate(() => window.__apiCalls)) === callsBefore);
-  // forced check (Settings button) bypasses the throttle
-  await page.evaluate(() => checkOtaUpdate(true));
-  await page.waitForTimeout(600);
-  ok('forced check bypasses throttle', (await page.evaluate(() => window.__apiCalls)) > callsBefore);
+  await page.waitForSelector('#updateBanner:not([hidden])', { timeout: 15000 });
+  ok('start-up check shows the update banner', (await page.textContent('#updVer')).includes('9.9.9'));
+  const href = await page.locator('#updBtn').getAttribute('href');
+  ok('banner links to the GitHub releases page', href === 'https://github.com/minatolun-dotcom/khristian-labu/releases/latest', href);
+  ok('in-app downloader is gone', (await page.locator('#otaProgress').count()) === 0);
+
+  // Settings is its own page (desktop nav → page), and the check sends the user out
+  await openSettings(page);
+  ok('settings opens as a page, not a popup', (await page.locator('#settingsModal').count()) === 0 && await page.locator('#settingsView').isVisible());
+  await page.locator('#settingsView').getByText('Check for update').click();
+  await page.waitForTimeout(900);
+  ok('manual check opens the releases page', (await page.evaluate(() => window.__opened)).includes('https://github.com/minatolun-dotcom/khristian-labu/releases/latest'));
   await page.close();
 
-  // unsigned release (no ota-session.json asset) → download omits session data
+  // already up to date: no banner, no redirect, a toast instead
   const page2 = await newPage();
   await page2.addInitScript(() => {
-    window.__otaCalls = [];
-    window.Capacitor = {
-      Plugins: {
-        CapacitorUpdater: {
-          notifyAppReady: async () => {},
-          addListener: async () => ({ remove: async () => {} }),
-          download: async o => { window.__otaCalls.push(['download', o]); return { id: 'b', version: o.version }; },
-          set: async () => { window.__otaCalls.push(['set']); },
-        },
-      },
-    };
+    window.__opened = [];
+    window.open = u => { window.__opened.push(u); return null; };
+    localStorage.setItem('labu_update_dismissed', '');
     const realFetch = window.fetch.bind(window);
     window.fetch = async (url, opts) => {
-      // static source unavailable (e.g. offline) → the API fallback must serve
-      if (String(url).includes('version.json')) {
-        return { ok: false, status: 503 };
-      }
-      if (String(url).includes('api.github.com/repos/')) {
-        return { ok: true, json: async () => ({ tag_name: 'v8.8.8', assets: [{ name: 'khristian-labu.apk' }] }) };
-      }
+      if (String(url).includes('version.json')) return { ok: true, json: async () => ({ version: '0.0.1' }) };
       return realFetch(url, opts);
     };
   });
   await waitLoaded(page2);
-  // the boot-time update check may already have opened the prompt — close it so we
-  // can open Settings, then trigger the prompt again from inside Settings
-  await page2.evaluate(() => { const c = document.getElementById('confirmModal'); if (c) c.classList.remove('open'); });
-  // trigger the update prompt from INSIDE the Settings modal → confirm must be on top
-  await openSettings(page2);
-  await page2.locator('#settingsModal').locator('text=Check for update').click();
-  await page2.waitForSelector('#confirmModal.open', { timeout: 10000 });
-  const stack = await page2.evaluate(() => {
-    const c = getComputedStyle(document.getElementById('confirmModal'));
-    const s = getComputedStyle(document.getElementById('settingsModal'));
-    return { confirmZ: parseInt(c.zIndex), settingsZ: parseInt(s.zIndex), confirmOpen: document.getElementById('confirmModal').classList.contains('open'), settingsOpen: document.getElementById('settingsModal').classList.contains('open') };
-  });
-  ok('ota confirm popup shows above the settings popup', stack.confirmOpen && stack.settingsOpen && stack.confirmZ > stack.settingsZ, JSON.stringify(stack));
-  await page2.locator('#confirmBtn').click();
-  await page2.waitForFunction(() => window.__otaCalls.some(c => c[0] === 'set'), null, { timeout: 10000 });
-  const dl2 = await page2.evaluate(() => window.__otaCalls.find(c => c[0] === 'download'));
-  ok('unsigned release downloads with no session data', !!dl2 && !('sessionKey' in dl2[1]) && !('checksum' in dl2[1]), JSON.stringify(dl2 && dl2[1]));
+  await page2.evaluate(() => openSettings());
+  await page2.waitForSelector('#settingsView.active');
+  await page2.locator('#settingsView').getByText('Check for update').click();
+  await page2.waitForTimeout(900);
+  ok('up-to-date check opens nothing', (await page2.evaluate(() => window.__opened.length)) === 0);
+  ok('up-to-date check leaves the banner hidden', await page2.locator('#updateBanner').isHidden());
   await page2.close();
-
-  // OTA fails (e.g. APK built before signing, no public key) → APK download banner
-  const page3 = await newPage();
-  await page3.addInitScript(() => {
-    window.Capacitor = { Plugins: { CapacitorUpdater: {
-      notifyAppReady: async () => {},
-      addListener: async () => ({ remove: async () => {} }),
-      download: async () => { throw new Error('cannot decrypt signed bundle'); },
-      set: async () => {},
-    } } };
-    const realFetch = window.fetch.bind(window);
-    window.fetch = async (url, opts) => {
-      if (String(url).includes('version.json')) {
-        return { ok: true, json: async () => ({ version: '7.7.7', apkUrl: 'https://github.com/x/releases/download/v7.7.7/khristian-labu.apk' }) };
-      }
-      if (String(url).includes('api.github.com/repos/')) {
-        return { ok: true, json: async () => ({ tag_name: 'v7.7.7', assets: [
-          { name: 'khristian-labu.apk', browser_download_url: 'https://github.com/x/releases/download/v7.7.7/khristian-labu.apk' },
-          { name: 'ota-session.json', browser_download_url: 'https://github.com/x/releases/download/v7.7.7/ota-session.json' },
-        ] }) };
-      }
-      if (String(url).includes('ota-session.json')) {
-        return { ok: true, json: async () => ({ version: '7.7.7', sessionKey: 'sk', checksum: 'cs' }) };
-      }
-      return realFetch(url, opts);
-    };
-  });
-  await waitLoaded(page3);
-  await page3.evaluate(() => { localStorage.removeItem('labu_ota_last_check'); checkOtaUpdate(true); });
-  await page3.waitForSelector('#confirmModal.open', { timeout: 10000 });
-  await page3.locator('#confirmBtn').click();
-  await page3.waitForSelector('#updateBanner:not([hidden])', { timeout: 10000 });
-  ok('failed OTA falls back to APK download banner', (await page3.locator('#updVer').textContent()) === '7.7.7' && (await page3.locator('#updBtn').getAttribute('href')).includes('v7.7.7/khristian-labu.apk'));
-  await page3.close();
-
-  // signed release whose session data is unreachable → no doomed download attempt;
-  // straight to the APK banner instead
-  const page4 = await newPage();
-  await page4.addInitScript(() => {
-    window.__otaCalls = [];
-    window.Capacitor = { Plugins: { CapacitorUpdater: {
-      notifyAppReady: async () => {},
-      addListener: async () => ({ remove: async () => {} }),
-      download: async o => { window.__otaCalls.push(['download', o]); return { id: 'b', version: o.version }; },
-      set: async () => {},
-    } } };
-    const realFetch = window.fetch.bind(window);
-    window.fetch = async (url, opts) => {
-      if (String(url).includes('version.json')) {
-        return { ok: true, json: async () => ({ version: '6.6.6', apkUrl: 'https://github.com/x/releases/download/v6.6.6/khristian-labu.apk' }) };
-      }
-      if (String(url).includes('api.github.com/repos/')) {
-        return { ok: true, json: async () => ({ tag_name: 'v6.6.6', assets: [
-          { name: 'khristian-labu.apk', browser_download_url: 'https://github.com/x/releases/download/v6.6.6/khristian-labu.apk' },
-          { name: 'ota-session.json', browser_download_url: 'https://github.com/x/releases/download/v6.6.6/ota-session.json' },
-        ] }) };
-      }
-      if (String(url).includes('ota-session.json')) throw new Error('offline');
-      return realFetch(url, opts);
-    };
-  });
-  await waitLoaded(page4);
-  await page4.evaluate(() => { localStorage.removeItem('labu_ota_last_check'); checkOtaUpdate(true); });
-  await page4.waitForSelector('#confirmModal.open', { timeout: 10000 });
-  await page4.locator('#confirmBtn').click();
-  await page4.waitForSelector('#updateBanner:not([hidden])', { timeout: 10000 });
-  const dl4 = await page4.evaluate(() => window.__otaCalls.filter(c => c[0] === 'download').length);
-  ok('signed release with unreachable session data skips download, shows APK banner', dl4 === 0 && (await page4.locator('#updBtn').getAttribute('href')).includes('v6.6.6/khristian-labu.apk'), 'downloads=' + dl4);
-  await page4.close();
-
-  // OTA step diagnostics: the banner shows exactly which step ran/failed, so a
-  // device-side failure is visible instead of console-only
-  const page5 = await newPage();
-  await page5.addInitScript(() => {
-    window.Capacitor = { Plugins: { CapacitorUpdater: {
-      notifyAppReady: async () => {},
-      addListener: async () => ({ remove: async () => {} }),
-      download: async () => { throw new Error('cannot decrypt signed bundle'); },
-      set: async () => {},
-    } } };
-    const realFetch = window.fetch.bind(window);
-    window.fetch = async (url, opts) => {
-      if (String(url).includes('version.json')) {
-        return { ok: true, json: async () => ({ version: '5.5.5', apkUrl: 'https://github.com/x/releases/download/v5.5.5/khristian-labu.apk', sessionKey: 'sk5', checksum: 'cs5', otaVersion: '5.5.5' }) };
-      }
-      return realFetch(url, opts);
-    };
-  });
-  await waitLoaded(page5);
-  await page5.evaluate(() => { localStorage.removeItem('labu_ota_last_check'); checkOtaUpdate(true); });
-  await page5.waitForSelector('#confirmModal.open', { timeout: 10000 });
-  await page5.locator('#confirmBtn').click();
-  await page5.waitForSelector('#updateBanner:not([hidden])', { timeout: 10000 });
-  const diag5 = await page5.evaluate(() => ({
-    stepShown: getComputedStyle(document.getElementById('otaStepDetail')).display !== 'none',
-    stepText: document.getElementById('otaStepDetail').textContent,
-    errShown: getComputedStyle(document.getElementById('otaErrorDetail')).display !== 'none',
-    errText: document.getElementById('otaErrorDetail').textContent,
-  }));
-  ok('OTA diagnostics: step trace visible on failure', diag5.stepShown && diag5.stepText.includes('5.5.5'), diag5.stepText);
-  ok('OTA diagnostics: real error text visible on failure', diag5.errShown && diag5.errText.includes('OTA error'), diag5.errText);
-  // dismiss clears the diagnostics
-  await page5.evaluate(() => dismissUpdate());
-  const diag5b = await page5.evaluate(() => ({
-    step: getComputedStyle(document.getElementById('otaStepDetail')).display,
-    err: getComputedStyle(document.getElementById('otaErrorDetail')).display,
-    bannerHidden: document.getElementById('updateBanner').hidden,
-  }));
-  ok('dismiss hides banner and clears diagnostics', diag5b.bannerHidden && diag5b.step === 'none' && diag5b.err === 'none');
-  await page5.close();
-
-  // banner Download button: inside the APK it must hand the URL to the native
-  // AppLauncher (system browser) instead of the WebView; on web it stays a plain link
-  const page6 = await newPage();
-  await page6.addInitScript(() => {
-    window.__launch = null;
-    window.Capacitor = {
-      isNativePlatform: () => true,
-      Plugins: { AppLauncher: { openUrl: async o => { window.__launch = o.url; } } },
-    };
-  });
-  await waitLoaded(page6);
-  await page6.evaluate(() => showUpdateBanner('4.4.4', 'https://github.com/x/releases/download/v4.4.4/khristian-labu.apk'));
-  const ret = await page6.evaluate(() => {
-    const a = document.getElementById('updBtn');
-    const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
-    const cancelled = !a.dispatchEvent(ev);
-    return { cancelled, launched: window.__launch, href: a.getAttribute('href') };
-  });
-  ok('APK: banner Download button opens via native AppLauncher', ret.launched && ret.launched.includes('v4.4.4/khristian-labu.apk') && ret.cancelled, JSON.stringify(ret));
-  await page6.close();
-
-  // Settings: shows the latest offered version next to the installed one
-  const page7 = await newPage();
-  await waitLoaded(page7);
-  await openSettings(page7);
-  const ver7 = await page7.evaluate(() => ({
-    label: document.getElementById('appVersion').parentElement.textContent.trim(),
-    latestHidden: getComputedStyle(document.getElementById('latestVersion')).display === 'none',
-  }));
-  ok('Settings labels installed version, no latest shown before check', ver7.label.includes('App version') && ver7.latestHidden, ver7.label);
-  await page7.evaluate(() => showUpdateBanner('3.3.3', 'https://github.com/x/releases/download/v3.3.3/khristian-labu.apk'));
-  const ver7b = await page7.evaluate(() => ({
-    latestShown: getComputedStyle(document.getElementById('latestVersion')).display !== 'none',
-    latestText: document.getElementById('latestVersionVal').textContent,
-  }));
-  ok('Settings shows latest version when an update is available', ver7b.latestShown && ver7b.latestText === '3.3.3', JSON.stringify(ver7b));
-  await page7.close();
 });
 
 // ═══════════════ 10. HISTORY API ═══════════════
@@ -988,6 +768,23 @@ await section('history api', async () => {
 await section('mobile', async () => {
   const page = await newPage({ width: 390, height: 844 }, { hasTouch: true, isMobile: true });
   await waitLoaded(page);
+  // bottom tab bar replaces the hamburger on phones
+  ok('mobile tab bar visible with 5 tabs', (await page.locator('#tabBar .tab').count()) === 5 && await page.locator('#tabBar').isVisible());
+  ok('mobile tab bar active = home', (await page.locator('#tabBar .tab.active').getAttribute('data-tab')) === 'home');
+  ok('mobile header hides hamburger + search toggle', await page.locator('#menuBtn').isHidden() && await page.locator('#searchToggle').isHidden());
+  // search tab opens the in-page search field
+  await page.locator('#tabBar .tab[data-tab="search"]').click();
+  await page.waitForTimeout(600);
+  ok('search tab opens in-page search', await page.locator('#searchInputMobile').isVisible());
+  await page.locator('#tabBar .tab[data-tab="fav"]').click();
+  await page.waitForTimeout(700);
+  ok('favourites tab opens favourites list', (await page.textContent('#listHeader h2')).trim() === 'Favourites');
+  await page.locator('#tabBar .tab[data-tab="settings"]').click();
+  await page.waitForTimeout(600);
+  ok('settings tab opens the settings page', await page.locator('#settingsView.active').count() === 1);
+  ok('settings tab is active on its page', (await page.locator('#tabBar .tab.active').getAttribute('data-tab')) === 'settings');
+  await page.locator('#tabBar .tab[data-tab="home"]').click();
+  await page.waitForTimeout(600);
   await page.locator('#groupGrid .cat-card').first().click();
   await page.waitForSelector('#categoryGrid .cat-card');
   await page.locator('#categoryGrid .cat-card').first().click();
@@ -1040,7 +837,9 @@ await section('pwa offline', async () => {
     const keys = await caches.keys();
     for (const k of keys) {
       const c = await caches.open(k);
-      const gz = await c.match(location.origin + '/songs.json.gzip');
+      // the corpus is cached under its versioned URL (songs.json.gzip?v=N)
+      const hit = (await c.keys()).find(r => new URL(r.url).pathname.endsWith('/songs.json.gzip'));
+      const gz = hit ? await c.match(hit) : null;
       if (gz) return (await gz.clone().text()).length;
     }
     return null;

@@ -22,39 +22,51 @@ Try it live: [minatolun-dotcom.github.io/khristian-labu](https://minatolun-dotco
 - **WhatsApp share** — share any lyric as text or as a full-song screenshot (even if it scrolls)
 - **Google Drive backup & restore** (optional sign-in) plus local backup/restore of settings, favorites, recents, playlists, and edits
 - **Works offline** — full corpus cached via service worker + IndexedDB
-- **In-app updates** — the APK self-updates over-the-air (signed bundles from GitHub Releases), no reinstall
+- **Update checks** — the app checks for a newer release on start-up and from Settings, then links to the GitHub Releases page
 - Dark/light theme, admin panel for adding/editing/deleting songs, find & replace across all songs
 
 ## Download
 
 Grab the latest APK from the [Releases](https://github.com/minatolun-dotcom/khristian-labu/releases) page.
-Once installed, the app updates itself in-app — no need to visit the Releases page again.
+When a new version is out, the app shows a banner (and Settings → Check for update) that takes you
+to the release page to download and install it manually.
 
 ## Development
 
 All app source lives in a single file — `index.html` (plus `sw.js` for offline caching). No web build step.
 
 ```bash
-# serve locally
-python -m http.server 8000
-# open http://localhost:8000
+# serve locally (no-store headers + network-only service worker, so edits show up)
+python3 scripts/serve_dev.py 8080
+# open http://localhost:8080
 ```
 
 ### Releasing a new version
 
-The CI workflow (`build-apk.yml`) builds the web app, the signed APK, and the OTA bundle on **version tags only** — plain pushes to `main` just update the web app (GitHub Pages).
+APKs are compiled locally — no GitHub Actions workflow builds or publishes them. A push to `main` only updates the web app (GitHub Pages).
 
 ```bash
 # 1. bump the version (keep these in sync)
 #    - const APP_VERSION in index.html
 #    - version.json
+#    - CACHE in sw.js
 
-# 2. tag + push
-git tag v1.4.0
+# 2. build locally and copy the APK
+npm run sync
+cd android && ./gradlew assembleDebug --no-daemon && cd ..
+cp android/app/build/outputs/apk/debug/app-debug.apk apk/KhristianLabu-debug.apk
+
+# 3. commit, tag, and push
+git add index.html sw.js version.json # plus any other changed app files
+git commit -m "chore: release v1.5.34"
+git tag v1.5.34
 git push origin main --tags
+
+# 4. publish the release with the local APK
+gh release create v1.5.34 apk/KhristianLabu-debug.apk#khristian-labu.apk --title v1.5.34 --latest
 ```
 
-The workflow then publishes a GitHub Release containing `khristian-labu.apk`, the signed `www-latest.zip` OTA bundle, and `ota-session.json`. APK users get the update in-app.
+The release asset is the locally compiled `khristian-labu.apk`; installed apps read `version.json` to point users at the latest release.
 
 ### Tests
 

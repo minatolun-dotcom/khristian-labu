@@ -1,8 +1,12 @@
 // Khristian Labu service worker — app shell + offline support (free, no backend).
 // ponytail: cache name is tied to DATA_VERSION; bump both together so data updates propagate.
-const CACHE = 'labu-v51';
+const CACHE = 'labu-v70';
 const SHELL = ['./', 'index.html', 'groups.json', 'logo.png', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
-  'assets/fonts/outfit-400.woff2', 'assets/fonts/inter-400.woff2', 'assets/fonts/noto-400.woff2', 'assets/vendor/html2canvas.min.js'];
+  'assets/fonts/outfit-400.woff2', 'assets/fonts/inter-400.woff2', 'assets/fonts/noto-400.woff2',
+  'assets/fonts/literata-400.woff2', 'assets/fonts/lora-400.woff2', 'assets/fonts/merriweather-400.woff2',
+  'assets/fonts/sourceserif-400.woff2', 'assets/fonts/crimson-400.woff2', 'assets/fonts/ebgaramond-400.woff2',
+  'assets/fonts/librebaskerville-400.woff2', 'assets/fonts/newsreader-400.woff2', 'assets/fonts/spectral-400.woff2',
+  'assets/fonts/alegreya-400.woff2', 'assets/vendor/html2canvas.min.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -23,14 +27,29 @@ self.addEventListener('fetch', e => {
   // Only handle same-origin; let the browser deal with cross-origin (update API, fonts).
   if (url.origin !== self.location.origin) return;
 
-  // Song data: cache-first (instant repeat loads + offline). Keyed by pathname only
-  // (query stripped) so each DATA_VERSION replaces the prior entry instead of leaking.
+  // Tonic solfa sheet images: cache-first, filled on first view (web offline).
+  // ponytail: these are not precached (one AVIF per tune would bloat install).
+  if (url.pathname.includes('/assets/solfa/')) {
+    e.respondWith((async () => {
+      const c = await caches.open(CACHE);
+      const cached = await c.match(req);
+      if (cached) return cached;
+      const net = await fetch(req);
+      if (net.ok) c.put(req, net.clone());
+      return net;
+    })());
+    return;
+  }
+
+  // Song data: cache-first (instant repeat loads + offline). Keyed by the FULL URL
+  // including DATA_VERSION so a version bump is a cache miss even when an older
+  // worker is still in control, instead of serving the previous corpus.
   // ponytail: background-refresh runs on cache miss only — version bumps bump CACHE,
   // which purges the old corpus on activate, so we never silently re-fetch every visit.
   if (url.pathname.endsWith('songs.json.gzip') || url.pathname.endsWith('songs.json')) {
     e.respondWith((async () => {
       const c = await caches.open(CACHE);
-      const key = url.origin + url.pathname;
+      const key = req.url;
       const cached = await c.match(key);
       if (cached) return cached;
       const net = await fetch(req);

@@ -6,9 +6,8 @@
 flowchart TD
     A[git push to main] --> B[GitHub repo]
     B --> C[GitHub Pages<br/>serves main/ → live web app]
-    B --> D[GitHub Actions<br/>build-apk.yml]
-    D --> E[Bundle www/ into Android APK<br/>via Capacitor]
-    D --> F[Upload APK artifact]
+    G[local Gradle build] --> H[Bundle www/ into Android APK<br/>via Capacitor]
+    H --> I[Upload APK to GitHub Release]
     D --> G[Tag v* → GitHub Release]
     E --> H[Android device]
     C --> I[Any browser]
@@ -59,24 +58,20 @@ flowchart TD
 
 ## App updates (free, self-hosted distribution)
 
-The website (Pages) updates automatically on every push. The APK is distributed via **GitHub Releases** (built by the workflow on each `v*` tag) and updates itself **in-app via over-the-air (OTA) bundles** — users never reinstall the APK or visit the release page. No Play Store, no backend, no paid cloud.
+The website (Pages) updates automatically on every push. The APK is compiled locally and distributed via **GitHub Releases**; no GitHub Actions workflow builds or publishes it. Update checks are **detection only** — the app points the user at the release page and they download and install the new APK manually. No Play Store, no backend, no paid cloud.
 
 ```mermaid
 flowchart LR
-    A[git tag vX.Y.Z] --> B[workflow builds APK]
-    B --> C[attaches APK + www-latest.zip to GitHub Release]
-    F[APK launch] --> G[fetch latest release via GitHub API]
+    A[build APK locally] --> B[create GitHub Release]
+    B --> C[commit + push version.json]
+    F[app launch / Settings check] --> G[fetch version.json]
     G --> H{newer than APP_VERSION?}
-    H -- yes --> I[ask first → download www-latest.zip → apply + reload]
+    H -- yes --> I[banner / open GitHub Releases page]
     H -- no --> J[no update]
 ```
 
 - **Web users**: the Pages build updates automatically on every push (no action needed).
-- **APK users**: `@capgo/capacitor-updater` runs in **manual mode** (`autoUpdate: false`, no cloud). On launch (max once/day) and via Settings → "Check for update", the app asks `fetchUpdateInfo()` for the newest release. The primary source is the **static `version.json`** (committed in the repo, served by `raw.githubusercontent.com` + GitHub Pages — no rate limit, no auth, CORS-open); the GitHub Releases API is only a fallback because its 60 req/hr/IP cap silently killed the check on phones sharing mobile NAT IPs. It compares the reported version to the embedded `APP_VERSION`, and if newer asks "Update now?" — then downloads the release's `www-latest.zip` bundle (showing a **live progress card** from the plugin's `download` events) and applies it in place. `notifyAppReady()` is called **at boot, before the heavy corpus load** — the plugin auto-rolls back if it isn't called within `appReadyTimeout` (10s default, 30s pending; config set to 120s), and waiting for the full 5,719-song load used to race that window and revert every update on slow devices. A bundle that fails to boot (JS error, blank screen) still rolls back because the script never runs. If OTA can't install (e.g. an APK built before signing, no public key), the app falls back to showing the APK download banner.
-  - **Session fetch is CORS-free**: the per-bundle `sessionKey`/`checksum` ride in the release's `ota-session.json` asset, and that asset is served from a CDN that sends **no `Access-Control-Allow-Origin`** — a plain `fetch()` from the Capacitor webview always fails (`TypeError: Failed to fetch`), which silently routed every signed update to the APK-banner fallback. The app therefore fetches it through **`CapacitorHttp`** (the core native HTTP plugin, auto-registered — see `Bridge.java`), which performs the request from the native side with no CORS; plain `fetch` is only a fallback for web/tests.
-- **Bundle packaging + signing**: the workflow zips `www/` into `www-latest.zip` and — when the `OTA_SIGNING_PRIVATE_KEY` secret is set — **code-signs** it via `@capgo/cli bundle encrypt` (AES-encrypts the zip, RSA-signs the checksum + per-bundle session key). The APK ships the matching **public key** (`capacitor.config.json` → `CapacitorUpdater.publicKey`), and the plugin verifies the signature before installing — a tampered or forged bundle is rejected. The per-bundle `sessionKey`/`checksum` ride in the release's `ota-session.json` asset (safe to publish: they're RSA-encrypted and only verifiable with the private key). Without the secret set, the bundle is attached unsigned and installs with no verification (legacy behavior). Keypair: RSA-2048, private key must be **PKCS#1** (`BEGIN RSA PRIVATE KEY`) for the CLI; public key is the matching PKCS#1 `RSA PUBLIC KEY` form.
-- **Native caveat**: OTA updates the web bundle only — if a future release adds a new Capacitor *native* plugin, users must install that APK once; pure content/JS changes (the vast majority) never require it.
-- **Web banner**: the dismissible "Update available → download APK" banner remains for web visitors who want the Android app.
+- **APK users**: `fetchUpdateInfo()` compares the newest release against the embedded `APP_VERSION`. The primary source is the **static `version.json`** (committed in the repo, served by `raw.githubusercontent.com` + GitHub Pages — no rate limit, no auth, CORS-open); the GitHub Releases API is only a fallback because its 60 req/hr/IP cap silently killed the check on phones sharing mobile NAT IPs. The check runs once at start-up and on demand from Settings → **Check for update**; when a newer version exists, the app shows a dismissible banner (both link to `releases/latest`) and the Settings action also opens that page. Downloading and installing are the user's job — there is no in-app installer.
 - **Free tier**: GitHub Releases + API are free; the unauthenticated API limit (60 req/hr per IP) is ample for occasional client checks.
 
 ## PWA / offline support

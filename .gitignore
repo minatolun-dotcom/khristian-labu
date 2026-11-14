@@ -1,6 +1,7 @@
 node_modules/
 android/
 www/
+.toolchain/
 khristian-labu.keystore
 
 # ─── secrets (never commit) ───
