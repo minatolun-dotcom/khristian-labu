@@ -148,6 +148,11 @@ nav{position:sticky;top:0;z-index:100;background:rgba(9,10,16,0.86);backdrop-fil
 #homeView.category-mode .home-head-desc:empty{display:none;}
 #homeView.category-mode #categoryGrid{width:100%;padding-bottom:0;}
 #homeView.category-mode.active{display:flex;flex-direction:column;justify-content:center;min-height:calc(100dvh - 80px - var(--sat,0px));}
+/* Home is one block: masthead + collection grid. Auto margins centre it when it
+   fits and collapse to 0 when the grid is tall enough to scroll, so no card is
+   ever clipped above the viewport. */
+#homeView.home-root .home-brand{margin-top:auto;}
+#homeView.home-root #groupGrid{margin-bottom:auto;}
 .cat-card{background:linear-gradient(135deg,var(--glass-a),var(--glass-b));backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border:1px solid var(--glass-rim);border-radius:26px;box-shadow:var(--glass-shadow),inset 0 1px 0 var(--glass-hi);padding:1.75rem;cursor:pointer;transition:all 0.4s cubic-bezier(0.25,0.46,0.45,0.94);position:relative;overflow:hidden;}
 [data-theme="light"] .cat-card{background:linear-gradient(135deg,var(--glass-a),var(--glass-b));border:1px solid var(--glass-rim);box-shadow:var(--glass-shadow),inset 0 1px 0 var(--glass-hi);}
 .cat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),var(--accent2),transparent);opacity:0;transition:opacity 0.4s ease;}
@@ -734,6 +739,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(9,10,16,0.86);backdrop-fil
   .home-head p{font-size:.75rem;color:var(--text3);margin-top:2px;}
   .categories{padding:0 1rem 1rem;}
   #groupGrid{gap:.55rem;grid-template-columns:1fr;}
+  #homeView.home-root.active{display:flex;flex-direction:column;min-height:calc(100dvh - var(--tabbar-h) - var(--sab,0px) - 22px);padding-bottom:var(--sat,0px);}
   #homeView.category-mode.active{min-height:calc(100dvh - var(--tabbar-h) - var(--sab,0px) - 22px);}
   #homeView.category-mode .home-head{padding:0 1rem .55rem;}
   #homeView.category-mode .home-head h2{font-size:1.35rem;}
