@@ -428,21 +428,21 @@ await section('playlists', async () => {
   await page.waitForTimeout(300);
   await page.locator('#playlistModalBody').getByText('E2E List').waitFor();
   await page.locator('#playlistModal').locator('button:has-text("Done")').click();
-  // open Custom Lists from sidebar
+  // open the Playlist page from the sidebar
   await page.locator('#menuBtn').click();
   await page.waitForSelector('#sidebarModal.open');
-  await page.locator('#sidebarModal').locator('text=Custom Lists').click();
+  await page.locator('#sidebarModal .sidebar-item:has-text("Playlist")').click();
   await page.waitForSelector('#songGrid .song-item');
-  ok('custom lists shows the playlist', (await page.textContent('#songGrid')).includes('E2E List'));
+  ok('playlist page shows the playlist', (await page.textContent('#songGrid')).includes('E2E List'));
   await page.locator('#songGrid .song-item').first().click();
   await page.waitForSelector('#songGrid .song-item');
   ok('playlist opens with 1 song', (await page.textContent('#songGrid')).includes(songTitle));
-  // playlist-scoped search: while the playlist is open, results stay inside it
+  // search is global now: the playlist song is found from anywhere, with no scope header
   await page.fill('#searchInput', songTitle.slice(0, 6));
   await page.waitForTimeout(900);
-  const scopeHeader = await page.textContent('#searchResults .song-list-header').catch(() => '');
-  const scopeCount = await page.locator('#searchResults .song-item').count();
-  ok('search scoped to open playlist', scopeHeader.includes('in E2E List') && scopeCount >= 1 && scopeCount <= 1, (scopeHeader || '').trim().slice(0, 110) + ' | results=' + scopeCount);
+  const globalHeader = await page.textContent('#searchResults .song-list-header').catch(() => '');
+  const globalCount = await page.locator('#searchResults .song-item').count();
+  ok('search runs across all songbooks from a playlist', globalCount >= 1 && !globalHeader.includes(' in '), (globalHeader || '').trim().slice(0, 110) + ' | results=' + globalCount);
   // back to the playlist, then rename
   await page.fill('#searchInput', '');
   await page.waitForTimeout(400);

@@ -939,6 +939,14 @@ body.edge-back #detailView .song-detail{box-shadow:-18px 0 48px rgba(0,0,0,.38);
 .settings-row.danger{color:var(--red);}
 .settings-row.danger .sr-ic{background:rgba(229,72,77,.12);border-color:rgba(229,72,77,.22);color:var(--red);}
 .settings-row.danger:hover{background:rgba(229,72,77,.08);}
+.settings-row.sb-pref{cursor:default;}
+.sb-pref-meta{display:block;font-size:.72rem;font-weight:400;color:var(--text3);margin-top:2px;}
+.sb-switch{position:relative;width:44px;height:26px;flex:none;border-radius:999px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;padding:0;transition:background .18s,border-color .18s;}
+.sb-switch span{position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:var(--text2);transition:transform .18s var(--ease-out),background .18s;}
+.sb-switch[aria-checked="true"]{background:var(--select);border-color:var(--select);}
+.sb-switch[aria-checked="true"] span{transform:translateX(18px);background:var(--bg);}
+[data-theme="light"] .sb-switch[aria-checked="true"] span{background:#fff;}
+.settings-note{font-size:.76rem;line-height:1.5;color:var(--text3);padding:.55rem .8rem 0;}
 .google-panel{gap:.85rem;}
 .gp-note{font-size:.78rem;line-height:1.5;color:var(--text3);}
 .gbtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:.66rem .8rem;border-radius:14px;border:1px solid var(--glass-rim);background:linear-gradient(135deg,rgba(255,255,255,.10),rgba(255,255,255,.04));color:var(--text);font-family:inherit;font-size:.82rem;font-weight:600;cursor:pointer;transition:background .18s,border-color .18s,transform .18s;}
@@ -966,6 +974,63 @@ body.edge-back #detailView .song-detail{box-shadow:-18px 0 48px rgba(0,0,0,.38);
   .settings-label{padding:0 .8rem .5rem;}
   .glass-card{border-radius:24px;}
   .settings-panel{padding:.9rem;gap:.9rem;}
+}
+
+/* Light theme category marks use the same dark ink circle as mobile. */
+[data-theme="light"] .cat-icon{background:linear-gradient(145deg,#2A3448,#151B28);border-color:rgba(17,24,39,.18);box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 4px 10px rgba(20,32,64,.16);}
+
+/* Keep a readable fallback if the corpus cannot load, even though home normally
+   opens straight into the brand masthead. */
+#homeView.home-root.home-error .home-brand{display:none;}
+#homeView.home-error .hero{display:block;padding:2rem 1.25rem 1rem;text-align:center;}
+#homeView.home-error .hero h1,#homeView.home-error .stats{display:none;}
+#homeView.home-error .hero p{display:block;max-width:560px;margin:0 auto 1rem;color:var(--text2);font-size:.93rem;line-height:1.55;}
+
+@media(min-width:769px){
+  /* Desktop follows the phone: a quiet utility strip, one centered masthead,
+     then compact rows instead of the old billboard and tall cards. */
+  body[data-view="home"] nav{background:linear-gradient(180deg,rgba(9,10,16,.94) 0%,rgba(9,10,16,.55) 58%,rgba(9,10,16,0) 100%);border-bottom-color:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;}
+  [data-theme="light"] body[data-view="home"] nav{background:linear-gradient(180deg,rgba(242,245,251,.96) 0%,rgba(242,245,251,.62) 58%,rgba(242,245,251,0) 100%);}
+  body[data-view="home"] nav .logo{opacity:0;pointer-events:none;}
+  body[data-view="home"]:has(#homeView.category-mode) nav .logo{opacity:1;pointer-events:auto;}
+
+  #homeView.home-root.active{display:flex;flex-direction:column;justify-content:center;min-height:calc(100dvh - 80px - var(--sat,0px));}
+  #homeView.home-root:not(.home-error) .hero{display:none;}
+  #homeView.home-root .home-brand{display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;isolation:isolate;width:100%;padding:1.25rem 2rem 1rem;}
+  #homeView.home-root .home-brand .hb-halo{position:absolute;z-index:-1;top:-20px;left:50%;width:380px;height:380px;transform:translateX(-50%);background:radial-gradient(circle,rgba(39,75,159,.24) 0%,rgba(39,75,159,.07) 42%,transparent 66%);pointer-events:none;}
+  #homeView.home-root .home-brand .hb-logo{width:88px;height:88px;border-radius:50%;object-fit:cover;background:#fff;box-shadow:0 0 0 1px rgba(255,255,255,.14),0 16px 40px rgba(0,0,0,.38),0 0 0 4px rgba(39,75,159,.14);}
+  [data-theme="light"] #homeView.home-root .home-brand .hb-logo{box-shadow:0 0 0 1px rgba(11,16,32,.08),0 14px 34px rgba(20,32,64,.16),0 0 0 4px rgba(39,75,159,.10);}
+  #homeView.home-root .home-brand .hb-name{font-family:'Outfit',sans-serif;font-size:clamp(2.35rem,3.2vw,3rem);font-weight:800;line-height:1.02;letter-spacing:-.05em;margin-top:1.05rem;background:linear-gradient(135deg,var(--text) 18%,var(--accent2) 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+  [data-theme="light"] #homeView.home-root .home-brand .hb-name{background:linear-gradient(135deg,#0A1B4D 18%,#274B9F 100%);-webkit-background-clip:text;background-clip:text;}
+  #homeView.home-root .home-brand .hb-kicker{display:flex;align-items:center;gap:12px;margin-top:.72rem;font-size:.62rem;font-weight:700;letter-spacing:.28em;text-transform:uppercase;color:var(--text3);}
+  #homeView.home-root .home-brand .hb-kicker::before,#homeView.home-root .home-brand .hb-kicker::after{content:'';width:34px;height:1px;background:linear-gradient(90deg,transparent,var(--warm));}
+  #homeView.home-root .home-brand .hb-kicker::after{background:linear-gradient(90deg,var(--warm),transparent);}
+  #homeView.home-root .home-brand .hb-meta{margin-top:.6rem;font-size:.8rem;color:var(--text3);letter-spacing:.01em;}
+
+  #groupGrid{grid-template-columns:repeat(2,minmax(0,1fr));max-width:1080px;gap:.7rem;padding:.35rem 2rem 2rem;}
+  #homeView.category-mode #categoryGrid{grid-template-columns:repeat(2,minmax(0,1fr));max-width:900px;margin:0 auto;gap:.7rem;padding:0 2rem;}
+  #homeView.category-mode .home-head{padding:0 2rem .9rem;}
+  #homeView.category-mode .home-head h2{font-size:1.65rem;}
+  #homeView.category-mode .home-head p{font-size:.82rem;}
+  #homeView.category-mode .home-head .home-head-desc{font-size:.84rem;}
+
+  #homeView .cat-card{display:flex;align-items:center;gap:.9rem;min-height:86px;padding:.9rem 1.05rem;border-radius:20px;transform:none;}
+  #homeView .cat-card::before,#homeView .cat-card::after{display:none;}
+  #homeView .cat-card:hover{transform:translateY(-2px);border-color:rgba(59,99,196,.45);box-shadow:0 16px 34px -18px rgba(0,0,0,.55),inset 0 1px 0 var(--glass-hi);}
+  [data-theme="light"] #homeView .cat-card:hover{border-color:rgba(39,75,159,.32);box-shadow:0 14px 30px -16px rgba(20,32,64,.24),inset 0 1px 0 var(--glass-hi);}
+  #homeView .cat-card:active{transform:scale(.994);}
+  #homeView .cat-icon{width:44px;height:44px;}
+  #homeView .cat-icon-svg svg{width:23px;height:23px;}
+  #homeView .cat-text{flex:1;min-width:0;}
+  #homeView .cat-name{font-size:1rem;font-weight:600;line-height:1.25;letter-spacing:-.01em;margin:0;}
+  #homeView .cat-desc{display:none;}
+  #homeView .cat-count{margin-left:auto;padding:0;border-radius:0;background:none;color:var(--text3);font-size:.75rem;font-weight:500;white-space:nowrap;gap:5px;}
+  [data-theme="light"] #homeView .cat-count{background:none;color:var(--text3);}
+  #homeView .cat-count svg{width:13px;height:13px;flex:none;opacity:.7;}
+  #homeView .cat-card:hover .cat-count{background:none;color:var(--text3);box-shadow:none;}
+}
+@media(min-width:1101px){
+  #groupGrid{grid-template-columns:repeat(3,minmax(0,1fr));}
 }
 </style>
 </head>
@@ -996,7 +1061,7 @@ body.edge-back #detailView .song-detail{box-shadow:-18px 0 48px rgba(0,0,0,.38);
       </button>
       <div class="search-box" id="searchBox">
         <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="text" id="searchInput" placeholder="Search title, lyrics, author..." oninput="onSearch(this.value)">
+        <input type="text" id="searchInput" placeholder="Search title, lyrics, author..." autocomplete="off" autocapitalize="off" spellcheck="false" oninput="onSearch(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();submitSearch(this);}">
         <button class="search-clear" id="searchClear" onclick="clearSearchInput()" title="Clear">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -1078,7 +1143,7 @@ body.edge-back #detailView .song-detail{box-shadow:-18px 0 48px rgba(0,0,0,.38);
 <div class="view" id="searchView">
   <div class="msearch">
     <svg class="msearch-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-    <input id="searchInputMobile" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Search songs, lyrics, authors…" oninput="onSearch(this.value)">
+    <input id="searchInputMobile" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Search songs, lyrics, authors…" oninput="onSearch(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();submitSearch(this);}">
     <button type="button" class="mclear" id="searchClearMobile" onclick="clearSearchInputMobile()" aria-label="Clear search">×</button>
   </div>
   <div class="search-results" id="searchResults"></div>
@@ -1450,6 +1515,12 @@ Second verse line 2"></textarea>
     </section>
 
     <section class="settings-group">
+      <div class="settings-label">Songbooks</div>
+      <div class="glass-card settings-list" id="songbookPrefs"></div>
+      <p class="settings-note">Turn off collections you don't need. They disappear from Home and search; saved favourites, playlists and history stay.</p>
+    </section>
+
+    <section class="settings-group">
       <div class="settings-label">Library</div>
       <div class="glass-card settings-list">
         <button class="settings-row" onclick="closeSidebar();openAdmin()">
@@ -1592,6 +1663,17 @@ let DEFAULT_SONGS = null;
 let SONGS = {};
 let GROUPS = [];
 let BOOK_GROUP = {};
+// ponytail: users can turn off whole collections. The books stay in the corpus so
+// saved favourites, playlists and historical links keep working; Home and search skip them.
+let disabledGroups = [];
+try {
+  const rawDisabled = JSON.parse(localStorage.getItem('labu_disabled_groups') || '[]');
+  if (Array.isArray(rawDisabled)) disabledGroups = rawDisabled.filter(id => typeof id === 'string');
+} catch (e) { disabledGroups = []; }
+function saveDisabledGroups() { localStorage.setItem('labu_disabled_groups', JSON.stringify(disabledGroups)); }
+function isGroupDisabled(id) { return disabledGroups.indexOf(id) !== -1; }
+function enabledGroups() { return GROUPS.filter(g => !isGroupDisabled(g.id)); }
+function enabledBookKeys() { return enabledGroups().flatMap(g => g.books || []); }
 // ponytail: tiny groups.json lets the home grid paint before the full corpus is parsed.
 let songsReady = false, songsDone = null;
 const BOOK_META = {}, BOOK_META_NAME = {};
@@ -1976,6 +2058,7 @@ async function loadSongs() {
     reindexBooks();
     buildSearchIndex();
     updateStats();
+    if (currentView === 'settings') renderSongbookPrefs();
     songsReady = true;
     renderGroups();
     renderFavRecents();
@@ -2009,6 +2092,8 @@ function showLoadError(err) {
   if (s) s.textContent = '!';
   const b = document.getElementById('retryDataBtn');
   if (b) b.style.display = ''; // offer a one-tap retry instead of a manual reload
+  const hv = document.getElementById('homeView');
+  if (hv) hv.classList.add('home-error');
 }
 // ponytail: retry the corpus load in place — loadSongs() reassigns SONGS and only
 // marks songsReady after the whole chain succeeds, so re-running it is safe even
@@ -2028,20 +2113,28 @@ function saveSongs() {
 }
 
 function updateStats() {
+  const hv = document.getElementById('homeView');
+  if (hv) hv.classList.remove('home-error');
+  // Count only the collections the reader kept on. The admin export still means
+  // every song, so it keeps the full-corpus count.
+  const groups = enabledGroups();
   let total = 0;
-  CAT_ORDER.forEach(k => total += (SONGS[k]?.songs?.length || 0));
+  groups.forEach(g => (g.books || []).forEach(k => total += (SONGS[k]?.songs?.length || 0)));
   const s = total.toLocaleString();
   document.getElementById('statSongs').textContent = s;
   // ponytail: GROUPS are collections (6); the "Songbooks" stat counts the actual
   // books inside them (17) so the hero isn't misleading.
-  document.getElementById('statBooks').textContent = GROUPS.reduce((n, g) => n + ((g.books && g.books.length) || 0), 0);
+  const books = groups.reduce((n, g) => n + ((g.books && g.books.length) || 0), 0);
+  document.getElementById('statBooks').textContent = books;
   document.getElementById('heroDesc').textContent = s + ' hymns and songs of faith';
-  const books = GROUPS.reduce((n, g) => n + ((g.books && g.books.length) || 0), 0);
   setHomeHead(currentHomeGrid === 'categoryGrid' ? currentGroup : null);
   const hbm = document.getElementById('homeBrandMeta');
   if (hbm) hbm.textContent = books + ' songbooks \u00b7 ' + s + ' hymns';
   const opt = document.getElementById('exportAllOption');
-  if (opt) opt.textContent = 'All Songs (' + s + ')';
+  if (opt) {
+    const allTotal = CAT_ORDER.reduce((n, k) => n + (SONGS[k]?.songs?.length || 0), 0);
+    opt.textContent = 'All Songs (' + allTotal.toLocaleString() + ')';
+  }
 }
 
 // ─── MOBILE SEARCH ───
@@ -2318,6 +2411,8 @@ document.addEventListener('animationend', e => {
 
 function showView(v) {
   if (v === 'list' && currentView !== 'list' && currentView !== 'detail') _listOriginView = currentView + 'View';
+  // Leaving search commits the query the user settled on (not a keystroke prefix).
+  if (currentView === 'search' && v !== 'search') commitSearchHistory();
   currentView = v;
   // ponytail: drives bottom-tab visibility (hidden in the reader/admin) from CSS.
   document.body.dataset.view = v;
@@ -2476,7 +2571,6 @@ function applyState(s) {
       break;
     }
     case 'search':
-      // ponytail: replay the stored query on back-nav (shows results); empty means recent searches.
       doSearch(s.q || '');
       break;
     case 'admin': openAdmin(); break;
@@ -2633,7 +2727,7 @@ const GROUP_COLORS = {
 let _groupsSig = null;
 function _groupsSignature() {
   const theme = document.documentElement.getAttribute('data-theme') || '';
-  return theme + '|' + GROUPS.map(g => g.id + ':' + (g.name||'') + ':' + g.books.map(b => b + '=' + bookCount(b)).join('+')).join('|');
+  return disabledGroups.join(',') + '|' + theme + '|' + GROUPS.map(g => g.id + ':' + (g.name||'') + ':' + g.books.map(b => b + '=' + bookCount(b)).join('+')).join('|');
 }
 function setHomeHead(groupId) {
   const title = document.getElementById('homeHeadTitle');
@@ -2648,8 +2742,9 @@ function setHomeHead(groupId) {
     const songs = g.books.reduce((n, b) => n + bookCount(b), 0);
     meta.textContent = books + ' songbook' + (books === 1 ? '' : 's') + ' \u00b7 ' + songs.toLocaleString() + ' hymns';
   } else {
-    const books = GROUPS.reduce((n, x) => n + ((x.books && x.books.length) || 0), 0);
-    const songs = GROUPS.reduce((n, x) => n + x.books.reduce((m, b) => m + bookCount(b), 0), 0);
+    const groups = enabledGroups();
+    const books = groups.reduce((n, x) => n + ((x.books && x.books.length) || 0), 0);
+    const songs = groups.reduce((n, x) => n + x.books.reduce((m, b) => m + bookCount(b), 0), 0);
     meta.textContent = books + ' songbooks \u00b7 ' + songs.toLocaleString() + ' hymns';
   }
 }
@@ -2674,7 +2769,13 @@ function renderGroups() {
   _catNodes = {}; _catGroup = null;
   const cg = document.getElementById('categoryGrid'); if (cg) cg.replaceChildren();
   grid.innerHTML = '';
-  GROUPS.forEach((g, i) => {
+  const groups = enabledGroups();
+  if (!groups.length) {
+    grid.innerHTML = '<div class="no-results"><div class="icon">'+SVG.book+'</div><p>All songbooks are turned off.<br><button class="group-back-btn" type="button" onclick="openSettings()">Choose songbooks</button></p></div>';
+    _rv = { grid: 'group', group: null, cat: null, listKind: 'home', pid: null };
+    return;
+  }
+  groups.forEach((g, i) => {
     const card = document.createElement('div');
     card.className = 'cat-card';
     card.onclick = () => openGroup(g.id);
@@ -2689,6 +2790,8 @@ function renderGroups() {
 function openGroup(id) {
   const g = GROUPS.find(x => x.id === id);
   if (!g) return;
+  // A disabled collection can still be reached from old history entries — send it home.
+  if (isGroupDisabled(g.id)) { currentGroup = null; currentListKind = 'home'; _groupsSig = null; renderGroups(); showHomeRoot(); return; }
   if (g.books.length === 1) { currentGroup = g.id; openCategory(g.books[0]); return; }
   showView('home');
   currentHomeGrid = 'categoryGrid';
@@ -3753,13 +3856,20 @@ async function shareSong(id) {
 function normText(s) {
   return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/['’`]/g, '').toLowerCase();
 }
+let SONG_BY_ID = {};
 function buildSearchIndex() {
+  SONG_BY_ID = {};
   Object.keys(SONGS).forEach(k => {
     const list = SONGS[k] && SONGS[k].songs;
     if (!list) return;
     list.forEach(song => {
+      // ponytail: keep title/author separately normalized so relevance can rank a
+      // title hit above an author or lyric hit without re-normalizing per keystroke.
+      song._lt = normText(song.title);
+      song._la = normText(song.author);
       song._l = normText((song.title||'')+' '+(song.author||'')+' '+(song.key||'')+' '+(song.number||''));
       song._ll = song.verses ? song.verses.map(v => normText((v.lines||[]).join('\n'))) : [];
+      SONG_BY_ID[song.id] = { song, key: k, catName: SONGS[k].info.name };
     });
   });
 }
@@ -3768,6 +3878,11 @@ let searchTimeout;
 let searchFilter = 'all';   // all | title | lyrics | author | number
 let searchSort = 'relevance'; // relevance | number | alpha | recent
 let searchHistory = JSON.parse(localStorage.getItem('labu_search_history') || '[]');
+// Live search holds the query in memory while its results are on screen; it is
+// committed to Recent Searches only when the user is done with it (clear/leave/
+// Enter/open result) so no keystroke prefix is ever stored.
+let pendingSearchQuery = '';
+// Search always covers every enabled songbook; disabled collections are skipped.
 // ponytail: two search fields exist now — the desktop header box and the in-page
 // field on the phone search tab. Keep their values and clear buttons in lockstep.
 function syncSearchFields(q) {
@@ -3789,7 +3904,23 @@ function clearSearchInputMobile() {
 function onSearch(q) {
   syncSearchFields(q);
   clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => doSearch(q), 350);
+  // Search-as-you-type: a short debounce keeps one scan per burst while results
+  // update within a keystroke or two.
+  searchTimeout = setTimeout(() => doSearch(q), 110);
+}
+// Enter commits immediately (and records the query now instead of on idle).
+function submitSearch(input) {
+  if (!input) return;
+  clearTimeout(searchTimeout);
+  doSearch(input.value);
+  if (input.value.trim()) pushSearchHistory(input.value);
+  pendingSearchQuery = '';
+  input.blur();
+}
+function commitSearchHistory() {
+  if (!pendingSearchQuery) return;
+  pushSearchHistory(pendingSearchQuery);
+  pendingSearchQuery = '';
 }
 function currentSearchQuery() {
   const mob = document.getElementById('searchInputMobile');
@@ -3818,6 +3949,55 @@ function runRecentSearch(q) {
   const mob = document.getElementById('searchInputMobile');
   if (mob && getComputedStyle(mob).display !== 'none') mob.focus();
 }
+
+// Rank title first (exact → prefix → word start → contains), then author, number,
+// key and finally lyrics. Ties keep book order because Array.sort is stable.
+function matchSong(song, key, catName, q) {
+  const title = song._lt || '';
+  const author = song._la || '';
+  const titleHit = title.includes(q);
+  const authorHit = author.includes(q);
+  const keyHit = normText(song.key).includes(q);
+  const numHit = (song.number || '').includes(q);
+  if (searchFilter === 'title' && !titleHit) return null;
+  if (searchFilter === 'author' && !authorHit) return null;
+  if (searchFilter === 'number' && !numHit) return null;
+  if (searchFilter !== 'lyrics') {
+    if (searchFilter === 'title') {
+      const score = title === q ? 0 : (title.startsWith(q) ? 1 : ((' ' + title).includes(' ' + q) ? 2 : 3));
+      return { ...song, cat: key, catName, matchField: 'title', matchLabel: 'Title', _score: score };
+    }
+    if (searchFilter === 'author') {
+      return { ...song, cat: key, catName, matchField: 'title', matchLabel: 'Author', _score: author.startsWith(q) ? 4 : 5 };
+    }
+    if (searchFilter === 'number') {
+      return { ...song, cat: key, catName, matchField: 'title', matchLabel: 'Number', _score: 6 };
+    }
+    if (titleHit || authorHit || keyHit || numHit) {
+      let score = 7, label = 'Key';
+      if (titleHit) { score = title === q ? 0 : (title.startsWith(q) ? 1 : ((' ' + title).includes(' ' + q) ? 2 : 3)); label = 'Title'; }
+      else if (authorHit) { score = author.startsWith(q) ? 4 : 5; label = 'Author'; }
+      else if (numHit) { score = 6; label = 'Number'; }
+      return { ...song, cat: key, catName, matchField: 'title', matchLabel: label, _score: score };
+    }
+  }
+  if (song._ll && song._ll.length) {
+    for (let vi = 0; vi < song._ll.length; vi++) {
+      if (song._ll[vi].indexOf(q) === -1) continue;
+      const verse = song.verses[vi] || {};
+      const vtype = SEARCH_VERSE_LABELS[verse.type || 'v'] || 'Verse';
+      const vlabel = vtype + ((verse.type || 'v') === 'v' ? ' ' + (vi + 1) : '');
+      const allLines = verse.lines || [];
+      const li = allLines.findIndex(l => normText(l).includes(q));
+      const start = Math.max(0, li - 1);
+      const end = Math.min(allLines.length, li + 3);
+      const context = allLines.slice(start, end).join('\n');
+      return { ...song, cat: key, catName, matchField: 'verse', matchLabel: vlabel, snippet: context, _score: 10 };
+    }
+  }
+  return null;
+}
+const SEARCH_VERSE_LABELS = { v: 'Verse', c: 'Chorus', b: 'Bridge', p: 'Reference', pc: 'Pre-Chorus' };
 async function doSearch(q) {
   await ensureSongs();
   // ponytail: keep the raw query for display/highlight/history, normalized for matching.
@@ -3825,80 +4005,27 @@ async function doSearch(q) {
   const rawQ = q;
   q = normText(q);
   searchQuery = rawQ;
-  const vt = {v:'Verse',c:'Chorus',b:'Bridge',p:'Reference',pc:'Pre-Chorus'};
   const el = document.getElementById('searchResults');
-  if (!q) { renderRecentSearch(); return; }
-  const wasSearch = currentListKind === 'search';
-  const prevKind = currentListKind;
+  if (!q) { commitSearchHistory(); renderRecentSearch(); return; }
+  const wasSearch = currentView === 'search';
   showView('search');
   currentListKind = 'search';
-  // ponytail: scope search to the open songbook, to all sub-books of the open
-  // main songbook (group), or — for custom lists — to the open playlist /
-  // favorites / history list itself; else search everything.
-  let keys = CAT_ORDER, scopeName = '', scopedList = null;
-  if (prevKind === 'cat' && currentCat) { keys = [currentCat]; scopeName = SONGS[currentCat].info.name; }
-  else if (prevKind === 'playlist' && currentPlaylistId) {
-    const pl = playlists.find(p => p.id === currentPlaylistId);
-    scopeName = pl ? pl.name : 'playlist';
-    scopedList = currentList;
-  }
-  else if (prevKind === 'fav') { scopeName = 'Favorites'; scopedList = currentList; }
-  else if (prevKind === 'recent' || prevKind === 'history') { scopeName = 'History'; scopedList = currentList; }
-  else if (currentGroup) {
-    const g = GROUPS.find(x => x.id === currentGroup);
-    if (g && g.books.length) { keys = g.books; scopeName = g.name; }
-  }
-  const pairs = [];
-  if (scopedList) {
-    scopedList.forEach(s => pairs.push({
-      song: s, key: s.cat,
-      catName: s.catName || (SONGS[s.cat] && SONGS[s.cat].info && SONGS[s.cat].info.name) || s.cat
-    }));
-  } else {
-    keys.forEach(key => {
-      if (!SONGS[key] || !SONGS[key].songs) return;
-      SONGS[key].songs.forEach(song => pairs.push({ song, key, catName: SONGS[key].info.name }));
-    });
-  }
   const results = [];
-  pairs.forEach(({ song, key, catName }) => {
-      const titleHit = song._l.includes(q);
-      const authorHit = normText(song.author).includes(q);
-      const keyHit = normText(song.key).includes(q);
-      const numHit = (song.number||'').includes(q);
-      // ponytail: filter chips narrow the match domain.
-      let pass = false;
-      if (searchFilter === 'title') pass = titleHit;
-      else if (searchFilter === 'author') pass = authorHit;
-      else if (searchFilter === 'number') pass = numHit;
-      else if (searchFilter === 'lyrics') pass = false;
-      else pass = (titleHit || authorHit || keyHit || numHit);
-      if (pass) { results.push({...song, cat: key, catName: catName, matchField: 'title', matchLabel: 'Title'}); return; }
-      if (song._ll.length && (searchFilter === 'all' || searchFilter === 'lyrics')) {
-        for (let vi = 0; vi < song._ll.length; vi++) {
-          const lineIdx = song._ll[vi].indexOf(q);
-          if (lineIdx !== -1) {
-            const vtype = vt[(song.verses[vi]&&song.verses[vi].type)||'v'] || 'Verse';
-            const vlabel = vtype + ((song.verses[vi]&&song.verses[vi].type === 'v') ? ' ' + (vi+1) : '');
-            const allLines = song.verses[vi].lines;
-            const li = allLines.findIndex(l => normText(l).includes(q));
-            const start = Math.max(0, li - 1);
-            const end = Math.min(allLines.length, li + 3);
-            const context = allLines.slice(start, end).join('\n');
-            results.push({...song, cat: key, catName: catName, matchField: 'verse', matchLabel: vlabel, snippet: context});
-            return;
-          }
-        }
-      }
+  enabledBookKeys().forEach(key => {
+    const book = SONGS[key];
+    if (!book || !book.songs) return;
+    book.songs.forEach(song => {
+      const r = matchSong(song, key, book.info.name, q);
+      if (r) results.push(r);
     });
-  // ponytail: sort results (relevance = insertion order, which is book order).
+  });
   if (searchSort === 'number') results.sort((a, b) => (parseInt(a.number)||0) - (parseInt(b.number)||0));
   else if (searchSort === 'alpha') results.sort((a, b) => (a.title||'').localeCompare(b.title||'', undefined, {sensitivity:'base'}));
   else if (searchSort === 'recent') { const ri = id => recents.indexOf(id); results.sort((a, b) => (ri(a.id)>=0?ri(a.id):1e9) - (ri(b.id)>=0?ri(b.id):1e9)); }
-  const scope = scopeName ? ' in '+esc(scopeName) : '';
-  // ponytail: only remember queries that actually matched something, so partial
-  // keystroke pauses (sa/sav/savi) never clutter Recent Searches.
-  if (results.length) pushSearchHistory(rawQ);
+  else results.sort((a, b) => a._score - b._score);
+  // Only a query that actually matched is worth remembering; the commit happens
+  // when the user clears, opens a song, presses Enter, or leaves the search view.
+  pendingSearchQuery = results.length ? rawQ : '';
   // ponytail: cap DOM nodes to the first 100 matches so the grid paints instantly
   // even when a query matches thousands of songs.
   const RENDER_CAP = 100;
@@ -3907,16 +4034,19 @@ async function doSearch(q) {
     ? '<div class="si-more">Showing first '+shown.length+' of '+results.length+' matches — refine your search to narrow down.</div>' : '';
   el.innerHTML =
     renderSearchToolbar() +
-    '<div class="song-list-header"><h2>Search Results</h2><p>'+results.length+' result'+(results.length!==1?'s':'')+' for "'+esc(rawQ)+'"'+scope+'</p></div>';
-  if (!results.length) { el.innerHTML += '<div class="no-results"><div class="icon">'+SVG.search+'</div><p>No songs match your search</p></div>'; if (!wasSearch) navPush(); return; }
+    '<div class="song-list-header"><h2>Search Results</h2><p>'+results.length+' result'+(results.length!==1?'s':'')+' for "'+esc(rawQ)+'"</p></div>';
+  if (!results.length) {
+    el.innerHTML += '<div class="no-results"><div class="icon">'+SVG.search+'</div><p>No songs match your search.<br>Try a title, a lyric, an author, or a number.</p></div>';
+    if (!wasSearch) navPush();
+    return;
+  }
   const grid = document.createElement('div');
   grid.className = 'song-grid';
   shown.forEach((song, i) => {
     const item = document.createElement('div');
     item.className = 'song-item search-item fade-in';
     item.style.animationDelay = Math.min(i*0.02,0.5)+'s';
-    // ponytail: from a list-scoped search, prev/next stays inside that list.
-    item.onclick = () => { currentCat = song.cat; currentList = scopedList || SONGS[song.cat].songs; openSong(song); };
+    item.onclick = () => { commitSearchHistory(); currentCat = song.cat; currentList = SONGS[song.cat].songs; openSong(song); };
     const meta = [song.author, song.catName].filter(Boolean).join(' • ');
     const num = song.number ? '#'+song.number : '';
     const snippet = song.snippet
@@ -3951,6 +4081,7 @@ function renderSearchToolbar() {
 // ponytail: empty search shows recent queries as tappable chips.
 function clearSearchHistory() {
   searchHistory = [];
+  pendingSearchQuery = '';
   localStorage.removeItem('labu_search_history');
   renderRecentSearch();
 }
@@ -4922,8 +5053,8 @@ function renderSidebarGroups() {
   if (!el) return;
   el.innerHTML = '';
   const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-  GROUPS.forEach(g => {
-    const total = g.books.reduce((n, b) => n + bookCount(b), 0);
+  enabledGroups().forEach(g => {
+    const total = (g.books || []).reduce((n, b) => n + bookCount(b), 0);
     const icon = GROUP_SVGS[g.id] || SVG.book;
     const btn = document.createElement('button');
     btn.className = 'sidebar-group-item';
@@ -5146,6 +5277,41 @@ function updateSettingsUI() {
   updateReaderSizeUI();
   applyAccent(localStorage.getItem('labu-accent') || 'white');
   syncSegmented('wakeOptions', _wakeOn ? 1 : 0);
+  renderSongbookPrefs();
+}
+function renderSongbookPrefs() {
+  const host = document.getElementById('songbookPrefs');
+  if (!host) return;
+  if (!GROUPS.length) { host.innerHTML = '<p class="settings-note" style="padding:.45rem .75rem;">Loading songbooks…</p>'; return; }
+  host.innerHTML = GROUPS.map(g => {
+    const on = !isGroupDisabled(g.id);
+    const total = (g.books || []).reduce((n, b) => n + bookCount(b), 0);
+    const icon = GROUP_SVGS[g.id] || SVG.book;
+    return '<div class="settings-row sb-pref">' +
+      '<span class="sr-ic">' + icon + '</span>' +
+      '<span class="sr-label">' + esc(g.name) + '<span class="sb-pref-meta">' + total.toLocaleString() + ' songs</span></span>' +
+      '<button type="button" class="sb-switch" role="switch" aria-checked="' + on + '" aria-label="' + esc(g.name) + '" onclick="toggleSongbook(\'' + g.id + '\')"><span></span></button>' +
+      '</div>';
+  }).join('');
+}
+function toggleSongbook(id) {
+  const g = GROUPS.find(x => x.id === id);
+  if (!g) return;
+  const wasDisabled = isGroupDisabled(id);
+  if (wasDisabled) disabledGroups = disabledGroups.filter(x => x !== id);
+  else {
+    if (enabledGroups().length <= 1) { toast('Keep at least one songbook enabled', 'error'); return; }
+    disabledGroups.push(id);
+  }
+  saveDisabledGroups();
+  _groupsSig = null;
+  updateStats();
+  renderSongbookPrefs();
+  renderSidebarGroups();
+  // Rebuild even while Settings is open: Home may be one back-tap away and its
+  // cached DOM would otherwise still show the collection we just turned off.
+  renderGroups();
+  toast(wasDisabled ? g.name + ' enabled' : g.name + ' disabled', 'success');
 }
 function setWakeLock(on) {
   _wakeOn = !!on;
@@ -5181,7 +5347,7 @@ async function buildBackupPayload() {
     app: 'khristian-labu',
     version: APP_VERSION,
     exportedAt: new Date().toISOString(),
-    favorites, recents, playlists, searchHistory,
+    favorites, recents, playlists, searchHistory, disabledGroups,
     theme: localStorage.getItem('labu-theme') || 'system',
     readerFont, readerLH, readerFamily,
     edits
@@ -5214,6 +5380,8 @@ async function applyBackup(data) {
     savePlaylists();
     searchHistory = Array.isArray(data.searchHistory) ? data.searchHistory.slice() : [];
     localStorage.setItem('labu_search_history', JSON.stringify(searchHistory));
+    disabledGroups = Array.isArray(data.disabledGroups) ? data.disabledGroups.filter(id => typeof id === 'string') : [];
+    saveDisabledGroups();
     if (data.theme) localStorage.setItem('labu-theme', data.theme);
     if (data.readerFont != null) localStorage.setItem('labu-reader-font', data.readerFont);
     if (data.readerLH != null) localStorage.setItem('labu-reader-lh', data.readerLH);

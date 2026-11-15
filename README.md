@@ -17,7 +17,8 @@ A gospel songbook app — 5,723 hymns across 17 songbooks in 6 collections.
 ## Features
 
 - 17 songbooks across 6 Kuki, Zomi, and Mizo collections
-- Full-text search of titles, lyrics, authors, and numbers, scoped to the open book, collection, playlist, or list — with filters, sorting, and recent searches
+- Full-text search of titles, lyrics, authors, and numbers across every songbook, with filters, sorting, and recent searches
+- Choose which main songbooks appear on Home and in search; turn off collections you don't use
 - Favorites and recently viewed songs, saved on device
 - Playlists with rename, delete, and JSON or text export
 - Reader with font size, line spacing, scroll memory, verse jump, and swipe navigation
