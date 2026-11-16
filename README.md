@@ -49,6 +49,9 @@ cd android && ./gradlew assembleDebug --no-daemon
 # android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
+The padded Android launch-screen icons are tracked in `resources/android-splash/`.
+`npm run sync` installs them into the generated `android/` project.
+
 To release, bump `APP_VERSION` in `index.html`, `version.json`, and `CACHE` in `sw.js`, then:
 
 ```bash

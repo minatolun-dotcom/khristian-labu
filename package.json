@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "sync": "cp index.html logo.png songs.json songs.json.gzip manifest.webmanifest sw.js icon-192.png icon-512.png www/ && cp -r assets www/ 2>/dev/null || true && npx cap sync",
+    "sync": "cp index.html logo.png songs.json songs.json.gzip manifest.webmanifest sw.js icon-192.png icon-512.png www/ && cp -r assets www/ 2>/dev/null || true && npx cap sync && python3 scripts/sync_android_splash.py",
+    "sync:splash": "python3 scripts/sync_android_splash.py",
     "build": "npm run sync && npx cap build android",
     "test": "python3 scripts/validate_data.py && node scripts/test_share_image.mjs && node scripts/e2e_full.mjs",
     "test:data": "python3 scripts/validate_data.py",
