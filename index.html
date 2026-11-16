@@ -433,7 +433,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(9,10,16,0.86);backdrop-fil
 .dd-item:hover{background:var(--bg3);color:var(--text);}
 .dd-item.sel{background:var(--accent-glow);color:var(--accent);font-weight:600;}
 .admin-song-list{display:flex;flex-direction:column;gap:0.5rem;}
-.admin-song-row{display:flex;align-items:center;gap:1rem;padding:0.85rem 1rem;background:linear-gradient(135deg,var(--glass-a),var(--glass-b));border:1px solid var(--glass-rim);border-radius:16px;transition:all var(--transition);}
+.admin-song-row{display:flex;align-items:center;gap:1rem;padding:0.85rem 1rem;background:var(--card);border:1px solid var(--border);border-radius:18px;box-shadow:none;transition:background var(--transition),border-color var(--transition);}
 .admin-song-row:hover{border-color:var(--accent);background:var(--card-hover);}
 .admin-song-row .song-num{min-width:34px;height:auto;font-size:0.9rem;}
 .admin-song-row .song-info{flex:1;}
@@ -550,7 +550,7 @@ nav{position:sticky;top:0;z-index:100;background:rgba(9,10,16,0.86);backdrop-fil
   .song-breadcrumb{font-size:0.8rem;gap:6px;}
   .song-detail-back button{padding:6px 12px;font-size:0.8rem;}
   .verse p{line-height:var(--reader-lh,1.2);}
-  .admin-panel{padding:1rem;}
+  .admin-panel{padding:calc(var(--sat,0px) + .9rem) 1rem 1rem;}
   .admin-header{display:flex;align-items:center;justify-content:space-between;gap:0.5rem;margin-bottom:1rem;}
   .admin-header h2{font-size:1.1rem;flex-shrink:0;}
   .admin-header > div{display:flex;gap:0.4rem;flex-shrink:0;}
@@ -700,12 +700,12 @@ nav{position:sticky;top:0;z-index:100;background:rgba(9,10,16,0.86);backdrop-fil
   #homeView.home-root .home-head{display:none;}
   #tabBar{display:block;}
   body{padding-bottom:calc(var(--tabbar-h) + var(--sab,0px) + 22px);}
-  body[data-view="detail"],body[data-view="admin"]{padding-bottom:0;}
+  body[data-view="detail"]{padding-bottom:0;}
   body[data-view="detail"] #updateBanner{display:none;}
   #tabBar{transition:transform .3s cubic-bezier(.32,.72,0,1),opacity .22s ease,visibility .3s;}
-  body[data-view="detail"] #tabBar,body[data-view="admin"] #tabBar{transform:translateY(calc(100% + 16px));opacity:0;visibility:hidden;}
+  body[data-view="detail"] #tabBar{transform:translateY(calc(100% + 16px));opacity:0;visibility:hidden;}
   /* Lyrics and song lists are edge-swipe-back only: no nav strip, no back button. */
-  body[data-view="detail"] nav,body[data-view="list"] nav,body[data-view="search"] nav{display:none;}
+  body[data-view="detail"] nav,body[data-view="list"] nav,body[data-view="search"] nav,body[data-view="admin"] nav{display:none;}
   body[data-view="detail"] #detailView{height:100dvh;padding-top:var(--sat,0px);}
   body[data-view="list"] #listView{padding-top:var(--sat,0px);}
 
@@ -2420,7 +2420,7 @@ function showView(v) {
   // Leaving search commits the query the user settled on (not a keystroke prefix).
   if (currentView === 'search' && v !== 'search') commitSearchHistory();
   currentView = v;
-  // ponytail: drives bottom-tab visibility (hidden in the reader/admin) from CSS.
+  // ponytail: drives bottom-tab visibility (hidden in the reader) from CSS.
   document.body.dataset.view = v;
   ['homeView','listView','detailView','searchView','adminView','settingsView'].forEach(id => {
     document.getElementById(id).classList.toggle('active', id === v + 'View');
@@ -2460,10 +2460,11 @@ function showView(v) {
 // Active tab mirrors where you are: home also covers songbook/category lists, and
 // settings stays lit while its sheet is open.
 function currentTab() {
-  if (currentView === 'settings') return 'settings';
+  if (currentView === 'settings' || currentView === 'admin') return 'settings';
   if (currentView === 'search') return 'search';
   if (currentView === 'list' && currentListKind === 'fav') return 'fav';
   if (currentView === 'list' && currentListKind === 'history') return 'history';
+  if (currentView === 'list' && (currentListKind === 'playlists' || currentListKind === 'playlist')) return 'settings';
   return 'home';
 }
 function syncTabBar() {
@@ -5270,12 +5271,13 @@ function createPlaylistFromModal() {
 
 // ─── SETTINGS ───
 function openSettings() {
-  if (currentView !== 'settings') navPush();
+  const push = currentView !== 'settings';
   showView('settings');
   window.scrollTo(0, 0);
   updateSettingsUI();
   renderGoogleSection();
   syncTabBar();
+  if (push) navPush();
 }
 function updateSettingsUI() {
   updateThemeButtons(localStorage.getItem('labu-theme') || 'system');
