@@ -7,6 +7,12 @@ khristian-labu.keystore
 # ─── secrets (never commit) ───
 secret
 *.pem
+.env
+.env.*
+!.env.example
+
+# ─── audit captures ───
+shots/
 
 # ─── build/deploy artifacts (not served by GitHub Pages) ───
 release-assets/

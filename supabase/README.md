@@ -36,7 +36,8 @@ It is idempotent, so re-running after an update is safe.
    ```
 
 Only accounts in `admins` can list the queue, approve, reject or publish.
-Everyone else can submit (including anonymous devices).
+Everyone else can submit (including anonymous devices). Email + password sign-in
+must be enabled (Authentication → Providers → Email; it is on by default).
 
 ## 3. Point the app at the project
 
@@ -45,11 +46,19 @@ Dashboard → **Project Settings → API**:
 - **Project URL**
 - **anon public** key (safe to ship; it is not a secret)
 
-Paste them into `index.html` near `APP_VERSION`:
+Put them in `.env` at the project root (git-ignored; see `.env.example`) and bake
+them into the static page:
 
-```js
-const SUPABASE_CONF = { url: 'https://YOUR-PROJECT.supabase.co', anonKey: 'YOUR-ANON-KEY' };
+```sh
+SUPABASE_URL=https://YOUR-PROJECT.supabase.co
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+
+node scripts/set_cloud_config.mjs   # rewrites SUPABASE_CONF near APP_VERSION
 ```
+
+The script writes only the publishable key and refuses `SUPABASE_SECRET_KEY`,
+which must never reach a browser. Re-run it after rotating keys or on a fresh
+clone, before deploying.
 
 Leaving them empty disables cloud sync entirely — the app behaves exactly as
 before and every edit stays device-local.
@@ -68,6 +77,47 @@ a fork or the test harness can point somewhere else without editing the file.
 - **Every other device**: checks on launch, when the app regains focus, when it
   comes back online, and every 5 minutes. The new version is applied in place
   and the reader is re-rendered — no reload required.
+
+## Optional: Management API access (PAT)
+
+The app never needs this; it is for checking or operating the project from a
+terminal without opening the SQL editor. Create a token at
+**Dashboard → Account → Access Tokens → Generate new token**, scope it to this
+project (Database → read is enough to inspect; read-write if you want to run
+SQL through it), and save it in `.env`:
+
+```sh
+PAT=sbp_...
+```
+
+`.env` is git-ignored — the token grants account access, so it must never be
+committed, pasted into `index.html`, or shipped to a device. Delete the token
+when you no longer need it.
+
+Query the project through the Management API (`{ref}` is the subdomain of
+`SUPABASE_URL`):
+
+```sh
+curl -s -X POST \
+  -H "Authorization: Bearer $PAT" -H "Content-Type: application/json" \
+  "https://api.supabase.com/v1/projects/{ref}/database/query" \
+  -d '{"query":"select * from public.publish_state"}'
+```
+
+Useful queries:
+
+```sql
+select version, updated_at from public.publish_state;              -- what devices hold
+select id, status, summary, created_at from public.proposals        -- the queue
+ where status = 'pending' order by id;
+select seq, kind, payload from public.published_edits order by seq; -- backup / audit
+select user_id, email from public.admins;
+```
+
+Note that the `service_role` / secret key has **no grants** on `admins`,
+`proposals`, `published_edits` or `publish_state`: writes exist only through the
+security-definer functions, so plain REST with the secret key returns `403`.
+The Management API (SQL as `postgres`) is the administrative path.
 
 ## How the layers combine
 
@@ -105,3 +155,6 @@ edited on the device still wins locally.
 `npm run test:cloud` runs the whole loop headlessly against a mocked Supabase
 project: overlay pull, proposal submission, admin sign-in, approval and the
 follow-up sync.
+
+`npm test` runs everything, with cloud sync forced off (`window.LABU_SUPABASE =
+{}`) so browser tests never touch the live project.

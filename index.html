@@ -2299,11 +2299,16 @@ function dataQuery() {
 const APP_VERSION = '1.5.50'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── CLOUD SYNC (Supabase) — approved changes reach every device ───
-// Fill these two from Supabase → Project Settings → API. The anon key is a public
-// identifier (safe to ship). Leave blank and the app runs exactly as before:
+// Project URL and publishable (anon) key, baked in from .env by
+// scripts/set_cloud_config.mjs. The key is a public identifier (safe to ship);
+// RLS plus the security-definer RPCs decide every write. Clear both and the app
+// runs exactly as before:
 // edits stay on this device and nothing is submitted. window.LABU_SUPABASE wins,
 // so a fork (or the test harness) can point at another project without editing here.
-const SUPABASE_CONF = (typeof window !== 'undefined' && window.LABU_SUPABASE) || {};
+const SUPABASE_CONF = (typeof window !== 'undefined' && window.LABU_SUPABASE) || {
+  url: 'https://rxbrozmwznjmdgirekma.supabase.co',
+  anonKey: 'sb_publishable_3ITN3SrrFkaGIMFpNAOTFg_cjQ-cg2d', // publishable key — public by design, RLS guards writes
+};
 const SUPABASE_URL = String(SUPABASE_CONF.url || '').replace(/\/+$/, '');
 const SUPABASE_ANON_KEY = String(SUPABASE_CONF.anonKey || '');
 const CLOUD_ON = !!(SUPABASE_URL && SUPABASE_ANON_KEY);

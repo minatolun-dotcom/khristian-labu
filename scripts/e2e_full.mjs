@@ -34,6 +34,9 @@ let currentSection = '';
 
 async function newPage(vp = { width: 1280, height: 800 }, extra = {}) {
   const page = await browser.newPage({ viewport: vp, acceptDownloads: true, ...extra });
+  // The shipped config points at the live Supabase project; every edit here would
+  // otherwise submit a real proposal. An empty override turns cloud sync off.
+  await page.addInitScript(() => { window.LABU_SUPABASE = {}; });
   page.on('console', m => {
     if (m.type() !== 'error') return;
     // ignore network status failures (e.g. the GitHub update-check API rate-limiting
