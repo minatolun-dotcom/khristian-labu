@@ -1,7 +1,7 @@
 // Khristian Labu service worker — app shell + offline support (free, no backend).
 // ponytail: cache name is tied to DATA_VERSION; bump both together so data updates propagate.
-const CACHE = 'labu-v78';
-const SHELL = ['./', 'index.html', 'groups.json', 'logo.png', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
+const CACHE = 'labu-v95';
+const SHELL = ['./', 'index.html', 'groups.json', 'chords.json', 'logo.png', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
   'assets/fonts/outfit-400.woff2', 'assets/fonts/inter-400.woff2', 'assets/fonts/noto-400.woff2',
   'assets/fonts/literata-400.woff2', 'assets/fonts/lora-400.woff2', 'assets/fonts/merriweather-400.woff2',
   'assets/fonts/sourceserif-400.woff2', 'assets/fonts/crimson-400.woff2', 'assets/fonts/ebgaramond-400.woff2',
@@ -53,7 +53,7 @@ self.addEventListener('fetch', e => {
       const cached = await c.match(key);
       if (cached) return cached;
       const net = await fetch(req);
-      c.put(key, net.clone());
+      if (net.ok) c.put(key, net.clone());
       return net;
     })());
     return;
@@ -63,9 +63,18 @@ self.addEventListener('fetch', e => {
   if (req.mode === 'navigate' || SHELL.some(s => url.pathname.endsWith(s))) {
     e.respondWith(
       fetch(req).then(res => {
-        const c = caches.open(CACHE); c.then(cc => cc.put(req, res.clone()));
+        if (res.ok) { const c = caches.open(CACHE); c.then(cc => cc.put(req, res.clone())); }
         return res;
-      }).catch(() => caches.match(req).then(m => m || caches.match('index.html')))
+      }).catch(async () => {
+        const exact = await caches.match(req);
+        if (exact) return exact;
+        // Versioned shell requests (groups.json?v=N) must still match the precached
+        // unversioned asset; otherwise offline startup receives index.html instead.
+        const loose = await caches.match(req, { ignoreSearch: true });
+        if (loose) return loose;
+        if (req.mode === 'navigate') return caches.match('index.html');
+        return Response.error();
+      })
     );
     return;
   }
