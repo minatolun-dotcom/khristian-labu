@@ -127,6 +127,11 @@ try {
   for (let i = 0; i < 60 && submitted.length === 0; i++) await page.waitForTimeout(100);
   check('local edit is submitted as a proposal', submitted.length === 1, 'submissions=' + submitted.length);
   check('proposal carries the edit payload', submitted[0] && submitted[0].p_payload && submitted[0].p_payload.id === 'local_pending_hymn');
+  // Submission is silent by design: the device already shows its own change, so the
+  // user must not be told their edit went to an admin for review.
+  const reviewToasts = await page.evaluate(() =>
+    [...document.querySelectorAll('.toast')].map(t => t.textContent).filter(t => /review|submit/i.test(t)));
+  check('no review toast is shown to the submitting device', reviewToasts.length === 0, reviewToasts.join(' | '));
 
   // 3. Admin signs in, sees the queue, approves.
   await page.evaluate(() => openAdmin());

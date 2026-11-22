@@ -2296,7 +2296,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.50'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.51'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── CLOUD SYNC (Supabase) — approved changes reach every device ───
 // Project URL and publishable (anon) key, baked in from .env by
@@ -2864,11 +2864,12 @@ async function submitChange(kind, payload) {
       return 'published';
     }
     await cloudSendProposal(item);
-    toast('Sent for admin review', 'success');
+    // Quiet by design: a normal user's change is only staged for review, so say
+    // nothing. The local save already happened and that is all they need to see.
     return 'review';
   } catch (e) {
     cloudSetOutbox(cloudOutbox().concat([item]));
-    toast('Saved — will submit when online', 'success');
+    // Also silent: the outbox flushes on its own once the network returns.
     return 'queued';
   }
 }

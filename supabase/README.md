@@ -69,8 +69,9 @@ a fork or the test harness can point somewhere else without editing the file.
 ## 4. Use it
 
 - **Everyone**: Manage Songs → add / edit / delete a song, songbook or chord
-  chart. The change applies on that device immediately and is submitted. The
-  toast says *Sent for admin review* (or *Published to all devices* for admins).
+  chart. The change applies on that device immediately and is submitted quietly
+  — no "sent for review" toast, because the user's own device already shows the
+  result. Admins, who publish directly, get *Published to all devices*.
 - **Admin**: Manage Songs → **Admin sign in** (email + password). The review
   queue lists pending changes with who/when. **Approve** publishes instantly,
   **Reject** discards, **Approve all** clears the batch.
