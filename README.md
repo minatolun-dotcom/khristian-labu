@@ -2,7 +2,7 @@
 
 A gospel songbook app — 5,723 hymns across 17 songbooks in 6 collections.
 
-[Try it live](https://minatolun-dotcom.github.io/khristian-labu/) · [Download the APK](https://github.com/minatolun-dotcom/khristian-labu/releases)
+[Try it live](https://labu.lengkhawm.online/) · [Download the APK](https://github.com/minatolun-dotcom/khristian-labu/releases)
 
 ## Screenshots
 

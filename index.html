@@ -8,8 +8,8 @@
 <meta property="og:title" content="Khristian Labu - Gospel Songbook">
 <meta property="og:description" content="5,700+ hymns across 17 songbooks in 6 collections. Works offline, free.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://minatolun-dotcom.github.io/khristian-labu/">
-<meta property="og:image" content="https://minatolun-dotcom.github.io/khristian-labu/icon-512.png">
+<meta property="og:url" content="https://labu.lengkhawm.online/">
+<meta property="og:image" content="https://labu.lengkhawm.online/icon-512.png">
 <meta name="twitter:card" content="summary">
 <link rel="icon" type="image/png" href="logo.png">
 <link rel="apple-touch-icon" href="icon-192.png"> <!-- iOS ignores manifest icons; needs a real link for Add-to-Home-Screen -->
@@ -2296,7 +2296,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.51'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.52'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── CLOUD SYNC (Supabase) — approved changes reach every device ───
 // Project URL and publishable (anon) key, baked in from .env by
@@ -2534,7 +2534,7 @@ function showUpdateBanner(latest) {
 async function fetchUpdateInfo() {
   const hosts = [
     'https://raw.githubusercontent.com/' + REPO + '/main/version.json',
-    'https://minatolun-dotcom.github.io/khristian-labu/version.json',
+    'https://labu.lengkhawm.online/version.json',
   ];
   for (const u of hosts) {
     try {
@@ -3063,7 +3063,7 @@ async function cloudReject(id) {
 // Plain songs.json stays last (5MB) for WebViews without DecompressionStream.
 async function fetchSongsJSON() {
   const qs = dataQuery();
-  const PAGES = 'https://minatolun-dotcom.github.io/khristian-labu/';
+  const PAGES = 'https://labu.lengkhawm.online/';
   if (typeof DecompressionStream !== 'undefined') {
     for (const u of ['songs.json.gzip' + qs, PAGES + 'songs.json.gzip' + qs]) {
       try {
