@@ -140,6 +140,17 @@ nav{position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px sol
 .stat{text-align:center;}.stat-icon{margin-bottom:6px;opacity:0.6;display:flex;justify-content:center;}.stat-icon svg{width:22px;height:22px;stroke:var(--accent);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;}.stat-num{font-size:2rem;font-weight:700;color:var(--accent-ink);}
 .stat-label{font-size:0.8rem;color:var(--text3);text-transform:uppercase;letter-spacing:0.05em;margin-top:2px;}
 
+/* Home install/source links — website only (removed when running inside the APK). */
+.home-actions{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:.55rem;margin-top:1.1rem;}
+/* Ships hidden: only the website unhides it, so the APK can never show it. */
+.home-actions[hidden]{display:none;}
+.home-action{display:inline-flex;align-items:center;gap:.45rem;padding:.5rem .95rem;border-radius:999px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-size:.8rem;font-weight:600;text-decoration:none;white-space:nowrap;transition:color .2s,border-color .2s,background-color .2s,transform .2s;}
+.home-action svg{width:17px;height:17px;flex:none;fill:currentColor;}
+.home-action:hover{color:var(--text);border-color:var(--accent);transform:translateY(-1px);}
+.home-action:active{transform:scale(.97);}
+.home-action-apk{background:var(--warm);border-color:var(--warm);color:var(--warm-ink);}
+.home-action-apk:hover{color:var(--warm-ink);border-color:var(--warm);filter:brightness(1.06);}
+
 /* ─── CATEGORIES ─── */
 .categories{max-width:1200px;margin:0 auto;padding:1rem 2rem 3rem;display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;}
 /* ponytail: homepage has only 3 group cards — center them instead of filling a 4-col grid */
@@ -156,12 +167,16 @@ nav{position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px sol
 #homeView.category-mode .home-head-desc{max-width:560px;margin:.42rem auto 0;color:var(--text2);line-height:1.5;}
 #homeView.category-mode .home-head-desc:empty{display:none;}
 #homeView.category-mode #categoryGrid{width:100%;padding-bottom:0;}
+#homeView.category-mode .home-actions{display:none;}
 #homeView.category-mode.active{display:flex;flex-direction:column;justify-content:center;min-height:calc(100dvh - 80px - var(--sat,0px));}
 /* Home is one block: masthead + collection grid. Auto margins centre it when it
    fits and collapse to 0 when the grid is tall enough to scroll, so no card is
    ever clipped above the viewport. */
 #homeView.home-root .home-brand{margin-top:auto;}
-#homeView.home-root #groupGrid{margin-bottom:auto;}
+/* The install links follow the grid now, so they own the bottom auto margin — the
+   grid must never claim it, or the buttons get flung to the bottom of the screen. */
+#homeView.home-root #groupGrid{margin-bottom:0;}
+#homeView.home-root .home-actions{margin-bottom:auto;}
 .cat-card{background:var(--card);border:1px solid var(--border);border-radius:26px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:1.75rem;cursor:pointer;transition:transform 0.4s cubic-bezier(0.25,0.46,0.45,0.94),border-color 0.4s,box-shadow 0.4s,background-color 0.4s;position:relative;overflow:hidden;}
 [data-theme="light"] .cat-card{background:var(--card);border:1px solid var(--border);box-shadow:0 6px 18px rgba(20,32,64,.08);}
 .cat-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),var(--accent2),transparent);opacity:0;transition:opacity 0.4s ease;}
@@ -399,6 +414,14 @@ nav{position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px sol
 .chord-float{position:absolute;top:0;white-space:nowrap;pointer-events:auto;}
 .chord-text-line{display:block;font-size:var(--reader-font,1.05rem);line-height:var(--reader-lh,1.6);font-family:var(--reader-family,inherit);color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere;}
 .chord-text{display:block;font-size:var(--reader-font,1.05rem);line-height:var(--reader-lh,1.6);font-family:var(--reader-family,inherit);color:var(--text);}
+/* Character-anchored charts: chords are placed from measured glyph rects, so a
+   proportional font, zoom level or wrapped line can't drift them off the syllable. */
+.chord-line.chord-line-pos{padding-top:0;}
+.chord-line-pos .ce-words{font-family:var(--reader-family,inherit);font-size:var(--reader-font,1.05rem);line-height:var(--reader-lh,1.6);color:var(--text);white-space:pre-wrap;overflow-wrap:break-word;}
+.chord-line-pos .ce-word{display:inline-block;position:relative;padding-top:1.05em;vertical-align:top;}
+.chord-line-pos .ce-ch{display:inline;}
+.chord-line-pos .ce-space{white-space:pre;}
+.chord-line-pos .chord-read{position:absolute;top:0;left:0;white-space:nowrap;}
 .chord-note{margin-top:1rem;padding:10px 12px;border-left:3px solid var(--select-rim);background:var(--bg3);border-radius:0 var(--radius-sm) var(--radius-sm) 0;color:var(--text2);font-size:0.82rem;line-height:1.5;}
 .chord-tools{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:-0.8rem 0 1.4rem;padding:0 2px;}
 .chord-tools-label{font-size:0.72rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text3);margin-right:2px;}
@@ -409,17 +432,109 @@ nav{position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px sol
 .chord-tool-reset,.chord-tool-edit{border:1px solid var(--border);background:var(--card);color:var(--text2);border-radius:7px;font-family:inherit;font-size:0.75rem;padding:5px 9px;cursor:pointer;}
 .chord-tool-reset:disabled{opacity:0.4;cursor:default;}
 .chord-tool-edit{margin-left:auto;color:var(--select);border-color:var(--select-rim);background:var(--select-soft);font-weight:600;width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;}
-.chord-tool-edit svg{width:15px;height:15px;}
+.chord-tool-edit svg{width:19px;height:19px;}
 .chord-fade{animation:chord-fade 0.22s ease both;}
 @keyframes chord-fade{from{opacity:0.15;transform:translateY(-2px);}to{opacity:1;transform:none;}}
 @media(prefers-reduced-motion:reduce){.chord-fade{animation:none;}}
-.chord-editor-help{color:var(--text2);font-size:0.8rem;line-height:1.5;margin:0 0 10px;}
-.chord-editor-rows{display:flex;flex-direction:column;gap:7px;max-height:52vh;overflow:auto;padding-right:2px;}
-.chord-editor-verse{margin:7px 0 1px;font-size:0.7rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text3);}
-.chord-editor-row{display:flex;flex-direction:column;gap:0;}
-.chord-editor-input{width:100%;box-sizing:border-box;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.86rem;line-height:1.35;padding:2px 5px;border:1px solid var(--border);border-radius:4px;background:var(--bg2);color:var(--chord);white-space:pre;overflow-x:auto;}
-.chord-editor-input:focus{outline:none;border-color:var(--select-rim);box-shadow:0 0 0 2px var(--select-soft);}
-.chord-editor-lyric{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:0.86rem;line-height:1.45;color:var(--text2);white-space:pre;overflow-x:auto;padding:0 5px 3px;}
+/* ─── CHORD STUDIO (direct-manipulation editor) ─── */
+#chordModal{padding:0;}
+#chordModal .modal{width:min(96vw,860px);max-width:860px;height:min(92dvh,800px);display:flex;flex-direction:column;overflow:hidden;animation:slideUp .3s ease-out;}
+.ce-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 16px 10px;border-bottom:1px solid var(--border);}
+.ce-key{display:inline-flex;align-items:center;gap:2px;padding:2px 3px 2px 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg3);}
+.ce-key-label{font-size:.6rem;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--text3);}
+.ce-key input{width:42px;background:none;border:none;outline:none;color:var(--chord);font-family:inherit;font-weight:700;font-size:.95rem;text-align:center;padding:4px 0;}
+.ce-key input:focus{box-shadow:inset 0 -1px 0 var(--select-rim);}
+.ce-key-step{width:24px;height:24px;border-radius:50%;border:none;background:var(--bg2);color:var(--text2);font-family:inherit;font-size:1rem;line-height:1;cursor:pointer;transition:background-color .15s,color .15s;}
+.ce-key-step:hover{background:var(--select-soft);color:var(--select);}
+.ce-count{font-size:.72rem;color:var(--text3);font-variant-numeric:tabular-nums;}
+.ce-status{font-size:.72rem;color:var(--text3);min-height:1em;max-width:40ch;}
+.ce-status.bad{color:#e5827a;}
+.ce-tip{font-size:.72rem;color:var(--text3);margin-left:auto;}
+.ce-hist{display:flex;gap:4px;margin-left:auto;}
+.ce-icon-btn{width:30px;height:30px;border-radius:9px;border:1px solid var(--border);background:var(--bg2);color:var(--text2);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:color .15s,border-color .15s,background-color .15s,opacity .15s;}
+.ce-icon-btn svg{width:15px;height:15px;}
+.ce-icon-btn:hover:not(:disabled){color:var(--select);border-color:var(--select-rim);background:var(--select-soft);}
+.ce-icon-btn:disabled{opacity:.35;cursor:default;}
+.ce-canvas{flex:1;overflow:auto;padding:16px 20px 26px;background:var(--bg);overscroll-behavior:contain;}
+.ce-verse{margin:0 0 14px;}
+.ce-verse-label{font-size:.66rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin:0 0 6px;}
+.ce-line{margin:0 0 8px;border-radius:8px;}
+.ce-words{white-space:pre-wrap;overflow-wrap:break-word;font-size:var(--reader-font,1.05rem);line-height:var(--reader-lh,1.6);font-family:var(--reader-family,inherit);color:var(--text);-webkit-user-select:none;user-select:none;}
+.ce-word{display:inline-block;position:relative;padding-top:2.45em;vertical-align:top;}
+.ce-txt{display:inline-block;}
+.ce-ch{display:inline;border-radius:3px;transition:background-color .1s,color .1s;cursor:text;}
+.ce-ch:hover{background:var(--select-soft);}
+.ce-space{white-space:pre;}
+.ce-empty{color:var(--text3);font-style:italic;font-size:.85rem;}
+.ce-drop{background:var(--select);color:var(--bg);box-shadow:0 0 0 2px var(--select-soft);}
+.ce-chord{position:absolute;top:0;left:0;z-index:3;padding:1px 7px;border-radius:7px;border:1px solid var(--chord-rim);background:var(--chord-soft);color:var(--chord);font-family:inherit;font-weight:700;font-size:calc(var(--reader-font,1.05rem) * 0.68);line-height:1.3;white-space:nowrap;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;animation:cePop .2s ease both;transition:background-color .14s,color .14s,box-shadow .14s,border-color .14s,transform .14s;}
+.ce-chord:hover{background:var(--chord-rim);color:var(--bg);}
+.ce-chord.sel{box-shadow:0 0 0 2px var(--select),0 0 0 5px var(--select-soft);}
+.ce-chord.dragging{z-index:30;cursor:grabbing;animation:none;box-shadow:0 14px 30px rgba(0,0,0,.4),0 0 0 2px var(--select-rim);}
+.ce-chord.will-delete{color:#fff;background:#c0392b;border-color:#e05a4a;box-shadow:0 0 0 3px rgba(192,57,43,.3);}
+.ce-chord.is-out{animation:ceOut .18s ease forwards;}
+.ce-guide{position:absolute;z-index:1;width:2px;border-radius:2px;background:linear-gradient(180deg,var(--select),transparent);pointer-events:none;}
+.ce-drag-hint{position:fixed;left:50%;bottom:calc(var(--sab,0px) + 18px);transform:translateX(-50%);z-index:260;padding:8px 16px;border-radius:999px;background:rgba(20,22,32,.94);border:1px solid var(--glass-rim);color:#fff;font-size:.8rem;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.45);pointer-events:none;}
+.ce-drag-hint[hidden]{display:none;}
+.ce-drag-hint.danger{background:#a52a1f;}
+.ce-footer{align-items:center;justify-content:flex-end;gap:10px;padding:10px 16px calc(10px + var(--sab,0px));}
+.ce-saved{font-size:.72rem;color:#5fc98a;margin-right:auto;}
+.ce-saved[hidden]{display:none;}
+/* chord wheel */
+.ce-wheel-backdrop{position:fixed;inset:0;z-index:230;}
+.ce-wheel-backdrop[hidden]{display:none;}
+.ce-wheel{position:fixed;z-index:245;width:var(--ce-wheel-w,372px);padding:10px 12px 12px;border-radius:22px;background:linear-gradient(160deg,var(--glass-a),var(--glass-b));backdrop-filter:blur(28px) saturate(170%);-webkit-backdrop-filter:blur(28px) saturate(170%);border:1px solid var(--glass-rim);box-shadow:0 24px 70px rgba(0,0,0,.55),inset 0 1px 0 var(--glass-hi);}
+.ce-wheel[hidden]{display:none;}
+.ce-wheel.in{animation:ceWheelIn .22s cubic-bezier(.2,.9,.25,1) both;}
+.ce-wheel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px 4px;}
+.ce-wheel-title{font-size:.78rem;font-weight:700;color:var(--text);}
+.ce-wheel-root{display:flex;align-items:center;gap:8px;padding:0 4px 6px;flex-wrap:wrap;}
+.ce-wheel-root[hidden]{display:none;}
+.ce-wheel-root label{font-size:.68rem;color:var(--text3);display:inline-flex;align-items:center;gap:6px;}
+.ce-wheel-root select{background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:999px;padding:3px 8px;font-family:inherit;font-size:.74rem;cursor:pointer;}
+.ce-wheel-family{font-size:.68rem;color:var(--text3);}
+.ce-wheel-family b{color:var(--chord);}
+.ce-wheel-stage{position:relative;width:var(--stage,266px);height:var(--stage,266px);margin:0 auto;}
+.ce-wheel-chip{position:absolute;left:50%;top:50%;min-width:52px;height:52px;padding:0 11px;border-radius:999px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-family:inherit;font-weight:700;font-size:.86rem;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transform:translate(calc(-50% + var(--x,0px)),calc(-50% + var(--y,0px)));transition:background-color .16s,color .16s,border-color .16s,box-shadow .16s,transform .16s;animation:ceChipIn .3s cubic-bezier(.2,.9,.25,1) both;animation-delay:calc(var(--i,0) * 14ms);}
+.ce-wheel-chip:hover{background:var(--select-soft);border-color:var(--select-rim);color:var(--select);transform:translate(calc(-50% + var(--x,0px)),calc(-50% + var(--y,0px))) scale(1.09);}
+.ce-wheel-chip:active{transform:translate(calc(-50% + var(--x,0px)),calc(-50% + var(--y,0px))) scale(.96);}
+.ce-wheel-chip.is-current{background:var(--select);border-color:var(--select-rim);color:var(--bg);box-shadow:0 0 0 3px var(--select-soft);}
+.ce-wheel-chip.outer{min-width:44px;height:44px;font-size:.76rem;padding:0 8px;}
+.ce-wheel-hub{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:72px;height:72px;border-radius:50%;border:1px solid var(--select-rim);background:radial-gradient(circle at 35% 28%,var(--select-soft),var(--bg3) 72%);color:var(--select);font-family:inherit;font-weight:700;font-size:.76rem;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.25),inset 0 1px 0 var(--glass-hi);transition:transform .16s;}
+.ce-wheel-hub:hover{transform:translate(-50%,-50%) scale(1.06);}
+.ce-wheel-hub.is-back{font-size:.7rem;}
+.ce-wheel-foot{display:flex;flex-direction:column;gap:8px;padding:10px 4px 0;}
+.ce-wheel-remove{border:1px solid rgba(192,57,43,.45);background:rgba(192,57,43,.12);color:#e5827a;border-radius:10px;padding:7px 10px;font-family:inherit;font-size:.76rem;font-weight:600;cursor:pointer;}
+.ce-wheel-remove[hidden]{display:none;}
+.ce-wheel-custom{display:flex;gap:6px;}
+.ce-wheel-custom input{flex:1;min-width:0;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-family:inherit;font-size:.8rem;outline:none;}
+.ce-wheel-custom input:focus{border-color:var(--select-rim);box-shadow:0 0 0 2px var(--select-soft);}
+.ce-wheel-custom input.bad{border-color:#c0392b;box-shadow:0 0 0 2px rgba(192,57,43,.25);}
+.ce-wheel-custom button{border:1px solid var(--select-rim);background:var(--select-soft);color:var(--select);border-radius:10px;padding:0 12px;font-family:inherit;font-size:.78rem;font-weight:700;cursor:pointer;}
+/* on a phone the 14 extended chips become a tidy grid instead of a crowded ring */
+.ce-wheel-stage.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;width:100%;height:auto;padding:2px 0;}
+.ce-wheel-stage.grid .ce-wheel-chip{position:static;transform:none;width:100%;min-width:0;height:38px;font-size:.74rem;border-radius:12px;animation:ceChipIn .24s ease both;}
+.ce-wheel-stage.grid .ce-wheel-chip:hover{transform:none;}
+.ce-wheel-stage.grid .ce-wheel-hub{position:static;transform:none;grid-column:1/-1;width:100%;height:36px;border-radius:12px;font-size:.78rem;box-shadow:none;}
+.ce-wheel-stage.grid .ce-wheel-hub:hover{transform:none;}
+/* the panel is positioned with left/right, not a transform: the .in animation
+   ends on transform:none and would otherwise strand the sheet half off-screen */
+.ce-wheel.compact{left:8px !important;right:8px;top:auto !important;bottom:calc(var(--sab,0px) + 10px);width:auto;max-height:80dvh;overflow:auto;transform:none !important;}
+@keyframes cePop{from{opacity:0;transform:translateY(4px) scale(.9);}to{opacity:1;transform:none;}}
+@keyframes ceOut{to{opacity:0;transform:translateY(-10px) scale(.85);}}
+@keyframes ceWheelIn{from{opacity:0;transform:translateY(8px) scale(.94);}to{opacity:1;transform:none;}}
+@keyframes ceChipIn{from{opacity:0;scale:.6;}to{opacity:1;scale:1;}}
+@media(max-width:640px){
+  #chordModal{padding:0;align-items:stretch;}
+  #chordModal .modal{width:100vw;max-width:none;height:100dvh;border-radius:0;border:none;}
+  .ce-bar{padding:8px 12px;}
+  .ce-tip{display:none;}
+  .ce-canvas{padding:10px 14px calc(var(--sab,0px) + 18px);}
+  .ce-footer{padding:10px 12px calc(10px + var(--sab,0px));}
+}
+@media(prefers-reduced-motion:reduce){
+  .ce-chord,.ce-wheel-chip,.ce-wheel-hub,.ce-wheel.in{animation:none !important;}
+}
 @media (max-width:768px){
   .reader-controls{width:calc(100vw - 24px);gap:10px;padding:8px 12px;}
   .reader-controls input[type=range]{width:26vw;}
@@ -533,14 +648,17 @@ nav{position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px sol
 /* ─── TOAST ─── */
 .toast-container{position:fixed;bottom:2rem;right:2rem;z-index:300;display:flex;flex-direction:column;gap:0.5rem;}
 .toast{padding:12px 20px;border-radius:var(--radius-sm);background:var(--card);border:1px solid var(--border);color:var(--text);font-size:0.85rem;animation:slideUp 0.3s ease-out;box-shadow:0 8px 24px rgba(0,0,0,0.3);}
+/* Update prompt: a centered card that stays put until the user updates or dismisses it. */
+.update-banner{position:fixed;z-index:340;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:0.6rem;width:max-content;max-width:min(92vw,380px);padding:18px;border-radius:18px;background:var(--card);border:1px solid var(--border);box-shadow:0 20px 50px rgba(0,0,0,0.45);animation:updPop 0.3s var(--ease-spring);}
+@keyframes updPop{from{opacity:0;transform:translate(-50%,-46%) scale(0.95);}to{opacity:1;transform:translate(-50%,-50%) scale(1);}}
 .update-banner[hidden]{display:none;}
-.upd-text{color:var(--text);white-space:nowrap;}
+.upd-text{color:var(--text);white-space:normal;text-align:center;flex:1 1 100%;font-size:0.9rem;line-height:1.45;}
 .upd-text b{color:var(--accent-ink);}
-.upd-btn{background:var(--warm);color:var(--warm-ink);padding:0.4rem 0.9rem;border-radius:999px;font-size:0.8rem;font-weight:600;text-decoration:none;white-space:nowrap;transition:filter 0.2s;}
+.upd-btn{background:var(--warm);color:var(--warm-ink);padding:0.5rem 1.1rem;border-radius:999px;font-size:0.85rem;font-weight:600;text-decoration:none;white-space:nowrap;transition:filter 0.2s;}
 .upd-btn:hover{filter:brightness(1.1);}
-.upd-close{background:none;border:none;color:var(--text3);font-size:1.25rem;cursor:pointer;line-height:1;padding:0 0.2rem;}
+.upd-close{background:none;border:none;color:var(--text3);font-size:1.4rem;cursor:pointer;line-height:1;padding:0 0.4rem;}
 .upd-close:hover{color:var(--text);}
-@media(max-width:768px){.update-banner{top:calc(62px + var(--sat, 0px));font-size:0.8rem;}}
+@media(max-width:768px){.update-banner{max-width:calc(100vw - 2rem);padding:16px;}}
 
 /* ─── CONFIRM DIALOG ─── */
 .confirm-body{text-align:center;padding:1rem 0;}
@@ -742,10 +860,11 @@ nav{position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px sol
   .home-brand .hb-kicker::after{background:linear-gradient(90deg,var(--warm),transparent);}
   .home-brand .hb-meta{margin-top:.55rem;font-size:.74rem;color:var(--text3);letter-spacing:.01em;}
   #homeView.home-root .home-head{display:none;}
+  #homeView.home-root #groupGrid{padding-bottom:.4rem;}
+  #homeView.home-root .home-actions{margin-top:.9rem;}
   #tabBar{display:block;}
   body{padding-bottom:calc(var(--tabbar-h) + var(--sab,0px) + 22px);}
   body[data-view="detail"]{padding-bottom:0;}
-  body[data-view="detail"] #updateBanner{display:none;}
   #tabBar{transition:transform .3s cubic-bezier(.32,.72,0,1),opacity .22s ease,visibility .3s;}
   body[data-view="detail"] #tabBar{transform:translateY(calc(100% + 16px));opacity:0;visibility:hidden;}
   /* Lyrics and song lists are edge-swipe-back only: no nav strip, no back button. */
@@ -1051,7 +1170,7 @@ body.edge-back #detailView .song-detail{box-shadow:-18px 0 48px rgba(0,0,0,.38);
   body[data-view="home"] nav .logo{visibility:hidden;pointer-events:none;}
   body[data-view="home"]:has(#homeView.category-mode) nav .logo{visibility:visible;pointer-events:auto;}
 
-  #homeView.home-root.active{display:flex;flex-direction:column;justify-content:center;min-height:calc(100dvh - 80px - var(--sat,0px));}
+  #homeView.home-root.active{display:flex;flex-direction:column;justify-content:flex-start;min-height:calc(100dvh - 80px - var(--sat,0px));padding-top:1.25rem;}
   #homeView.home-root:not(.home-error) .hero{display:none;}
   #homeView.home-root .home-brand{display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;isolation:isolate;width:100%;padding:1.25rem 2rem 1rem;}
   #homeView.home-root .home-brand .hb-halo{position:absolute;z-index:-1;top:-20px;left:50%;width:380px;height:380px;transform:translateX(-50%);background:radial-gradient(circle,rgba(39,75,159,.24) 0%,rgba(39,75,159,.07) 42%,transparent 66%);pointer-events:none;}
@@ -1095,9 +1214,12 @@ body.edge-back #detailView .song-detail{box-shadow:-18px 0 48px rgba(0,0,0,.38);
    facts now sit under the grid, so the page composes top to bottom instead of
    floating in the middle of nothing. */
 @media(min-width:769px){
-  #homeView.home-root .home-brand{order:1;padding-top:.5rem;}
-  #homeView.home-root #groupGrid{order:2;margin-bottom:0;}
-  #homeView.home-root:not(.home-error) .hero{display:block;order:3;margin:0;padding:0 2rem 2rem;text-align:center;}
+  #homeView.home-root .home-brand{order:1;padding-top:.5rem;margin-top:0;}
+  /* Counters are phone-only: desktop is masthead → collections → install links,
+     with the links hugging the last row of songbooks. */
+  #homeView.home-root:not(.home-error) .hero{display:none;}
+  #homeView.home-root #groupGrid{order:2;margin-bottom:0;padding-bottom:.4rem;}
+  #homeView.home-root .home-actions{order:3;margin-top:.9rem;margin-bottom:0;}
   #homeView.home-root:not(.home-error) .hero h1,
   #homeView.home-root:not(.home-error) .hero p{display:none;}
   #homeView.home-root:not(.home-error) .hero .stats{display:flex;justify-content:center;gap:2.75rem;opacity:.95;}
@@ -1204,9 +1326,9 @@ body.edge-back #detailView .song-detail{box-shadow:-18px 0 48px rgba(0,0,0,.38);
     </div>
   </div>
 </nav>
-<div id="updateBanner" class="update-banner" hidden>
-  <span class="upd-text">Version <b id="updVer"></b> is available on GitHub</span>
-  <a id="updBtn" class="upd-btn" target="_blank" rel="noopener">Download</a>
+<div id="updateBanner" class="update-banner" role="dialog" aria-live="polite" hidden>
+  <span class="upd-text">Version <b id="updVer"></b> is ready to install</span>
+  <a id="updBtn" class="upd-btn" target="_blank" rel="noopener">Update now</a>
   <button class="upd-close" onclick="dismissUpdate()" aria-label="Dismiss">×</button>
 </div>
 <div class="modal-overlay" id="sidebarModal" onclick="if(event.target===this)closeSidebar()">
@@ -1253,6 +1375,14 @@ body.edge-back #detailView .song-detail{box-shadow:-18px 0 48px rgba(0,0,0,.38);
   <div class="home-head"><h2 id="homeHeadTitle">Songbooks</h2><p class="home-head-meta" id="homeHeadMeta">Hymns by collection</p><p class="home-head-desc" id="homeHeadDesc"></p></div>
   <div class="categories" id="groupGrid"></div>
   <div class="categories" id="categoryGrid" style="display:none"></div>
+  <div class="home-actions" id="homeActions" hidden>
+    <a class="home-action home-action-apk" id="homeApkBtn" href="https://github.com/minatolun-dotcom/khristian-labu/releases/latest/download/khristian-labu.apk" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85-.29-.15-.65-.06-.83.22l-1.88 3.24a11.463 11.463 0 0 0-8.94 0L5.65 5.67c-.19-.29-.58-.38-.87-.2-.28.18-.37.54-.22.83L6.4 9.48A10.78 10.78 0 0 0 1 18h22a10.78 10.78 0 0 0-5.4-8.52zM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z"/></svg><span>Download APK</span>
+    </a>
+    <a class="home-action" id="homeRepoBtn" href="https://github.com/minatolun-dotcom/khristian-labu" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.55v-2.17c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.41-5.26 5.69.41.36.78 1.06.78 2.14v3.17c0 .3.21.67.79.55A11.5 11.5 0 0 0 23.5 12C23.5 5.73 18.27.5 12 .5z"/></svg><span>GitHub</span>
+    </a>
+  </div>
 </div>
 
 <!-- SONG LIST -->
@@ -1988,27 +2118,53 @@ Second verse line 2"></textarea>
 </div>
 
 <div class="modal-overlay" id="chordModal">
-  <div class="modal" style="max-width:560px;">
+  <div class="modal chord-studio" role="dialog" aria-modal="true" aria-labelledby="chordModalTitle">
     <div class="modal-header">
-      <h3 id="chordModalTitle">Edit Chords</h3>
-      <button class="modal-close" onclick="requestCloseChordEditor()">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-row">
-        <div class="form-group" style="max-width:130px;">
-          <label>Key</label>
-          <input type="text" id="chordEditKey" placeholder="G">
-        </div>
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+        <h3 id="chordModalTitle">Edit Chords</h3>
+        <span class="ce-count" id="ceCount"></span>
       </div>
-      <div class="form-group">
-        <div id="chordEditorRows" class="chord-editor-rows"></div>
+      <div class="ce-hist">
+        <button type="button" class="ce-icon-btn" id="ceUndo" title="Undo (Ctrl+Z)" aria-label="Undo" onclick="ceUndo()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-4"/></svg></button>
+        <button type="button" class="ce-icon-btn" id="ceRedo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" onclick="ceRedo()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h4"/></svg></button>
       </div>
+      <button class="modal-close" onclick="requestCloseChordEditor()" aria-label="Close editor">&times;</button>
     </div>
-    <div class="modal-footer">
+    <div class="ce-bar">
+      <label class="ce-key"><span class="ce-key-label">Key</span>
+        <button type="button" class="ce-key-step" onclick="ceNudgeKey(-1)" aria-label="Transpose down a semitone">&minus;</button>
+        <input type="text" id="chordEditKey" autocomplete="off" spellcheck="false" aria-label="Song key">
+        <button type="button" class="ce-key-step" onclick="ceNudgeKey(1)" aria-label="Transpose up a semitone">+</button>
+      </label>
+      <span class="ce-status" id="ceStatus" aria-live="polite"></span>
+      <span class="ce-tip">Tap a lyric to add · drag to move · swipe up to delete</span>
+    </div>
+    <div class="ce-canvas" id="ceCanvas"></div>
+    <div class="modal-footer ce-footer">
+      <span class="ce-saved" id="ceSaved" hidden>Saved to this device</span>
       <button class="btn btn-ghost" onclick="requestCloseChordEditor()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveChordEditor()">Save Chords</button>
+      <button class="btn btn-primary" id="ceSaveBtn" onclick="saveChordEditor()">Save Chords</button>
     </div>
   </div>
+  <div class="ce-wheel-backdrop" id="ceWheelBackdrop" hidden onclick="ceCloseWheel()"></div>
+  <div class="ce-wheel" id="ceWheel" hidden role="dialog" aria-label="Choose a chord">
+    <div class="ce-wheel-head">
+      <span class="ce-wheel-title" id="ceWheelTitle">Add a chord</span>
+      <span class="ce-wheel-family" id="ceWheelFamily"></span>
+    </div>
+    <div class="ce-wheel-root" id="ceWheelRootRow" hidden>
+      <label>Root <select id="ceWheelRoot" aria-label="Extended chord root"></select></label>
+    </div>
+    <div class="ce-wheel-stage" id="ceWheelStage"></div>
+    <div class="ce-wheel-foot">
+      <button type="button" class="ce-wheel-remove" id="ceWheelRemove" hidden onclick="ceWheelDelete()">Remove this chord</button>
+      <form class="ce-wheel-custom" id="ceWheelCustomForm">
+        <input id="ceWheelCustom" placeholder="Custom chord, e.g. F#m7/C#" autocomplete="off" spellcheck="false" aria-label="Custom chord name">
+        <button type="submit">Add</button>
+      </form>
+    </div>
+  </div>
+  <div class="ce-drag-hint" id="ceDragHint" hidden></div>
 </div>
 
 <div class="modal-overlay" id="confirmModal">
@@ -2296,7 +2452,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.52'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.53'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 // ─── CLOUD SYNC (Supabase) — approved changes reach every device ───
 // Project URL and publishable (anon) key, baked in from .env by
@@ -2476,6 +2632,7 @@ async function init() {
   // seed the History API so the browser Back/Forward buttons traverse in-app views
   history.replaceState(buildState(), '');
   window.addEventListener('popstate', e => applyState(e.state));
+  initHomeActions();
   // ponytail: free update notifications via GitHub Releases (CORS-enabled API)
   checkForUpdate();
   // approved-change sync: pull the layer, retry queued submissions, poll on focus
@@ -2506,9 +2663,9 @@ async function init() {
   else setTimeout(idlePrewarm, 900);
 }
 
-// ─── UPDATE CHECKER (static version.json → GitHub releases page) ───
-// ponytail: no in-app installer any more. The app only DETECTS a newer release;
-// the user downloads it from the GitHub releases page and installs it manually.
+// ─── UPDATE CHECKER (static version.json → direct APK download) ───
+// ponytail: the app only DETECTS a newer release and hands the APK link to the
+// system browser, which downloads it and offers to install it (no custom installer).
 function compareVer(a, b) {
   const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
@@ -2517,14 +2674,37 @@ function compareVer(a, b) {
   }
   return 0;
 }
-function releasesPage() { return 'https://github.com/' + REPO + '/releases/latest'; }
+// ponytail: link the release ASSET, not the HTML release page — the browser then
+// downloads the APK and Android prompts to install it in one step.
+function apkDownloadUrl() { return 'https://github.com/' + REPO + '/releases/latest/download/khristian-labu.apk'; }
+function isNativeApp() { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
+function openApkDownload() {
+  const url = apkDownloadUrl();
+  const launcher = isNativeApp() && window.Capacitor.Plugins && window.Capacitor.Plugins.AppLauncher;
+  if (launcher) { launcher.openUrl({ url }).catch(() => window.open(url, '_system')); return; }
+  window.open(url, isNativeApp() ? '_system' : '_blank');
+}
+function githubRepoUrl() { return 'https://github.com/' + REPO; }
+// ponytail: install + source links live on the website home page only — inside the
+// APK the app has no reason to download itself, and the repo link is for visitors.
+function initHomeActions() {
+  const wrap = document.getElementById('homeActions');
+  if (!wrap) return;
+  if (isNativeApp()) { wrap.remove(); return; }
+  const apk = document.getElementById('homeApkBtn'); if (apk) apk.href = apkDownloadUrl();
+  const repo = document.getElementById('homeRepoBtn'); if (repo) repo.href = githubRepoUrl();
+  wrap.hidden = false; // markup ships hidden; the website is the only place that shows it
+}
 function dismissUpdate() {
   try { localStorage.setItem('labu_update_dismissed', document.getElementById('updVer').textContent); } catch (e) {}
   const b = document.getElementById('updateBanner'); if (b) b.hidden = true;
 }
 function showUpdateBanner(latest) {
   document.getElementById('updVer').textContent = latest;
-  document.getElementById('updBtn').href = releasesPage();
+  const btn = document.getElementById('updBtn');
+  btn.href = apkDownloadUrl();
+  // In the APK, hand the URL to the system browser via AppLauncher so the download works.
+  btn.onclick = (e) => { if (isNativeApp()) { e.preventDefault(); openApkDownload(); } };
   document.getElementById('updateBanner').hidden = false;
   const lv = document.getElementById('latestVersion');
   if (lv) { document.getElementById('latestVersionVal').textContent = latest; lv.style.display = ''; }
@@ -2563,7 +2743,7 @@ async function manualCheckUpdate() {
   if (compareVer(info.version, APP_VERSION) > 0) {
     showUpdateBanner(info.version);
     toast('Update available: v' + info.version, 'success');
-    window.open(releasesPage(), '_blank', 'noopener');
+    openApkDownload();
   } else {
     toast('You are on the latest version (' + APP_VERSION + ')', 'success');
   }
@@ -4544,20 +4724,27 @@ function restoreList(key) {
   return true;
 }
 
-let _chordEditSongId = null;
-let _chordEditorSnapshot = '';
-let _chordEditorKeyPc = null;
-let _chordEditorKeyTimer = null;
-function chordEditorSnapshot() {
-  const inputs = Array.from(document.querySelectorAll('#chordEditorRows .chord-editor-input'));
-  return inputs.map(i => i.value).join('\n') + '\n' + (document.getElementById('chordEditKey')?.value || '');
-}
-function chordEditorDirty() { return chordEditorSnapshot() !== _chordEditorSnapshot; }
+/* ── CHORD STUDIO state ─────────────────────────────────────────────
+   Chords live on lyric lines as character indexes ({pos}); the legacy
+   fraction ({at}) is written alongside them so old and new charts both
+   render. Lyrics are never modified by the editor. */
+const CE = {
+  song: null, songId: null, key: 'C', blocks: [],
+  undo: [], redo: [], base: '', dirty: false,
+  selected: null, wheel: null, drag: false, press: null, resizeTimer: null
+};
+const CE_VERSE_LABELS = { v: 'Verse', c: 'Chorus', b: 'Bridge', pc: 'Pre-Chorus' };
+const CE_QUALITIES = ['', 'm', '7', 'maj7', 'm7', '6', 'm6', '9', 'sus2', 'sus4', 'dim', 'aug', '/3', '/5'];
 function requestCloseChordEditor() {
   const modal = document.getElementById('chordModal');
   if (!modal || !modal.classList.contains('open')) return;
-  if (chordEditorDirty()) {
-    confirmDangerous('Discard unsaved chord changes?', 'Discard', () => closeModal('chordModal'));
+  ceCloseWheel();
+  if (CE.dirty) {
+    confirmDangerous('Discard unsaved chord changes?', 'Discard', () => {
+      ceCloseWheel();
+      closeModal('chordModal');
+      CE.dirty = false;
+    });
     return;
   }
   closeModal('chordModal');
@@ -4569,37 +4756,19 @@ const CHORD_LINE_TOKEN_RE = /[A-G](?:#|b)?(?:maj|min|dim|aug|sus|add|m|°|ø)?\d
 function transposeChordLineText(text, semis, preferFlat) {
   return String(text || '').replace(CHORD_LINE_TOKEN_RE, token => transposeChordName(token, semis, preferFlat));
 }
-function applyChordEditorKeyChange() {
-  const field = document.getElementById('chordEditKey');
-  if (!field) return;
-  const raw = normalizeSongKey(field.value);
-  const pc = chordRootPc(raw);
-  if (pc == null) return;
-  if (_chordEditorKeyPc == null) { _chordEditorKeyPc = pc; return; }
-  let semis = (pc - _chordEditorKeyPc + 12) % 12;
-  if (semis > 6) semis -= 12;
-  if (!semis) { _chordEditorKeyPc = pc; return; }
-  const accidental = raw.match(/^[A-G]([#b]?)/);
-  const preferFlat = accidental && accidental[1] === 'b' ? true
-    : accidental && accidental[1] === '#' ? false
-    : keyPrefersFlat(pc);
-  document.querySelectorAll('#chordEditorRows .chord-editor-input').forEach(input => {
-    input.value = transposeChordLineText(input.value, semis, preferFlat);
-  });
-  _chordEditorKeyPc = pc;
+let _ceKeyTimer = null;
+function ceKeyTyping() {
+  clearTimeout(_ceKeyTimer);
+  _ceKeyTimer = setTimeout(() => ceSetKey(document.getElementById('chordEditKey').value, { silent: true }), 420);
 }
-function scheduleChordEditorKeyChange() {
-  clearTimeout(_chordEditorKeyTimer);
-  _chordEditorKeyTimer = setTimeout(applyChordEditorKeyChange, 180);
-}
-function flushChordEditorKeyChange() {
-  clearTimeout(_chordEditorKeyTimer);
-  applyChordEditorKeyChange();
+function ceFlushKeyTyping() {
+  clearTimeout(_ceKeyTimer);
+  ceSetKey(document.getElementById('chordEditKey').value, { silent: true });
 }
 const chordKeyField = document.getElementById('chordEditKey');
 if (chordKeyField) {
-  chordKeyField.addEventListener('input', scheduleChordEditorKeyChange);
-  chordKeyField.addEventListener('change', flushChordEditorKeyChange);
+  chordKeyField.addEventListener('input', ceKeyTyping);
+  chordKeyField.addEventListener('change', ceFlushKeyTyping);
 }
 function setChordLabelText(el, text) {
   if (!el || el.textContent === text) return;
@@ -4669,23 +4838,668 @@ function chordLineText(line, specs, chart) {
   });
   return chars.join('').replace(/\s+$/, '');
 }
-function chordEditorRowsHTML(song, chart) {
-  const typeLabels = {v:'Verse',c:'Chorus',b:'Bridge',pc:'Pre-Chorus'};
-  const counts = {};
-  return chordVerseBlocks(song).map((verse, vi) => {
-    const type = verse.type || 'v';
-    counts[type] = (counts[type] || 0) + 1;
-    let html = '<div class="chord-editor-verse">'+(typeLabels[type] || 'Verse')+' '+counts[type]+'</div>';
-    (verse.lines||[]).forEach((line, li) => {
-      const specs = chart && chart.verseLines && chart.verseLines[vi] && chart.verseLines[vi][li] !== undefined
-        ? chart.verseLines[vi][li]
-        : (chart && chart.lines && chart.lines[li]);
-      const value = chordLineText(line, specs, chart);
-      html += '<div class="chord-editor-row"><input type="text" class="chord-editor-input" data-verse="'+vi+'" data-line="'+li+'" value="'+esc(value)+'" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="G       D"><div class="chord-editor-lyric">'+esc(line)+'</div></div>';
-    });
-    return html;
-  }).join('');
+/* ── lyric canvas ─────────────────────────────────────────────────── */
+function ceNoteIn(pc, preferFlat) {
+  const p = ((pc % 12) + 12) % 12;
+  return (preferFlat ? CHORD_FLAT : CHORD_SHARP)[p];
 }
+function ceKeyPrefersFlat(key) {
+  const pc = chordRootPc(normalizeSongKey(key));
+  return pc == null ? false : keyPrefersFlat(pc);
+}
+function ceNote(pc) { return ceNoteIn(pc, ceKeyPrefersFlat(CE.key)); }
+function ceIsMinorKey(key) {
+  const k = normalizeSongKey(key).toLowerCase();
+  return /(m|min|minor)$/.test(k) && !/maj/.test(k);
+}
+function ceDiatonic(key) {
+  const pc = chordRootPc(normalizeSongKey(key));
+  if (pc == null) return ['C', 'Dm', 'Em', 'F', 'G', 'Am', 'Bdim'];
+  const minor = ceIsMinorKey(key);
+  const steps = minor ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11];
+  const quals = minor ? ['m', 'dim', '', 'm', 'm', '', ''] : ['', 'm', 'm', '', '', 'm', 'dim'];
+  const preferFlat = ceKeyPrefersFlat(key);
+  return steps.map((step, i) => ceNoteIn(pc + step, preferFlat) + quals[i]);
+}
+function ceExtended(rootPc) {
+  const preferFlat = ceKeyPrefersFlat(CE.key);
+  const n = pc => ceNoteIn(pc, preferFlat);
+  return CE_QUALITIES.map(q => {
+    if (q === '') return n(rootPc);
+    if (q === '/3') return n(rootPc) + '/' + n(rootPc + 4);
+    if (q === '/5') return n(rootPc) + '/' + n(rootPc + 7);
+    return n(rootPc) + q;
+  });
+}
+function ceChartSpecs(chart, vi, li) {
+  const vl = chart && chart.verseLines && chart.verseLines[vi];
+  if (vl && vl[li] !== undefined) return vl[li] || [];
+  if (vi === 0 && chart && chart.lines && chart.lines[li]) return chart.lines[li];
+  return [];
+}
+function ceSpecPos(spec, len) {
+  if (!len) return 0;
+  const raw = Number.isInteger(spec.pos) ? spec.pos : Math.round((Number(spec.at) || 0) * (len - 1));
+  return Math.max(0, Math.min(len - 1, raw));
+}
+function ceSnapshot() { return JSON.stringify({ key: CE.key, blocks: CE.blocks }); }
+function ceLineEl(b, l) { return document.querySelector('.ce-line[data-b="' + b + '"][data-l="' + l + '"]'); }
+function ceChordAt(b, l, pos) {
+  return document.querySelector('.ce-chord[data-b="' + b + '"][data-l="' + l + '"][data-pos="' + pos + '"]');
+}
+function ceWordsHTML(lyric) {
+  const s = String(lyric || '');
+  let out = '', i = 0;
+  while (i < s.length) {
+    if (/\s/.test(s[i])) {
+      let j = i; while (j < s.length && /\s/.test(s[j])) j++;
+      out += '<span class="ce-ch ce-space" data-i="' + i + '">' + esc(s.slice(i, j)) + '</span>';
+      i = j;
+    } else {
+      let j = i; while (j < s.length && !/\s/.test(s[j])) j++;
+      out += '<span class="ce-word"><span class="ce-txt">';
+      for (let k = i; k < j; k++) out += '<span class="ce-ch" data-i="' + k + '">' + esc(s[k]) + '</span>';
+      out += '</span></span>';
+      i = j;
+    }
+  }
+  return out || '<span class="ce-empty">No lyric on this line</span>';
+}
+function ceRender() {
+  const canvas = document.getElementById('ceCanvas');
+  if (!canvas) return;
+  const counts = {};
+  let html = '';
+  CE.blocks.forEach((block, b) => {
+    const type = block.type || 'v';
+    counts[type] = (counts[type] || 0) + 1;
+    const label = (CE_VERSE_LABELS[type] || 'Verse') + (counts[type] > 1 ? ' ' + counts[type] : '');
+    html += '<section class="ce-verse"><div class="ce-verse-label">' + esc(label) + '</div>';
+    block.lines.forEach((line, l) => {
+      html += '<div class="ce-line" data-b="' + b + '" data-l="' + l + '" role="group" aria-label="' + escAttr(label + ' line ' + (l + 1)) + '">'
+        + '<div class="ce-words">' + ceWordsHTML(line.lyric) + '</div></div>';
+    });
+    html += '</section>';
+  });
+  canvas.innerHTML = html || '<p class="ce-empty">This song has no lyric lines to chart.</p>';
+  ceLayoutAll();
+}
+function ceLayoutAll() {
+  document.querySelectorAll('#ceCanvas .ce-line').forEach(ceLayoutLine);
+}
+function ceChordButton(b, l, spec) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ce-chord';
+  btn.dataset.b = String(b);
+  btn.dataset.l = String(l);
+  btn.dataset.pos = String(spec.pos);
+  btn.dataset.chord = spec.ch;
+  btn.textContent = spec.ch;
+  btn.title = spec.ch + ' — drag to move, swipe up to remove';
+  btn.setAttribute('aria-label', spec.ch + ' above character ' + (spec.pos + 1) + '. Drag to move, swipe up to remove, Delete key to remove.');
+  return btn;
+}
+function ceLayoutLine(lineEl) {
+  if (!lineEl || CE.drag) return;
+  const b = Number(lineEl.dataset.b), l = Number(lineEl.dataset.l);
+  const block = CE.blocks[b];
+  const line = block && block.lines[l];
+  if (!line) return;
+  lineEl.querySelectorAll('.ce-chord,.ce-guide').forEach(el => el.remove());
+  if (!line.chords.length || !line.lyric.length) return;
+  const placed = [];
+  const lineRect = lineEl.getBoundingClientRect();
+  line.chords.slice().sort((x, y) => x.pos - y.pos).forEach(spec => {
+    const chEl = lineEl.querySelector('.ce-ch[data-i="' + spec.pos + '"]');
+    if (!chEl) return;
+    const word = ceWordFor(chEl);
+    if (!word) return;
+    const btn = ceChordButton(b, l, spec);
+    word.appendChild(btn);
+    const wr = word.getBoundingClientRect(), cr = chEl.getBoundingClientRect();
+    btn.style.left = (cr.left - wr.left) + 'px';
+    const r = btn.getBoundingClientRect();
+    placed.push({ btn: btn, left: r.left - lineRect.left, right: r.right - lineRect.left });
+  });
+  // Neighbouring chords overlap when their labels are wider than the characters
+  // between them; stagger them into the two reserved lane rows so every chip stays
+  // visible and clickable (otherwise the top one swallows the gesture).
+  placed.sort((a, b) => a.left - b.left);
+  const rowEnds = [];
+  placed.forEach(p => {
+    let row = 0;
+    while (rowEnds[row] != null && p.left < rowEnds[row] + 2) row++;
+    rowEnds[row] = p.right;
+    p.btn.style.top = row ? (row * 1.35) + 'em' : '0px';
+  });
+}
+function ceWordFor(chEl) {
+  const own = chEl.closest('.ce-word');
+  if (own) return own;
+  // a space: hang the chord off the next word so wrapped lines stay aligned
+  for (let n = chEl.nextElementSibling; n; n = n.nextElementSibling) {
+    const w = n.classList.contains('ce-word') ? n : n.querySelector('.ce-word');
+    if (w) return w;
+  }
+  for (let n = chEl.previousElementSibling; n; n = n.previousElementSibling) {
+    const w = n.classList.contains('ce-word') ? n : n.querySelector('.ce-word');
+    if (w) return w;
+  }
+  return null;
+}
+/* ── history + chrome ─────────────────────────────────────────────── */
+function ceHistoryPush() {
+  const snap = ceSnapshot();
+  if (CE.undo[CE.undo.length - 1] !== snap) CE.undo.push(snap);
+  if (CE.undo.length > 60) CE.undo.shift();
+  CE.redo.length = 0;
+}
+function ceUndo() {
+  if (!CE.undo.length) return;
+  CE.redo.push(ceSnapshot());
+  ceApplySnapshot(CE.undo.pop());
+  ceFlashStatus('Undo');
+}
+function ceRedo() {
+  if (!CE.redo.length) return;
+  CE.undo.push(ceSnapshot());
+  ceApplySnapshot(CE.redo.pop());
+  ceFlashStatus('Redo');
+}
+function ceApplySnapshot(snap) {
+  const state = JSON.parse(snap);
+  CE.key = state.key;
+  CE.blocks = state.blocks;
+  CE.selected = null;
+  const field = document.getElementById('chordEditKey');
+  if (field) field.value = CE.key;
+  ceCloseWheel();
+  ceRender();
+  CE.dirty = ceSnapshot() !== CE.base;
+  ceUpdateChrome();
+}
+function ceMarkDirty() { CE.dirty = ceSnapshot() !== CE.base; ceUpdateChrome(); }
+function ceUpdateChrome() {
+  const undo = document.getElementById('ceUndo'), redo = document.getElementById('ceRedo');
+  if (undo) undo.disabled = !CE.undo.length;
+  if (redo) redo.disabled = !CE.redo.length;
+  const count = CE.blocks.reduce((n, b) => n + b.lines.reduce((m, line) => m + line.chords.length, 0), 0);
+  const chip = document.getElementById('ceCount');
+  if (chip) chip.textContent = count + (count === 1 ? ' chord' : ' chords');
+  const status = document.getElementById('ceStatus');
+  if (status && !status.dataset.flash) status.textContent = CE.dirty ? 'Unsaved changes' : '';
+}
+function ceFlashStatus(msg, bad) {
+  const status = document.getElementById('ceStatus');
+  if (!status) return;
+  status.textContent = msg;
+  status.classList.toggle('bad', !!bad);
+  status.dataset.flash = '1';
+  clearTimeout(status._flash);
+  status._flash = setTimeout(() => {
+    delete status.dataset.flash;
+    status.classList.remove('bad');
+    ceUpdateChrome();
+  }, 2200);
+}
+/* ── key + transposition ──────────────────────────────────────────── */
+function ceSetKey(raw, opts) {
+  const key = normalizeSongKey(raw);
+  const pc = chordRootPc(key);
+  if (pc == null) {
+    if (!(opts && opts.silent)) ceFlashStatus('Enter a key such as G or Bb', true);
+    return false;
+  }
+  const prevPc = chordRootPc(normalizeSongKey(CE.key));
+  const semis = prevPc == null ? 0 : (((pc - prevPc) % 12) + 12) % 12;
+  if (semis) {
+    ceHistoryPush();
+    const preferFlat = /b/.test(key) ? true : /#/.test(key) ? false : keyPrefersFlat(pc);
+    CE.blocks.forEach(block => block.lines.forEach(line => line.chords.forEach(c => {
+      c.ch = transposeChordName(c.ch, semis, preferFlat);
+    })));
+  }
+  CE.key = key;
+  const field = document.getElementById('chordEditKey');
+  if (field && field.value !== key && !(opts && opts.silent)) field.value = key;
+  CE.selected = null;
+  ceCloseWheel();
+  ceRender();
+  ceMarkDirty();
+  if (!(opts && opts.silent)) ceFlashStatus('Key ' + key);
+  return true;
+}
+function ceNudgeKey(dir) {
+  const pc = chordRootPc(normalizeSongKey(CE.key));
+  if (pc == null) return;
+  const next = ceNote(pc + dir);
+  const field = document.getElementById('chordEditKey');
+  if (field) field.value = next;
+  ceSetKey(next);
+}
+/* ── chord wheel ──────────────────────────────────────────────────── */
+function ceWheelOpen(opts) {
+  const block = CE.blocks[opts.b];
+  const line = block && block.lines[opts.l];
+  if (!line) return;
+  const keyPc = chordRootPc(normalizeSongKey(CE.key));
+  const current = opts.existing >= 0 ? line.chords[opts.existing] : null;
+  const rootPc = current ? (chordRootPc(current.ch) ?? (keyPc ?? 0)) : (keyPc ?? 0);
+  CE.wheel = {
+    b: opts.b, l: opts.l, pos: opts.pos, existing: opts.existing,
+    rootPc, expanded: false,
+    anchor: opts.anchor || { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+    current: current ? current.ch : null
+  };
+  const wheel = document.getElementById('ceWheel');
+  document.getElementById('ceWheelBackdrop').hidden = false;
+  wheel.hidden = false;
+  document.getElementById('ceWheelRemove').hidden = opts.existing < 0;
+  const custom = document.getElementById('ceWheelCustom');
+  custom.value = '';
+  custom.classList.remove('bad');
+  ceWheelRender();
+  ceWheelPlace();
+  wheel.classList.remove('in');
+  void wheel.offsetWidth;
+  wheel.classList.add('in');
+}
+function ceWheelRender() {
+  const w = CE.wheel;
+  if (!w) return;
+  const compact = window.matchMedia('(max-width:640px)').matches;
+  const primary = ceDiatonic(CE.key);
+  const extended = ceExtended(w.rootPc);
+  const outerRadius = w.expanded ? (compact ? 112 : 140) : (compact ? 84 : 98);
+  const stage = document.getElementById('ceWheelStage');
+  const size = outerRadius * 2 + (compact ? 62 : 76);
+  stage.style.setProperty('--stage', size + 'px');
+  stage.classList.toggle('grid', compact && w.expanded);
+  const layers = [];
+  if (w.expanded && !(compact)) {
+    layers.push({ names: primary, radius: compact ? 60 : 72, cls: 'inner' });
+    layers.push({ names: extended, radius: outerRadius, cls: 'outer' });
+  } else if (w.expanded) {
+    layers.push({ names: extended, radius: outerRadius, cls: 'outer' });
+  } else {
+    layers.push({ names: primary, radius: outerRadius, cls: '' });
+  }
+  let html = '';
+  layers.forEach(layer => {
+    layer.names.forEach((name, i) => {
+      const angle = -Math.PI / 2 + (i * 2 * Math.PI) / layer.names.length;
+      const x = Math.round(Math.cos(angle) * layer.radius);
+      const y = Math.round(Math.sin(angle) * layer.radius);
+      const current = w.current === name ? ' is-current' : '';
+      html += '<button type="button" class="ce-wheel-chip ' + layer.cls + current + '" data-chord="' + escAttr(name) + '" style="--x:' + x + 'px;--y:' + y + 'px;--i:' + i + '">' + esc(name) + '</button>';
+    });
+  });
+  html += '<button type="button" class="ce-wheel-hub' + (w.expanded ? ' is-back' : '') + '" id="ceWheelHub" aria-label="' + (w.expanded ? 'Back to key chords' : 'Show extended chords') + '">' + (w.expanded ? 'Back' : 'More') + '</button>';
+  stage.innerHTML = html;
+  document.getElementById('ceWheelTitle').textContent = w.existing >= 0 ? 'Replace ' + w.current : 'Add a chord';
+  const rootRow = document.getElementById('ceWheelRootRow');
+  rootRow.hidden = !w.expanded;
+  const rootSel = document.getElementById('ceWheelRoot');
+  if (rootSel.options.length !== 12) {
+    rootSel.innerHTML = '';
+    for (let pc = 0; pc < 12; pc++) {
+      const opt = document.createElement('option');
+      opt.value = String(pc);
+      rootSel.appendChild(opt);
+    }
+  }
+  const preferFlat = ceKeyPrefersFlat(CE.key);
+  for (let pc = 0; pc < 12; pc++) {
+    if (rootSel.options[pc]) rootSel.options[pc].textContent = ceNoteIn(pc, preferFlat);
+  }
+  rootSel.value = String(w.rootPc);
+  document.getElementById('ceWheelFamily').textContent = w.expanded
+    ? ''
+    : (ceIsMinorKey(CE.key) ? 'Minor key family' : 'Key family');
+}
+function ceWheelPlace() {
+  const wheel = document.getElementById('ceWheel');
+  if (!wheel || wheel.hidden) return;
+  const compact = window.matchMedia('(max-width:640px)').matches;
+  wheel.classList.toggle('compact', compact);
+  if (compact) { wheel.style.left = ''; wheel.style.top = ''; return; }
+  const rect = wheel.getBoundingClientRect();
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const anchor = CE.wheel && CE.wheel.anchor ? CE.wheel.anchor : { x: vw / 2, y: vh / 2 };
+  let left = anchor.x - rect.width / 2;
+  left = Math.max(10, Math.min(vw - rect.width - 10, left));
+  let top = anchor.y - rect.height - 12;
+  if (top < 10) top = Math.min(vh - rect.height - 10, anchor.y + 34);
+  if (top < 10) top = 10;
+  wheel.style.left = left + 'px';
+  wheel.style.top = top + 'px';
+}
+function ceWheelToggleExpanded(force) {
+  if (!CE.wheel) return;
+  CE.wheel.expanded = typeof force === 'boolean' ? force : !CE.wheel.expanded;
+  ceWheelRender();
+  ceWheelPlace();
+}
+function ceWheelPick(name) {
+  const w = CE.wheel;
+  if (!w) return;
+  const block = CE.blocks[w.b];
+  const line = block && block.lines[w.l];
+  if (!line) return;
+  name = String(name || '').trim();
+  if (!name || chordRootPc(name) == null) { ceFlashStatus('Unknown chord: ' + name, true); return; }
+  ceHistoryPush();
+  let idx = w.existing;
+  if (idx < 0) {
+    const dup = line.chords.findIndex(c => c.pos === w.pos);
+    if (dup >= 0) idx = dup;
+  }
+  const replacing = idx >= 0 && !!line.chords[idx];
+  if (replacing) line.chords[idx].ch = name;
+  else {
+    line.chords.push({ pos: w.pos, ch: name });
+    line.chords.sort((a, b) => a.pos - b.pos);
+  }
+  const b = w.b, l = w.l, pos = w.pos;
+  ceMarkDirty();
+  ceCloseWheel();
+  ceLayoutLine(ceLineEl(b, l));
+  ceSelect(b, l, pos);
+  ceFlashStatus((replacing ? 'Replaced with ' : 'Added ') + name);
+}
+function ceWheelDelete() {
+  const w = CE.wheel;
+  if (!w || w.existing < 0) return;
+  const b = w.b, l = w.l, idx = w.existing;
+  ceDeleteChord(b, l, idx);
+}
+function ceWheelCustomSubmit(e) {
+  if (e) e.preventDefault();
+  const input = document.getElementById('ceWheelCustom');
+  if (!input) return;
+  const raw = String(input.value || '').trim().replace(/\s+/g, '');
+  if (!raw || chordRootPc(raw) == null) {
+    input.classList.add('bad');
+    ceFlashStatus('That is not a chord name', true);
+    setTimeout(() => input.classList.remove('bad'), 700);
+    return;
+  }
+  ceWheelPick(raw);
+}
+function ceCloseWheel() {
+  CE.wheel = null;
+  const wheel = document.getElementById('ceWheel');
+  const backdrop = document.getElementById('ceWheelBackdrop');
+  if (wheel) { wheel.hidden = true; wheel.classList.remove('in', 'compact'); }
+  if (backdrop) backdrop.hidden = true;
+  document.querySelectorAll('.ce-chord.active').forEach(el => el.classList.remove('active'));
+}
+/* ── selection, delete, move ──────────────────────────────────────── */
+function ceSelect(b, l, pos) {
+  document.querySelectorAll('.ce-chord.sel').forEach(el => el.classList.remove('sel'));
+  if (b == null) { CE.selected = null; return; }
+  CE.selected = { b, l, pos };
+  const el = ceChordAt(b, l, pos);
+  if (el) el.classList.add('sel');
+}
+function ceDeleteChord(b, l, idx) {
+  const block = CE.blocks[b];
+  const line = block && block.lines[l];
+  if (!line || !line.chords[idx]) return;
+  const spec = line.chords[idx];
+  const el = ceChordAt(b, l, spec.pos);
+  ceHistoryPush();
+  line.chords.splice(idx, 1);
+  if (CE.selected && CE.selected.b === b && CE.selected.l === l && CE.selected.pos === spec.pos) CE.selected = null;
+  ceMarkDirty();
+  ceCloseWheel();
+  if (el) {
+    el.classList.add('is-out');
+    setTimeout(() => { el.remove(); ceLayoutLine(ceLineEl(b, l)); }, 190);
+  } else {
+    ceLayoutLine(ceLineEl(b, l));
+  }
+  ceFlashStatus('Removed ' + spec.ch);
+}
+function ceShiftSelected(delta) {
+  const sel = CE.selected;
+  if (!sel) return;
+  const block = CE.blocks[sel.b];
+  const line = block && block.lines[sel.l];
+  if (!line) return;
+  const idx = line.chords.findIndex(c => c.pos === sel.pos);
+  if (idx < 0) return;
+  const next = Math.max(0, Math.min(line.lyric.length - 1, line.chords[idx].pos + delta));
+  if (next === line.chords[idx].pos) return;
+  if (line.chords.some((c, i) => i !== idx && c.pos === next)) return;
+  ceHistoryPush();
+  line.chords[idx].pos = next;
+  line.chords.sort((a, b) => a.pos - b.pos);
+  ceMarkDirty();
+  ceLayoutLine(ceLineEl(sel.b, sel.l));
+  ceSelect(sel.b, sel.l, next);
+}
+/* ── pointer: tap to add/replace, drag to move, swipe up to delete ── */
+function ceRectAnchor(el) {
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top };
+}
+function ceNearestChar(lineEl, x, y) {
+  let best = null, score = Infinity;
+  lineEl.querySelectorAll('.ce-ch[data-i]').forEach(el => {
+    const r = el.getBoundingClientRect();
+    if (!r.width && !r.height) return;
+    const s = Math.abs(r.left + r.width / 2 - x) + Math.abs(r.top + r.height / 2 - y) * 0.8;
+    if (s < score) { score = s; best = el; }
+  });
+  return best;
+}
+function cePointerDown(e) {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const chordEl = e.target.closest('.ce-chord');
+  const chEl = e.target.closest('.ce-ch');
+  const lineEl = (chordEl || chEl) ? (chordEl || chEl).closest('.ce-line') : null;
+  if (!lineEl) { ceCloseWheel(); return; }
+  const b = Number(lineEl.dataset.b), l = Number(lineEl.dataset.l);
+  const block = CE.blocks[b];
+  const line = block && block.lines[l];
+  if (!line) return;
+  if (chordEl) {
+    const pos = Number(chordEl.dataset.pos);
+    const idx = line.chords.findIndex(c => c.pos === pos);
+    if (idx < 0) return;
+    CE.press = { pointerId: e.pointerId, chordEl, lineEl, b, l, pos, idx, x0: e.clientX, y0: e.clientY, started: false };
+    e.preventDefault();
+  } else if (chEl && chEl.dataset.i != null) {
+    CE.press = { pointerId: e.pointerId, chEl, lineEl, b, l, x0: e.clientX, y0: e.clientY, started: false };
+  } else {
+    return;
+  }
+}
+function cePointerMove(e) {
+  const p = CE.press;
+  if (!p || e.pointerId !== p.pointerId) return;
+  const dx = e.clientX - p.x0, dy = e.clientY - p.y0;
+  if (!p.started) {
+    if (!p.chordEl) return; // taps on lyrics leave scrolling to the page
+    if (Math.hypot(dx, dy) < 6) return;
+    const block = CE.blocks[p.b];
+    const line = block && block.lines[p.l];
+    if (!line || !line.chords[p.idx]) return;
+    CE.drag = true;
+    p.started = true;
+    p.originLeft = parseFloat(p.chordEl.style.left) || p.chordEl.offsetLeft;
+    p.chordEl.classList.add('dragging');
+    p.guide = document.createElement('span');
+    p.guide.className = 'ce-guide';
+    p.guide.hidden = true;
+    p.lineEl.appendChild(p.guide);
+    p.hint = document.getElementById('ceDragHint');
+    if (p.hint) { p.hint.hidden = false; p.hint.textContent = 'Release to place chord'; p.hint.classList.remove('danger'); }
+    ceCloseWheel();
+    ceSelect(p.b, p.l, line.chords[p.idx].pos);
+  }
+  e.preventDefault();
+  p.chordEl.style.left = (p.originLeft + dx) + 'px';
+  p.chordEl.style.transform = dy < 0 ? 'translateY(' + dy + 'px)' : 'none';
+  const remove = dy < -52;
+  p.deleteReady = remove;
+  p.chordEl.classList.toggle('will-delete', remove);
+  if (p.hint) {
+    p.hint.textContent = remove ? 'Release to remove chord' : 'Release to place chord';
+    p.hint.classList.toggle('danger', remove);
+  }
+  const rect = p.chordEl.getBoundingClientRect();
+  const target = ceNearestChar(p.lineEl, rect.left + rect.width / 2, e.clientY);
+  if (p.target && p.target !== target) p.target.classList.remove('ce-drop');
+  p.target = target;
+  if (target) {
+    target.classList.add('ce-drop');
+    const lr = p.lineEl.getBoundingClientRect(), tr = target.getBoundingClientRect();
+    p.guide.hidden = false;
+    p.guide.style.left = (tr.left - lr.left + tr.width / 2 - 1) + 'px';
+    p.guide.style.top = (tr.top - lr.top) + 'px';
+    p.guide.style.height = tr.height + 'px';
+  } else if (p.guide) {
+    p.guide.hidden = true;
+  }
+}
+function cePointerUp(e) {
+  const p = CE.press;
+  if (!p || e.pointerId !== p.pointerId) return;
+  CE.press = null;
+  if (!p.started) {
+    const block = CE.blocks[p.b];
+    const line = block && block.lines[p.l];
+    if (!line) return;
+    if (p.chordEl) {
+      const spec = line.chords[p.idx];
+      if (!spec) return;
+      ceSelect(p.b, p.l, spec.pos);
+      ceWheelOpen({ b: p.b, l: p.l, pos: spec.pos, existing: p.idx, anchor: ceRectAnchor(p.chordEl) });
+    } else if (p.chEl && p.chEl.dataset.i != null) {
+      const pos = Number(p.chEl.dataset.i);
+      const existing = line.chords.findIndex(c => c.pos === pos);
+      if (existing >= 0) ceSelect(p.b, p.l, pos); else ceSelect(null);
+      ceWheelOpen({ b: p.b, l: p.l, pos, existing, anchor: ceRectAnchor(p.chEl) });
+    }
+    return;
+  }
+  if (p.guide) p.guide.remove();
+  if (p.hint) p.hint.hidden = true;
+  if (p.target) p.target.classList.remove('ce-drop');
+  p.chordEl.classList.remove('dragging', 'will-delete');
+  p.chordEl.style.transform = '';
+  CE.drag = false;
+  if (p.deleteReady) { ceDeleteChord(p.b, p.l, p.idx); return; }
+  const block = CE.blocks[p.b];
+  const line = block && block.lines[p.l];
+  const spec = line && line.chords[p.idx];
+  if (p.target && spec) {
+    const pos = Number(p.target.dataset.i);
+    if (pos !== spec.pos) {
+      ceHistoryPush();
+      spec.pos = pos;
+      line.chords.sort((a, b) => a.pos - b.pos);
+      ceMarkDirty();
+      ceSelect(p.b, p.l, pos);
+      ceLayoutLine(p.lineEl);
+      ceFlashStatus('Moved to character ' + (pos + 1));
+      return;
+    }
+  }
+  ceLayoutLine(p.lineEl);
+}
+function cePointerCancel() {
+  const p = CE.press;
+  if (!p) return;
+  CE.press = null;
+  CE.drag = false;
+  if (p.chordEl) { p.chordEl.classList.remove('dragging', 'will-delete'); p.chordEl.style.transform = ''; }
+  if (p.guide) p.guide.remove();
+  if (p.hint) p.hint.hidden = true;
+  if (p.target) p.target.classList.remove('ce-drop');
+  ceLayoutLine(p.lineEl);
+}
+function ceKeyDown(e) {
+  const modal = document.getElementById('chordModal');
+  if (!modal || !modal.classList.contains('open')) return;
+  const tag = (document.activeElement && document.activeElement.tagName) || '';
+  const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+  if (e.key === 'Escape') {
+    // Capture phase + immediate stop: otherwise the app-wide "Escape closes any
+    // modal" handler also fires and closes the studio while the wheel is open.
+    if (CE.wheel) { e.preventDefault(); e.stopImmediatePropagation(); ceCloseWheel(); }
+    else if (CE.selected) { e.preventDefault(); e.stopImmediatePropagation(); ceSelect(null); }
+    else if (!typing) { e.preventDefault(); e.stopImmediatePropagation(); requestCloseChordEditor(); }
+    return;
+  }
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); if (e.shiftKey) ceRedo(); else ceUndo(); return; }
+  if (mod && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); ceRedo(); return; }
+  if (typing) return;
+  if ((e.key === 'Backspace' || e.key === 'Delete') && CE.selected) {
+    const sel = CE.selected;
+    const block = CE.blocks[sel.b];
+    const line = block && block.lines[sel.l];
+    if (!line) return;
+    const idx = line.chords.findIndex(c => c.pos === sel.pos);
+    if (idx >= 0) { e.preventDefault(); ceDeleteChord(sel.b, sel.l, idx); }
+    return;
+  }
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && CE.selected) {
+    e.preventDefault();
+    ceShiftSelected(e.key === 'ArrowRight' ? 1 : -1);
+  }
+}
+/* ── wiring ───────────────────────────────────────────────────────── */
+(function ceWire() {
+  const canvas = document.getElementById('ceCanvas');
+  if (canvas) {
+    canvas.addEventListener('pointerdown', cePointerDown);
+    // Track moves/releases on the window: a drag leaves the canvas (and the chord
+    // node may be re-laid-out), where pointer capture is brittle and can drop the
+    // release entirely.
+    window.addEventListener('pointermove', cePointerMove, { passive: false });
+    window.addEventListener('pointerup', cePointerUp);
+    window.addEventListener('pointercancel', cePointerCancel);
+  }
+  const stage = document.getElementById('ceWheelStage');
+  if (stage) {
+    stage.addEventListener('click', e => {
+      const hub = e.target.closest('.ce-wheel-hub');
+      if (hub) { ceWheelToggleExpanded(); return; }
+      const chip = e.target.closest('.ce-wheel-chip');
+      if (chip && chip.dataset.chord) ceWheelPick(chip.dataset.chord);
+    });
+  }
+  const rootSel = document.getElementById('ceWheelRoot');
+  if (rootSel) rootSel.addEventListener('change', () => {
+    if (!CE.wheel) return;
+    CE.wheel.rootPc = Number(rootSel.value) || 0;
+    ceWheelRender();
+    ceWheelPlace();
+  });
+  const customForm = document.getElementById('ceWheelCustomForm');
+  if (customForm) customForm.addEventListener('submit', ceWheelCustomSubmit);
+  document.addEventListener('keydown', ceKeyDown, true);
+  window.addEventListener('resize', () => {
+    const modal = document.getElementById('chordModal');
+    if (!modal || !modal.classList.contains('open')) return;
+    clearTimeout(CE.resizeTimer);
+    CE.resizeTimer = setTimeout(() => {
+      ceLayoutAll();
+      if (CE.wheel) { ceWheelRender(); ceWheelPlace(); }
+    }, 120);
+  });
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+      const modal = document.getElementById('chordModal');
+      if (modal && modal.classList.contains('open')) ceLayoutAll();
+    });
+  }
+})();
 function parseChordPlacement(chordLine, lyricLine) {
   const lyric = String(lyricLine||'');
   const span = Math.max(0, lyric.length - 1);
@@ -4700,66 +5514,97 @@ function parseChordPlacement(chordLine, lyricLine) {
   return specs;
 }
 function openChordEditor() {
-  const song = currentList[currentSongIdx];
+  const song = currentList && currentList[currentSongIdx];
   if (!song) return;
-  _chordEditSongId = song.id;
-  const chart = CHORD_CHARTS[song.id];
+  const chart = CHORD_CHARTS[song.id] || null;
+  CE.song = song;
+  CE.songId = song.id;
+  CE.key = (chart && normalizeSongKey(chart.key)) || normalizeSongKey(song.key) || 'C';
+  const blocks = chordVerseBlocks(song);
+  CE.blocks = blocks.map((verse, vi) => ({
+    type: verse.type || 'v',
+    lines: (verse.lines || []).map((lineText, li) => {
+      const lyric = String(lineText || '');
+      const chords = [];
+      (chart ? ceChartSpecs(chart, vi, li) : []).forEach(spec => {
+        if (!spec || !spec.ch || chordRootPc(spec.ch) == null) return;
+        const pos = ceSpecPos(spec, lyric.length);
+        if (chords.some(c => c.pos === pos)) return;
+        chords.push({ pos: pos, ch: String(spec.ch).trim() });
+      });
+      chords.sort((a, b) => a.pos - b.pos);
+      return { lyric: lyric, chords: chords };
+    })
+  }));
+  CE.undo = [];
+  CE.redo = [];
+  CE.selected = null;
+  CE.drag = false;
+  CE.press = null;
+  CE.base = ceSnapshot();
+  CE.dirty = false;
+  const field = document.getElementById('chordEditKey');
+  if (field) field.value = CE.key;
   document.getElementById('chordModalTitle').textContent = chart ? 'Edit Chords' : 'Add Chords';
-  const initialKey = chart ? chart.key : (normalizeSongKey(song.key) || 'C');
-  document.getElementById('chordEditKey').value = initialKey;
-  _chordEditorKeyPc = chordRootPc(initialKey);
-  clearTimeout(_chordEditorKeyTimer);
-  document.getElementById('chordEditorRows').innerHTML = chordEditorRowsHTML(song, chart);
-  _chordEditorSnapshot = chordEditorSnapshot();
+  const saved = document.getElementById('ceSaved');
+  if (saved) saved.hidden = true;
+  const status = document.getElementById('ceStatus');
+  if (status) { status.textContent = ''; delete status.dataset.flash; status.classList.remove('bad'); }
+  ceCloseWheel();
+  // open first: chord chips are placed from measured glyph offsets, and a hidden
+  // modal reports every rect as 0 (which would stack all chords at the left edge)
   openModal('chordModal');
+  ceRender();
+  ceUpdateChrome();
+  const canvas = document.getElementById('ceCanvas');
+  if (canvas) canvas.scrollTop = 0;
 }
 function saveChordEditor() {
-  const songId = _chordEditSongId;
-  const song = currentList.find(s => s.id === songId) || CAT_ORDER.flatMap(k => SONGS[k].songs).find(s => s.id === songId);
+  const song = CE.song;
   if (!song) return;
-  let key = normalizeSongKey(document.getElementById('chordEditKey').value);
-  if (!key || chordRootPc(key) == null) { toast('Key must be a note such as G or Bb', 'error'); return; }
-  let lines;
-  try {
-    const blocks = chordVerseBlocks(song);
-    const verseLines = blocks.map(() => []);
-    const inputs = Array.from(document.querySelectorAll('#chordEditorRows .chord-editor-input'));
-    inputs.forEach(input => {
-      const vi = Number(input.dataset.verse) || 0;
-      const li = Number(input.dataset.line) || 0;
-      const specs = parseChordPlacement(input.value, blocks[vi]?.lines?.[li] || '');
-      specs.forEach(s => { if (chordRootPc(s.ch) == null) throw new Error('Invalid chord: ' + s.ch); });
-      verseLines[vi][li] = specs;
-    });
-    lines = verseLines[0] || [];
-    const chords = [];
-    verseLines.forEach(lines => (lines || []).forEach(specs => (specs || []).forEach(s => {
-      if (s.ch && !chords.includes(s.ch)) chords.push(s.ch);
-    })));
-    if (!chords.length) { toast('Add at least one chord on a chord line', 'error'); return; }
-    const isRef = v => (v.type||'v') === 'p' && v.lines.some(l => /\bdoh\s+is\b/i.test(l));
-    const verseCount = (song.verses||[]).filter(v => !isRef(v)).length;
-    const chart = CHORD_CHARTS[songId] || { verses: verseCount };
-    chart.key = key;
-    chart.lines = lines;
-    chart.verseLines = verseLines;
-    chart.verses = verseLines.length;
-    chart.chords = chords;
-    chart.free = true;
-    CHORD_CHARTS[songId] = chart;
-    USER_CHORD_IDS.add(songId);
-    if (!saveUserChordCharts()) { toast('Could not save chords: device storage is full', 'error'); return; }
-    submitChange('chord', { id: songId, chart: chart, title: song.title });
-    _chordEditorSnapshot = '';
-    chordTranspose = 0;
-    closeModal('chordModal');
-    readerMode = 'chords';
-    _songScroll[song.id] = 0;
-    renderSongDetail(song);
-    toast('Chords saved', 'success');
-  } catch (err) {
-    toast(err.message || 'Could not save chords', 'error');
+  const field = document.getElementById('chordEditKey');
+  const key = normalizeSongKey(field ? field.value : CE.key) || CE.key;
+  if (chordRootPc(key) == null) { ceFlashStatus('Key must be a note such as G or Bb', true); return; }
+  if (key !== CE.key && !ceSetKey(key, { silent: true })) {
+    ceFlashStatus('Key must be a note such as G or Bb', true);
+    return;
   }
+  const verseLines = CE.blocks.map(block => block.lines.map(line => {
+    const len = line.lyric.length;
+    return line.chords.slice().sort((a, b) => a.pos - b.pos).map(c => ({
+      pos: c.pos,
+      ch: c.ch,
+      at: len > 1 ? Number((c.pos / (len - 1)).toFixed(4)) : 0
+    }));
+  }));
+  const chords = [];
+  verseLines.forEach(lines => lines.forEach(specs => specs.forEach(s => {
+    if (s.ch && !chords.includes(s.ch)) chords.push(s.ch);
+  })));
+  if (!chords.length) { ceFlashStatus('Add at least one chord before saving', true); return; }
+  const chart = CHORD_CHARTS[CE.songId] || { verses: verseLines.length };
+  chart.key = key;
+  chart.lines = verseLines[0] || [];
+  chart.verseLines = verseLines;
+  chart.verses = verseLines.length;
+  chart.chords = chords;
+  chart.free = true;
+  CHORD_CHARTS[CE.songId] = chart;
+  USER_CHORD_IDS.add(CE.songId);
+  if (!saveUserChordCharts()) { ceFlashStatus('Could not save chords: device storage is full', true); return; }
+  submitChange('chord', { id: CE.songId, chart: chart, title: song.title });
+  CE.base = ceSnapshot();
+  CE.dirty = false;
+  ceUpdateChrome();
+  const saved = document.getElementById('ceSaved');
+  if (saved) saved.hidden = false;
+  chordTranspose = 0;
+  ceCloseWheel();
+  closeModal('chordModal');
+  readerMode = 'chords';
+  _songScroll[song.id] = 0;
+  renderSongDetail(song);
+  toast('Chords saved', 'success');
 }
 
 function chordAnchorMap(words, specs) {
@@ -4781,8 +5626,14 @@ function chordAnchorMap(words, specs) {
   });
   return labels;
 }
-function chordLineHTML(line, specs, chart) {
+function chordLineHTML(line, specs, chart, vi, li) {
   const lyric = String(line||'');
+  // Character-anchored charts ({pos}) render as a word/character canvas so the
+  // chord labels can be placed from the measured glyph itself.
+  const posSpecs = (specs || []).filter(s => s && s.ch && Number.isInteger(s.pos) && chordRootPc(s.ch) != null);
+  if (posSpecs.length) {
+    return '<div class="chord-line chord-line-free chord-line-pos" data-v="' + (vi || 0) + '" data-l="' + (li || 0) + '"><div class="ce-words">' + ceWordsHTML(lyric) + '</div></div>';
+  }
   if (!(chart && chart.free)) {
     const words = lyric.trim().split(/\s+/).filter(Boolean);
     const labels = chordAnchorMap(words, specs||[]);
@@ -4846,7 +5697,7 @@ function chordSheetHTML(song, chart) {
     html += '<div class="verse chord-verse '+cls+'" id="sv'+shown+'"><div class="verse-type '+cls+'">'+label+numStr+'</div>';
     (v.lines||[]).forEach((line, li) => {
       const specs = verseLines[li] !== undefined ? verseLines[li] : (chart.lines && chart.lines[li]);
-      html += chordLineHTML(line, specs, chart);
+      html += chordLineHTML(line, specs, chart, vi, li);
     });
     html += '</div>';
     shown++;
@@ -5138,9 +5989,52 @@ function playChordTone(btn) {
   }
 }
 
+function positionChordReadLine(lineEl) {
+  const song = currentList && currentList[currentSongIdx];
+  const chart = song ? chordChartFor(song) : null;
+  if (!chart) return;
+  const vi = Number(lineEl.dataset.v) || 0;
+  const li = Number(lineEl.dataset.l) || 0;
+  lineEl.querySelectorAll('.chord-read').forEach(el => el.remove());
+  (ceChartSpecs(chart, vi, li) || []).forEach(spec => {
+    if (!spec || !spec.ch || !Number.isInteger(spec.pos)) return;
+    const chEl = lineEl.querySelector('.ce-ch[data-i="' + spec.pos + '"]');
+    if (!chEl) return;
+    const word = ceWordFor(chEl);
+    if (!word) return;
+    const el = document.createElement('span');
+    el.className = 'chord-name chord-read';
+    el.dataset.chord = spec.ch;
+    el.dataset.pos = String(spec.pos);
+    el.textContent = chordLabel(chart, spec.ch);
+    word.appendChild(el);
+    const wr = word.getBoundingClientRect(), cr = chEl.getBoundingClientRect();
+    el.style.left = (cr.left - wr.left) + 'px';
+  });
+}
+let _chordPosObserver = null;
+function layoutChordSheetPositions(root) {
+  const host = root || document.getElementById('songDetail');
+  if (!host) return;
+  const lines = host.querySelectorAll('.chord-line-pos');
+  lines.forEach(positionChordReadLine);
+  if (window.ResizeObserver) {
+    if (_chordPosObserver) _chordPosObserver.disconnect();
+    _chordPosObserver = new ResizeObserver(() => {
+      if (_chordPosObserver._busy) return;
+      _chordPosObserver._busy = true;
+      requestAnimationFrame(() => {
+        _chordPosObserver._busy = false;
+        host.querySelectorAll('.chord-line-pos').forEach(positionChordReadLine);
+      });
+    });
+    lines.forEach(el => _chordPosObserver.observe(el));
+  }
+}
 function renderSongDetail(song, dir) {
   const el = document.getElementById('songDetail');
   el.innerHTML = songDetailHTML(song);
+  if (readerMode === 'chords') layoutChordSheetPositions(el);
   // ponytail: reflect the open song in the tab title.
   document.title = (song.title || 'Song') + ' – Khristian Labu';
   // ponytail: gallery-style slide when arriving via swipe/arrow nav.

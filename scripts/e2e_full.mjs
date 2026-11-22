@@ -702,7 +702,68 @@ await section('settings & google', async () => {
   await page.close();
 });
 
-// ═══════════════ 9b. UPDATE CHECK (banner → GitHub releases) ═══════════════
+// ═══════════════ 9a. HOME ACTIONS (website only: APK + GitHub) ═══════════════
+await section('home actions', async () => {
+  const APK = 'https://github.com/minatolun-dotcom/khristian-labu/releases/latest/download/khristian-labu.apk';
+  const REPO_URL = 'https://github.com/minatolun-dotcom/khristian-labu';
+  const check = async (vp, label) => {
+    const page = await newPage(vp);
+    await waitLoaded(page);
+    const a = await page.evaluate(() => {
+      const wrap = document.getElementById('homeActions');
+      const apk = document.getElementById('homeApkBtn');
+      const repo = document.getElementById('homeRepoBtn');
+      const grid = document.getElementById('groupGrid');
+      const stats = document.querySelector('#homeView .hero .stats');
+      const box = wrap && wrap.getBoundingClientRect();
+      const svg = apk && apk.querySelector('svg');
+      const gb = grid && grid.getBoundingClientRect();
+      return {
+        display: wrap ? getComputedStyle(wrap).display : 'missing',
+        visible: !!box && box.width > 0 && box.height > 0 && box.top < innerHeight,
+        apkHref: apk && apk.getAttribute('href'),
+        repoHref: repo && repo.getAttribute('href'),
+        icon: svg ? Math.round(svg.getBoundingClientRect().width) : 0,
+        belowGrid: !!box && !!gb && box.top >= gb.bottom - 1,
+        gap: box && gb ? Math.round(box.top - gb.bottom) : null,
+        statsVisible: !!stats && stats.getBoundingClientRect().height > 0,
+      };
+    });
+    ok(label + ': APK + GitHub buttons show on the home page', a.visible && a.display !== 'none', JSON.stringify(a));
+    ok(label + ': buttons link to the APK asset and the repo', a.apkHref === APK && a.repoHref === REPO_URL, JSON.stringify(a));
+    ok(label + ': android + github icons render', a.icon >= 14, String(a.icon));
+    ok(label + ': buttons sit below the songbook list', a.belowGrid, JSON.stringify(a));
+    ok(label + ': buttons hug the songbook list', a.gap !== null && a.gap <= 40, String(a.gap));
+    if (label === 'desktop') ok('desktop: counters are removed', !a.statsVisible, JSON.stringify(a));
+    await page.close();
+  };
+  await check({ width: 1280, height: 800 }, 'desktop');
+  await check({ width: 390, height: 844 }, 'mobile');
+  // A tall phone leaves free space that the old grid auto-margin used to absorb.
+  await check({ width: 390, height: 1200 }, 'tall mobile');
+
+  // the markup itself ships hidden, so a JS failure inside the APK cannot show it
+  const nojs = await browser.newPage({ viewport: { width: 390, height: 844 }, javaScriptEnabled: false });
+  await nojs.goto(URL, { waitUntil: 'domcontentloaded' });
+  const markupHidden = await nojs.evaluate(() => {
+    const w = document.getElementById('homeActions');
+    return !!w && w.hasAttribute('hidden') && getComputedStyle(w).display === 'none';
+  });
+  ok('home actions are hidden in the raw markup (website reveals them)', markupHidden);
+  await nojs.close();
+
+  // inside the APK the row is removed: the app must not offer to download itself
+  const native = await newPage();
+  await native.addInitScript(() => {
+    window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', isPluginAvailable: () => false, Plugins: {} };
+  });
+  await waitLoaded(native);
+  const gone = await native.evaluate(() => ({ native: window.Capacitor.isNativePlatform(), wrap: !!document.getElementById('homeActions') }));
+  ok('APK home hides the download/GitHub buttons', gone.native === true && gone.wrap === false, JSON.stringify(gone));
+  await native.close();
+});
+
+// ═══════════════ 9b. UPDATE CHECK (banner → direct APK download) ═══════════════
 await section('update check', async () => {
   const page = await newPage();
   await page.addInitScript(() => {
@@ -718,15 +779,24 @@ await section('update check', async () => {
   await page.waitForSelector('#updateBanner:not([hidden])', { timeout: 15000 });
   ok('start-up check shows the update banner', (await page.textContent('#updVer')).includes('9.9.9'));
   const href = await page.locator('#updBtn').getAttribute('href');
-  ok('banner links to the GitHub releases page', href === 'https://github.com/minatolun-dotcom/khristian-labu/releases/latest', href);
+  ok('banner links straight to the APK asset', href === 'https://github.com/minatolun-dotcom/khristian-labu/releases/latest/download/khristian-labu.apk', href);
   ok('in-app downloader is gone', (await page.locator('#otaProgress').count()) === 0);
+  // The card must be fully on screen and stay put until answered.
+  const box = await page.locator('#updateBanner').boundingBox();
+  const vp = page.viewportSize();
+  ok('update card is fully on screen', !!box && box.x >= 0 && box.y >= 0 && box.x + box.width <= vp.width && box.y + box.height <= vp.height, JSON.stringify({ box, vp }));
+  ok('update card sits in the middle of the screen', !!box && Math.abs((box.y + box.height / 2) - vp.height / 2) < 40, String(box && box.y));
+  await page.waitForTimeout(4000);
+  ok('update card does not auto-hide', await page.locator('#updateBanner').isVisible());
+  await page.locator('.upd-close').click();
+  ok('close button hides the update card', await page.locator('#updateBanner').isHidden());
 
   // Settings is its own page (desktop nav → page), and the check sends the user out
   await openSettings(page);
   ok('settings opens as a page, not a popup', (await page.locator('#settingsModal').count()) === 0 && await page.locator('#settingsView').isVisible());
   await page.locator('#settingsView').getByText('Check for update').click();
   await page.waitForTimeout(900);
-  ok('manual check opens the releases page', (await page.evaluate(() => window.__opened)).includes('https://github.com/minatolun-dotcom/khristian-labu/releases/latest'));
+  ok('manual check opens the APK download', (await page.evaluate(() => window.__opened)).includes('https://github.com/minatolun-dotcom/khristian-labu/releases/latest/download/khristian-labu.apk'));
   await page.close();
 
   // already up to date: no banner, no redirect, a toast instead
@@ -819,6 +889,239 @@ await section('mobile', async () => {
   ok('footer within viewport', !!footer && footer.y + footer.height <= 846, JSON.stringify(footer));
   ok('mobile fab above footer', !!fab && !!footer && fab.y + fab.height < footer.y, JSON.stringify({ fab, footer }));
   await page.close();
+});
+
+// ═══════════════ 9c. CHORD STUDIO (direct-manipulation editor) ═══════════════
+await section('chord studio', async () => {
+  const page = await newPage();
+  await waitLoaded(page);
+  const openSong = async (title) => {
+    await page.locator('#groupGrid .cat-card').first().click();
+    await page.waitForSelector('#categoryGrid .cat-card');
+    await page.locator('#categoryGrid .cat-card').filter({ hasText: 'Biakna Late' }).first().click();
+    await page.waitForSelector('#songGrid .song-item');
+    await page.locator('#songGrid .song-item').filter({ hasText: title }).first().click();
+    await page.waitForSelector('#songDetail .verse');
+    await page.evaluate(() => setReaderMode('chords'));
+    await page.waitForSelector('.chord-sheet');
+  };
+  await openSong('Jesu Min Lian');
+  await page.locator('.chord-tool-edit').click();
+  await page.waitForSelector('#chordModal.open #ceCanvas .ce-line');
+  await sleep(250);
+  const l0 = '.ce-line[data-b="0"][data-l="0"]';
+
+  ok('chord editor is a lyric canvas, not text boxes',
+    (await page.locator('#chordEditorRows, #chordModal input.chord-editor-input').count()) === 0 &&
+    (await page.locator('#ceCanvas .ce-ch').count()) > 20);
+  const state0 = await page.evaluate(() => ({ key: CE.key, chords: CE.blocks[0].lines[0].chords.slice() }));
+  ok('existing chart opens on character positions', state0.key === 'G' && state0.chords.length === 3 && state0.chords.every(c => Number.isInteger(c.pos)), JSON.stringify(state0));
+  const aligned = await page.evaluate(() => {
+    const line = document.querySelector('.ce-line[data-b="0"][data-l="0"]');
+    return [...line.querySelectorAll('.ce-chord')].map(el => {
+      const ch = line.querySelector('.ce-ch[data-i="' + el.dataset.pos + '"]');
+      return +(el.getBoundingClientRect().left - ch.getBoundingClientRect().left).toFixed(1);
+    });
+  });
+  ok('chords sit exactly above their character', aligned.length === 3 && aligned.every(d => Math.abs(d) <= 1), JSON.stringify(aligned));
+
+  // add at a character
+  await page.locator(l0 + ' .ce-ch[data-i="5"]').click();
+  await page.waitForSelector('#ceWheel:not([hidden])');
+  const family = await page.$$eval('#ceWheelStage .ce-wheel-chip', els => els.map(e => e.dataset.chord));
+  ok('key wheel suggests the G family', JSON.stringify(family) === JSON.stringify(['G', 'Am', 'Bm', 'C', 'D', 'Em', 'F#dim']), JSON.stringify(family));
+  const minorFamily = await page.evaluate(() => ceDiatonic('Am'));
+  ok('minor keys get their own chord family', JSON.stringify(minorFamily) === JSON.stringify(['Am', 'Bdim', 'C', 'Dm', 'Em', 'F', 'G']), JSON.stringify(minorFamily));
+  await page.locator('#ceWheelStage .ce-wheel-chip[data-chord="C"]').click();
+  await sleep(150);
+  ok('tap a lyric + pick a chord inserts it at that character', await page.evaluate(() => CE.blocks[0].lines[0].chords.some(c => c.pos === 5 && c.ch === 'C')));
+  ok('editor marks the chart dirty', await page.evaluate(() => CE.dirty === true));
+
+  // replace
+  await page.locator(l0 + ' .ce-chord[data-pos="5"]').click();
+  await page.waitForSelector('#ceWheel:not([hidden])');
+  ok('tapping a chord opens the wheel in replace mode', (await page.textContent('#ceWheelTitle')).startsWith('Replace C'));
+  await page.locator('#ceWheelStage .ce-wheel-chip[data-chord="Am"]').click();
+  await sleep(150);
+  ok('picking another chord replaces it without duplicating', await page.evaluate(() => {
+    const chords = CE.blocks[0].lines[0].chords.filter(c => c.pos === 5);
+    return chords.length === 1 && chords[0].ch === 'Am';
+  }));
+
+  // drag
+  const box = await page.locator(l0 + ' .ce-chord[data-pos="5"]').boundingBox();
+  const target = await page.locator(l0 + ' .ce-ch[data-i="12"]').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(target.x + 2, box.y + box.height / 2, { steps: 8 });
+  const dragging = await page.evaluate(() => ({
+    cls: !!document.querySelector('.ce-line[data-b="0"][data-l="0"] .ce-chord.dragging'),
+    guide: !!document.querySelector('#ceCanvas .ce-guide'),
+    drop: !!document.querySelector('#ceCanvas .ce-drop')
+  }));
+  ok('dragging shows a guide and highlights the character underneath', dragging.cls && dragging.guide && dragging.drop, JSON.stringify(dragging));
+  await page.mouse.up();
+  await sleep(150);
+  ok('released chord snaps to the nearest character', await page.evaluate(() => CE.blocks[0].lines[0].chords.some(c => c.pos === 12 && c.ch === 'Am')));
+
+  // swipe up to delete
+  const box2 = await page.locator(l0 + ' .ce-chord[data-pos="12"]').boundingBox();
+  await page.mouse.move(box2.x + box2.width / 2, box2.y + box2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box2.x + box2.width / 2, box2.y - 90, { steps: 10 });
+  ok('swiping a chord up arms deletion', (await page.locator('.ce-chord.will-delete').count()) === 1);
+  await page.mouse.up();
+  await sleep(320);
+  ok('swipe up removes the chord', await page.evaluate(() => !CE.blocks[0].lines[0].chords.some(c => c.pos === 12)));
+
+  // undo / redo
+  await page.keyboard.press('Control+z');
+  await sleep(150);
+  ok('undo restores a deleted chord', await page.evaluate(() => CE.blocks[0].lines[0].chords.some(c => c.pos === 12)));
+  await page.keyboard.press('Control+Shift+z');
+  await sleep(150);
+  ok('redo re-applies the deletion', await page.evaluate(() => !CE.blocks[0].lines[0].chords.some(c => c.pos === 12)));
+
+  // keyboard: nudge + delete
+  await page.locator(l0 + ' .ce-chord[data-pos="0"]').click();
+  await page.waitForSelector('#ceWheel:not([hidden])');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('ArrowRight');
+  await sleep(150);
+  ok('arrow keys nudge the selected chord one character', await page.evaluate(() => CE.blocks[0].lines[0].chords.some(c => c.pos === 1)));
+  await page.keyboard.press('Backspace');
+  await sleep(280);
+  ok('Delete/Backspace removes the selected chord', await page.evaluate(() => !CE.blocks[0].lines[0].chords.some(c => c.pos === 1)));
+
+  // extended wheel + custom
+  await page.locator(l0 + ' .ce-ch[data-i="22"]').click();
+  await page.waitForSelector('#ceWheel:not([hidden])');
+  await page.locator('#ceWheelHub').click();
+  await sleep(250);
+  const ext = await page.$$eval('#ceWheelStage .ce-wheel-chip', els => els.map(e => e.dataset.chord));
+  ok('More opens the extended chord wheel', ['Gmaj7', 'Gm7', 'G7', 'Gsus2', 'Gsus4', 'Gdim', 'Gaug', 'G/B'].every(c => ext.includes(c)) && await page.locator('#ceWheelRootRow').isVisible(), ext.join(','));
+  await page.locator('#ceWheelCustom').fill('F#m7/C#');
+  await page.locator('#ceWheelCustomForm button').click();
+  await sleep(200);
+  ok('custom chord names are accepted', await page.evaluate(() => CE.blocks[0].lines[0].chords.some(c => c.ch === 'F#m7/C#')));
+  await page.locator(l0 + ' .ce-ch[data-i="24"]').click();
+  await page.waitForSelector('#ceWheel:not([hidden])');
+  await page.locator('#ceWheelCustom').fill('H7');
+  await page.locator('#ceWheelCustomForm button').click();
+  await sleep(150);
+  ok('an invalid custom chord is rejected', (await page.locator('#ceWheel').isVisible()) && await page.evaluate(() => !CE.blocks[0].lines[0].chords.some(c => c.pos === 24)));
+  await page.keyboard.press('Escape');
+
+  // key change
+  const beforePositions = await page.evaluate(() => CE.blocks[0].lines[0].chords.map(c => c.pos));
+  await page.locator('#chordEditKey').fill('A');
+  await page.locator('#chordEditKey').dispatchEvent('change');
+  await sleep(250);
+  const keyState = await page.evaluate(() => ({
+    key: CE.key,
+    chords: CE.blocks[0].lines[0].chords.map(c => c.ch),
+    positions: CE.blocks[0].lines[0].chords.map(c => c.pos)
+  }));
+  ok('key change transposes the chord names', keyState.key === 'A' && keyState.chords.includes('A') && keyState.chords.includes('E') && keyState.chords.includes('G#m7/D#'), JSON.stringify(keyState.chords));
+  ok('key change preserves character positions', JSON.stringify(keyState.positions) === JSON.stringify(beforePositions), JSON.stringify(keyState.positions));
+
+  // save + reader + reopen
+  await page.locator('#ceSaveBtn').click();
+  await sleep(600);
+  ok('save closes the studio', !(await page.evaluate(() => document.getElementById('chordModal').classList.contains('open'))));
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('labu_chord_charts_v1') || '{}').BL_1);
+  ok('saved chart stores character positions', !!saved && saved.verseLines[0][0].every(s => Number.isInteger(s.pos) && typeof s.at === 'number'), JSON.stringify(saved && saved.verseLines[0][0]).slice(0, 160));
+  const readAlign = await page.evaluate(() => {
+    const out = [];
+    document.querySelectorAll('.chord-line-pos').forEach(lineEl => {
+      lineEl.querySelectorAll('.chord-read').forEach(el => {
+        const ch = lineEl.querySelector('.ce-ch[data-i="' + el.dataset.pos + '"]');
+        if (ch) out.push(+(el.getBoundingClientRect().left - ch.getBoundingClientRect().left).toFixed(1));
+      });
+    });
+    return out;
+  });
+  ok('reader places every chord above its character (0px drift)', readAlign.length > 0 && readAlign.every(d => Math.abs(d) <= 1), JSON.stringify(readAlign));
+  ok('reader shows the saved chart', (await page.locator('.chord-sheet .chord-read').count()) > 0);
+  await page.locator('.chord-tool-edit').click();
+  await page.waitForSelector('#chordModal.open #ceCanvas .ce-line');
+  await sleep(200);
+  ok('reopening restores the edited positions', await page.evaluate(() => CE.blocks[0].lines[0].chords.some(c => c.ch === 'G#m7/D#')));
+  await page.locator('#chordModal .modal-close').click();
+
+  // published fractional charts still work
+  await page.goBack();
+  await page.waitForSelector('#songGrid .song-item');
+  await page.locator('#songGrid .song-item').filter({ hasText: 'Pathian Hon Phat' }).first().click();
+  await page.waitForSelector('#songDetail .verse');
+  await page.evaluate(() => setReaderMode('chords'));
+  await page.waitForSelector('.chord-sheet');
+  ok('published fractional charts still render', (await page.locator('.chord-sheet [data-chord]').count()) > 0);
+  await page.locator('.chord-tool-edit').click();
+  await page.waitForSelector('#chordModal.open #ceCanvas .ce-line');
+  await sleep(200);
+  ok('fractional charts convert to character positions in the editor', await page.evaluate(() => CE.blocks.every(b => b.lines.every(l => l.chords.every(c => Number.isInteger(c.pos))))));
+  await page.locator('#chordModal .modal-close').click();
+  await page.close();
+
+  // phone: compact wheel, grid fallback, wrapped lines
+  const mp = await newPage({ width: 390, height: 844 });
+  await waitLoaded(mp);
+  await mp.evaluate(() => {
+    // setReaderFont applies an inline custom property, so an injected stylesheet loses
+    document.documentElement.style.setProperty('--reader-font', '40px');
+    document.documentElement.style.setProperty('--reader-lh', '1.7');
+  });
+  await mp.locator('#groupGrid .cat-card').first().click();
+  await mp.waitForSelector('#categoryGrid .cat-card');
+  await mp.locator('#categoryGrid .cat-card').filter({ hasText: 'Biakna Late' }).first().click();
+  await mp.waitForSelector('#songGrid .song-item');
+  await mp.locator('#songGrid .song-item').filter({ hasText: 'Jesu Min Lian' }).first().click();
+  await mp.waitForSelector('#songDetail .verse');
+  await mp.evaluate(() => setReaderMode('chords'));
+  await mp.waitForSelector('.chord-sheet');
+  await mp.locator('.chord-tool-edit').click();
+  await mp.waitForSelector('#chordModal.open #ceCanvas .ce-line');
+  await mp.locator('.ce-line[data-b="0"][data-l="0"] .ce-ch[data-i="12"]').click();
+  await mp.waitForSelector('#ceWheel:not([hidden])');
+  const wheelBox = await mp.locator('#ceWheel').evaluate(el => {
+    const r = el.getBoundingClientRect();
+    return { left: Math.round(r.left), right: Math.round(r.right), vw: innerWidth };
+  });
+  ok('mobile wheel stays inside the viewport', wheelBox.left >= 0 && wheelBox.right <= wheelBox.vw, JSON.stringify(wheelBox));
+  await mp.locator('#ceWheelHub').click();
+  await sleep(250);
+  ok('mobile extended wheel uses a compact chip grid',
+    (await mp.locator('#ceWheelStage').evaluate(el => el.classList.contains('grid'))) &&
+    (await mp.locator('#ceWheelStage .ce-wheel-chip').count()) === 14);
+  const hubBox = await mp.locator('#ceWheelHub').evaluate(el => ({ position: getComputedStyle(el).position, height: Math.round(el.getBoundingClientRect().height) }));
+  ok('mobile Back control sits in the grid, not over a chip', hubBox.position === 'static', JSON.stringify(hubBox));
+  await mp.keyboard.press('Escape');
+  const wrap = await mp.evaluate(() => {
+    const lines = [...document.querySelectorAll('#ceCanvas .ce-line')];
+    const line = lines.find(l => new Set([...l.querySelectorAll('.ce-word')].map(w => Math.round(w.getBoundingClientRect().top))).size > 1) || lines[0];
+    const rows = new Set([...line.querySelectorAll('.ce-word')].map(w => Math.round(w.getBoundingClientRect().top))).size;
+    const dx = [...line.querySelectorAll('.ce-chord')].map(el => {
+      const ch = line.querySelector('.ce-ch[data-i="' + el.dataset.pos + '"]');
+      return ch ? +(el.getBoundingClientRect().left - ch.getBoundingClientRect().left).toFixed(1) : null;
+    });
+    return { rows, dx };
+  });
+  ok('wrapped lyric lines keep every chord on its character', wrap.rows > 1 && wrap.dx.length > 0 && wrap.dx.every(d => d !== null && Math.abs(d) <= 1), JSON.stringify(wrap));
+  await mp.locator('#ceSaveBtn').click();
+  await sleep(600);
+  const readWrap = await mp.evaluate(() => {
+    const out = [];
+    document.querySelectorAll('.chord-line-pos').forEach(lineEl => {
+      lineEl.querySelectorAll('.chord-read').forEach(el => {
+        const ch = lineEl.querySelector('.ce-ch[data-i="' + el.dataset.pos + '"]');
+        if (ch) out.push(+(el.getBoundingClientRect().left - ch.getBoundingClientRect().left).toFixed(1));
+      });
+    });
+    return out;
+  });
+  ok('reader keeps wrapped-line chords on their characters', readWrap.length > 0 && readWrap.every(d => Math.abs(d) <= 1), JSON.stringify(readWrap));
+  await mp.close();
 });
 
 // ═══════════════ 12. PWA: SW + OFFLINE ═══════════════
