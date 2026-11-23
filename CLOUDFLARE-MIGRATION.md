@@ -1,6 +1,6 @@
 # Cloudflare-first migration plan — Khristian Labu
 
-**Status:** Phase 1 complete; Phase 2 pipeline and in-app updater complete (1.5.65 published; the 1.5.64 → 1.5.65 update was installed through the app on the SM-S921B); Phase 3 API complete (Google sign-in pending); Phase 4 production cutover complete, with the 30–60 day compatibility soak in progress; Phase 5 pending.
+**Status:** Phase 1 complete; Phase 2 pipeline and in-app updater complete (1.5.68 published; the 1.5.67 → 1.5.68 update was interrupted and resumed on the SM-S921B); Phase 3 API complete (Google sign-in pending); Phase 4 production cutover complete, with the 30–60 day compatibility soak in progress; Phase 5 pending.
 **Last audited:** 2026-11-24
 **Scope:** website hosting, database/auth, APK build/distribution, and the supporting Cloudflare configuration.
 
@@ -24,6 +24,7 @@
 - **2026-11-23 — signed 1.5.63 published.** Pushed tag `v1.5.63`; [run 45228490708](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45228490708) built and published the release in 3m34s. APK: **37,391,762 bytes**, SHA-256 `df8e184f3164ee50a7095445f26dfbe95a0aa15d0d4814d7ad8ac6917ed94dc4`. The signer certificate digest matches 1.5.62 (`1f4f4bb4dcfdbfd34b769b1fdb29a588a3cb82529e9b58a1504e410a89000afb`), so existing release installs update in place. R2 `latest.json` and GitHub Release `v1.5.63` both point at it.
 - **2026-11-23 — production web cutover complete.** Pushed `main`; [run 45229428623](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45229428623) deployed Pages. The live site serves 1.5.63, `sw.js` cache `labu-v134`, and a browser check loaded state version 772 with 772 edits, no page errors, and 200s from `/api/state` and `/api/published-edits`.
 - **2026-11-23/24 — native updater released and tested.** `v1.5.64` [run 45238150902](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45238150902) and `v1.5.65` [run 45239082836](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45239082836) both signed and published; 1.5.65 is **37,395,678 bytes**, SHA-256 `bea6c925bcf3aaab9f6bd399fb055c6356cfbf2559fcae15e91549b69222757d`. R2 CORS now allows `GET`/`HEAD` for the public artifacts. On the SM-S921B, 1.5.64 installed over 1.5.63 with data intact; **Settings → Check for update** fetched 1.5.65, downloaded it in-app, verified size/SHA-256, and installed it. The phone reports 1565/1.5.65 and the saved favourite is still present. Browser suite: 201/201. Android auto-allowed `REQUEST_INSTALL_PACKAGES` for the self-update, so the denied uninstall-sources handoff was not exercised on this device; its JS state and native settings intent are covered by the E2E simulation and code path.
+- **2026-11-24 — updater UX, detection, and resume verified.** Published signed 1.5.66/1566 ([run 45245733265](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45245733265), SHA-256 `02fde3e3c2ce70d53a7f39d9d9c5195b509dea12369354c624555826ac4f6d4d`), 1.5.67/1567 ([run 45246546732](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45246546732), SHA-256 `0787a46ff7c645477ef50bba9e5c370043b3b110a35b61188e6ed32204846ee4`), and 1.5.68/1568 ([run 45247374617](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45247374617), SHA-256 `db00f3d20727ff67ee448dddae9cf1510351f9da5bd6a9dcee49fca06351bd27`), all **37,397,862 bytes**. The checker now takes the higher of `version.json` and `latest.json`, so R2 can publish before Pages/raw GitHub catches up. The website hides **Check for update**; native startup shows a centered dialog and minimizes to a floating progress pill when the backdrop is tapped. Toasts are removed. On the SM-S921B, the 1.5.67 → 1.5.68 download was killed after `HTTP 200`; relaunch logged `partial resume=true bytes=285683` and `HTTP 206 append=true`, the UI showed “Resuming update…”, and 1.5.68 installed with the saved favourite intact. Browser suite: **203/203**.
 
 ---
 
@@ -87,9 +88,9 @@ The data volume is tiny. The difficult parts are **Postgres-specific behavior** 
 ### 2.3 Android/APK
 
 - Package: `org.khristianlabu.app`
-- Version at audit: `1.5.62`, versionCode `1562`; current after updater testing: `1.5.65`, versionCode `1565`
+- Version at audit: `1.5.62`, versionCode `1562`; current after updater testing: `1.5.68`, versionCode `1568`
 - compileSdk/targetSdk: 36; minSdk: 24
-- APK size: 37,392,250 bytes (~35.7 MiB) at audit; 37,395,678 bytes for 1.5.64/1.5.65
+- APK size: 37,392,250 bytes (~35.7 MiB) at audit; 37,395,678 bytes for 1.5.64/1.5.65; 37,397,862 bytes for 1.5.66–1.5.68
 - The APK is built and signed by `.github/workflows/android-release.yml`; `apksigner` verification passes in CI.
 - Release signing uses the `KEYSTORE_*` repository secrets. Keystore values are never committed or printed.
 - `android/` native source is tracked. Generated outputs, `local.properties`, copied web assets, and keystore files are ignored.
@@ -608,10 +609,12 @@ The shipped path is intentionally the least-privileged one that works on a side-
 - `REQUEST_INSTALL_PACKAGES` in the manifest.
 - Check `version.json`; on **Update now**, fetch `latest.json` from R2 for the URL, size, and SHA-256.
 - Download into app-private cache with progress reporting (`UpdateInstaller.java`).
-- Enforce the published size and SHA-256 before doing anything with the file.
+- Keep a `.part` file and URL/hash/size sidecar; resume an interrupted transfer with an HTTP `Range` request.
+- Enforce the published size and full-file SHA-256 before doing anything with the file.
 - Expose the verified file through `FileProvider` and launch `ACTION_VIEW` with the APK MIME type.
 - If `canRequestPackageInstalls()` is false, open `ACTION_MANAGE_UNKNOWN_APP_SOURCES` for the package and retry on `onResume`.
-- Show permission, progress, error, and Retry states in the existing update card; keep the browser/GitHub Release fallback.
+- Show a centered download dialog and minimize it to a floating progress pill when the backdrop is tapped; the download continues. Permission, error, and Retry states share the dialog. Toasts are removed.
+- Keep the browser/GitHub Release fallback; the website itself hides the manual check and skips startup checks.
 - Android always shows its own install confirmation. This is not a silent installer.
 - `UPDATE_PACKAGES_WITHOUT_USER_ACTION` / `PackageInstaller` sessions are **not** used: they do not remove OEM or Advanced Protection prompts, and they add privileged-installer complexity without a user-visible guarantee.
 
@@ -707,7 +710,7 @@ Live URLs:
 - [x] Publish APK v1.5.62 to R2 and GitHub Releases.
 - [x] Verify signature, checksum, R2 download, and GitHub Release fallback.
 - [x] Verify install/upgrade on a physical Android device — debug-signed 1.5.62 installed in place over 1.5.61 on the connected SM-S921B; data preserved, cold launch 3.2 s, no fatal errors. The release-signed APK still requires a one-time uninstall/reinstall because its key differs.
-- [x] Add the in-app updater in 1.5.64 and test the 1.5.64 → 1.5.65 install on the SM-S921B.
+- [x] Add the in-app updater in 1.5.64; verify the 1.5.64 → 1.5.65 install and the 1.5.67 → 1.5.68 resumable/minimized flow on the SM-S921B.
 
 Published artifacts:
 
