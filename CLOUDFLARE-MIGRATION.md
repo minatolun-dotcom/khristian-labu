@@ -750,9 +750,9 @@ Staging details:
 - [x] Publish 1.5.63 signed with the release key.
 - [x] Deploy the 1.5.63 web build to Pages and complete the public cutover.
 - [x] Keep Supabase online for old APKs (still read/write until they are replaced).
-- [x] Temporary Worker → Supabase publish bridge is not needed: new web/APK traffic uses D1, and the old APK is being retired by update adoption.
-- [ ] Monitor errors, sync lag, and update adoption during the 30–60 day soak.
-- [ ] Decommission Supabase after the 30–60 day compatibility window.
+- [x] No bridge for current data: the Supabase pending-proposal queue was empty at cutover. Monitor it during update adoption; import anything that appears before decommissioning.
+- [ ] Monitor errors, sync lag, old-APK proposals, and update adoption during the 30–60 day soak.
+- [ ] Decommission Supabase after the 30–60 day compatibility window, once the legacy pending-proposal queue is empty.
 
 **Release facts:** `latest.json` → 1.5.63 (1563), SHA-256
 `df8e184f3164ee50a7095445f26dfbe95a0aa15d0d4814d7ad8ac6917ed94dc4`. The release
