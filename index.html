@@ -718,26 +718,37 @@ body[data-view="list"] #listFastScroll.on{display:block;pointer-events:auto;}
 .logged-in-bar.show{display:flex;}
 .logged-in-bar button{background:none;border:none;color:var(--accent-ink);cursor:pointer;font-size:0.8rem;text-decoration:underline;}
 
-/* ─── TOAST ─── */
-.toast-container{position:fixed;bottom:2rem;right:2rem;z-index:300;display:flex;flex-direction:column;gap:0.5rem;}
-.toast{padding:12px 20px;border-radius:var(--radius-sm);background:var(--card);border:1px solid var(--border);color:var(--text);font-size:0.85rem;animation:slideUp 0.3s ease-out;box-shadow:0 8px 24px rgba(0,0,0,0.3);}
-/* Update prompt: a centered card that stays put until the user updates or dismisses it. */
-.update-banner{position:fixed;z-index:340;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:0.6rem;width:max-content;max-width:min(92vw,380px);padding:18px;border-radius:18px;background:var(--card);border:1px solid var(--border);box-shadow:0 20px 50px rgba(0,0,0,0.45);animation:updPop 0.3s var(--ease-spring);}
-@keyframes updPop{from{opacity:0;transform:translate(-50%,-46%) scale(0.95);}to{opacity:1;transform:translate(-50%,-50%) scale(1);}}
+/* ─── UPDATE PROMPT ─── */
+.update-overlay{position:fixed;inset:0;z-index:340;display:flex;align-items:center;justify-content:center;padding:1rem;background:rgba(0,0,0,.58);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);}
+.update-overlay[hidden]{display:none;}
+.update-banner{position:relative;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:0.65rem;width:min(92vw,380px);padding:26px 22px 20px;border-radius:20px;background:var(--card);border:1px solid var(--border);box-shadow:0 24px 70px rgba(0,0,0,0.5);animation:updPop 0.25s var(--ease-spring);}
+@keyframes updPop{from{opacity:0;transform:scale(0.94);}to{opacity:1;transform:scale(1);}}
 .update-banner[hidden]{display:none;}
 .upd-text{color:var(--text);white-space:normal;text-align:center;flex:1 1 100%;font-size:0.9rem;line-height:1.45;}
 .upd-text b{color:var(--accent-ink);}
 .upd-btn{background:var(--warm);color:var(--warm-ink);padding:0.5rem 1.1rem;border-radius:999px;font-size:0.85rem;font-weight:600;text-decoration:none;white-space:nowrap;transition:filter 0.2s;}
 .upd-btn:hover{filter:brightness(1.1);}
 .upd-btn[hidden]{display:none;}
-.upd-close{background:none;border:none;color:var(--text3);font-size:1.4rem;cursor:pointer;line-height:1;padding:0 0.4rem;}
-.upd-close:hover{color:var(--text);}
+.upd-min{position:absolute;top:9px;right:9px;width:30px;height:30px;display:grid;place-items:center;background:none;border:none;border-radius:50%;color:var(--text3);cursor:pointer;transition:color .2s,background .2s;}
+.upd-min:hover{color:var(--text);background:var(--border);}
+.upd-min svg{width:16px;height:16px;}
 .upd-progress{flex:1 1 100%;display:flex;flex-direction:column;gap:6px;margin-top:2px;}
 .upd-progress[hidden]{display:none;}
 .upd-progress-track{height:6px;border-radius:999px;overflow:hidden;background:var(--border);}
 .upd-progress-fill{height:100%;width:0;border-radius:inherit;background:var(--warm);transition:width 0.2s ease;}
 .upd-progress-note{font-size:0.74rem;line-height:1.4;color:var(--text3);text-align:center;}
-@media(max-width:768px){.update-banner{max-width:calc(100vw - 2rem);padding:16px;}}
+.upd-hint{flex:1 1 100%;font-size:0.72rem;line-height:1.4;color:var(--text3);text-align:center;margin-top:1px;}
+.update-fab{position:fixed;z-index:335;left:50%;bottom:calc(var(--tabbar-h,0px) + var(--sab,0px) + 14px);transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--text);box-shadow:0 10px 30px rgba(0,0,0,0.4);cursor:pointer;font-size:0.78rem;font-weight:600;animation:updFabIn 0.2s ease-out;}
+.update-fab[hidden]{display:none;}
+.update-fab svg{width:16px;height:16px;color:var(--warm);}
+.update-fab.error svg{color:var(--rose);}
+@keyframes updFabIn{from{opacity:0;transform:translate(-50%,8px);}to{opacity:1;transform:translate(-50%,0);}}
+@media(min-width:769px){.update-fab{bottom:24px;}}
+@media(max-width:768px){.update-banner{max-width:calc(100vw - 2rem);padding:24px 18px 18px;}}
+#checkUpdateRow{display:none;}
+body.native-app #checkUpdateRow{display:flex;}
+.settings-update-note{padding:0.65rem 0.9rem;font-size:0.78rem;line-height:1.45;color:var(--text3);border-top:1px solid var(--border);}
+.settings-update-note[hidden]{display:none;}
 
 /* ─── CONFIRM DIALOG ─── */
 .confirm-body{text-align:center;padding:1rem 0;}
@@ -812,8 +823,6 @@ body[data-view="list"] #listFastScroll.on{display:block;pointer-events:auto;}
   .modal-body{padding:1rem;}
   .form-row{grid-template-columns:1fr;}
   .login-box{padding:1.5rem;}
-  .toast-container{bottom:1rem;right:1rem;left:1rem;}
-  .toast{font-size:0.8rem;padding:10px 16px;}
 }
 @media(max-width:380px){
   .logo span{display:none;}
@@ -1032,7 +1041,6 @@ body[data-view="list"] #listFastScroll.on{display:block;pointer-events:auto;}
   .modal-header{position:relative;padding-top:1.35rem;}
   .modal-header::before{content:'';position:absolute;top:7px;left:50%;transform:translateX(-50%);width:38px;height:4px;border-radius:99px;background:var(--border);}
   #sidebarModal .modal{max-width:100% !important;}
-  .toast-container{bottom:calc(var(--tabbar-h) + var(--sab,0px) + 14px);}
 
   /* Reader footer: the glass control pill floats over the page, no solid bar. */
   #readerControlsHost{background:transparent;border-top:none;}
@@ -1074,8 +1082,6 @@ nav.scrolled{box-shadow:0 10px 28px rgba(20,32,64,.10);}
 .modal-overlay.open{animation:overlayIn .22s ease-out;}
 @keyframes overlayIn{from{opacity:0;}to{opacity:1;}}
 .modal{animation:slideUp var(--dur-3) var(--ease-out);}
-.toast{animation:toastIn var(--dur-4) var(--ease-spring);}
-@keyframes toastIn{from{opacity:0;transform:translateY(14px) scale(.96);}to{opacity:1;transform:none;}}
 
 /* Pointer devices get tactile hover feedback; touch gets the press states. */
 @media (hover:hover) and (pointer:fine){
@@ -1406,15 +1412,24 @@ body.edge-back #detailView .song-detail{box-shadow:-18px 0 48px rgba(0,0,0,.38);
     </div>
   </div>
 </nav>
-<div id="updateBanner" class="update-banner" role="dialog" aria-live="polite" hidden>
-  <span class="upd-text" id="updText">Version <b id="updVer"></b> is ready to install</span>
-  <a id="updBtn" class="upd-btn" target="_blank" rel="noopener">Update now</a>
-  <button class="upd-close" onclick="dismissUpdate()" aria-label="Dismiss">×</button>
-  <div class="upd-progress" id="updProgress" hidden>
-    <div class="upd-progress-track"><div class="upd-progress-fill" id="updProgressFill"></div></div>
-    <div class="upd-progress-note" id="updProgressNote"></div>
+<div id="updateOverlay" class="update-overlay" hidden onclick="if(event.target===this)minimizeUpdate()">
+  <div id="updateBanner" class="update-banner" role="dialog" aria-modal="true" aria-live="polite">
+    <button class="upd-min" onclick="minimizeUpdate()" aria-label="Minimize update">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <span class="upd-text" id="updText">Version <b id="updVer"></b> is ready to install</span>
+    <a id="updBtn" class="upd-btn" target="_blank" rel="noopener">Update now</a>
+    <div class="upd-progress" id="updProgress" hidden>
+      <div class="upd-progress-track"><div class="upd-progress-fill" id="updProgressFill"></div></div>
+      <div class="upd-progress-note" id="updProgressNote"></div>
+    </div>
+    <div class="upd-hint" id="updHint">Tap outside to keep downloading in the background.</div>
   </div>
 </div>
+<button id="updateFab" class="update-fab" hidden onclick="restoreUpdate()" aria-label="Show update download">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><polyline points="7 9 12 14 17 9"/><path d="M5 21h14"/></svg>
+  <span id="updateFabText">Update</span>
+</button>
 <div class="modal-overlay" id="sidebarModal" onclick="if(event.target===this)closeSidebar()">
   <div class="modal" style="max-width:360px;">
     <div class="modal-header">
@@ -2452,11 +2467,12 @@ Second verse line 2"></textarea>
           <input id="settingsPlaylistName" type="text" maxlength="48" placeholder="New playlist name" aria-label="New playlist name" onkeydown="if(event.key==='Enter'){event.preventDefault();createPlaylistFromSettings();}">
           <button type="button" class="settings-create-btn" onclick="createPlaylistFromSettings()">Create</button>
         </div>
-        <button class="settings-row" onclick="manualCheckUpdate()">
+        <button class="settings-row" id="checkUpdateRow" onclick="manualCheckUpdate()">
           <span class="sr-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
           <span class="sr-label">Check for update</span>
           <svg class="sr-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 6 15 12 9 18"/></svg>
         </button>
+        <div class="settings-update-note" id="updateStatus" hidden></div>
       </div>
     </section>
 
@@ -2547,7 +2563,6 @@ Second verse line 2"></textarea>
   </div>
 </div>
 
-<div class="toast-container" id="toastContainer"></div>
 <input type="file" id="restoreFile" accept="application/json,.json" style="display:none">
 <!-- Floating song-action menu (share / favourite / playlist / edit) -->
 <div id="waFabWrap" style="display:none;">
@@ -2568,10 +2583,14 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.65'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.66'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 const LATEST_JSON = 'https://dl.labu.lengkhawm.online/latest.json';
 let latestUpdate = null;
+let updateState = 'idle';
+let updatePercent = -1;
+let updateMessage = '';
+let updateMinimized = false;
 // ─── CLOUD SYNC (Cloudflare Worker + D1) — approved changes reach every device ───
 // The API URL is baked in for production. `window.LABU_CLOUD_API` wins so a fork
 // or test harness can point at staging, and an empty value disables cloud sync
@@ -2756,8 +2775,6 @@ async function init() {
   history.replaceState(buildState(), '');
   window.addEventListener('popstate', e => applyState(e.state));
   initHomeActions();
-  // ponytail: free update notifications via GitHub Releases (CORS-enabled API)
-  checkForUpdate();
   // approved-change sync: pull the layer, retry queued submissions, poll on focus
   cloudStart();
   // ponytail: Android hardware Back has no default handler -> app closes. Mirror web behavior:
@@ -2781,14 +2798,16 @@ async function init() {
   const minVisible = 620 - (performance.now() - bootStart);
   if (minVisible > 0) await new Promise(r => setTimeout(r, minVisible));
   await hideBootLoader();
+  // Check after the boot cover is gone so the centered update dialog is never hidden behind it.
+  checkForUpdate();
   const idlePrewarm = () => { try { prewarmViews(); } catch (e) { console.error('[Khristian Labu] prewarm failed:', e); } };
   if ('requestIdleCallback' in window) requestIdleCallback(idlePrewarm, { timeout: 3000 });
   else setTimeout(idlePrewarm, 900);
 }
 
-// ─── UPDATE CHECKER (static version.json → direct APK download) ───
-// ponytail: the app only DETECTS a newer release and hands the APK link to the
-// system browser, which downloads it and offers to install it (no custom installer).
+// ─── UPDATE CHECKER (version.json + latest.json → native resumable install) ───
+// The highest published version wins; latest.json supplies the verified APK URL.
+// Native builds download in-app. The browser fallback remains for old APKs.
 function compareVer(a, b) {
   const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
@@ -2802,17 +2821,22 @@ function compareVer(a, b) {
 function apkDownloadUrl() { return (latestUpdate && latestUpdate.url) || 'https://github.com/' + REPO + '/releases/latest/download/khristian-labu.apk'; }
 function isNativeApp() { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
 function isNativeUpdater() { return isNativeApp() && !!window.KhristianUpdate && typeof window.KhristianUpdate.start === 'function'; }
-async function fetchLatestMeta(version) {
+async function fetchLatestJsonMeta() {
   try {
-    const res = await fetch(LATEST_JSON + '?v=' + encodeURIComponent(version), { cache: 'no-store' });
+    const res = await fetch(LATEST_JSON + '?t=' + Date.now(), { cache: 'no-store' });
     if (!res.ok) return null;
     const j = await res.json();
-    const v = String(j.version || '').replace(/^v/, '');
+    const version = String(j.version || '').replace(/^v/, '');
     const url = String(j.url || '');
     const sha256 = String(j.sha256 || '').toLowerCase();
-    if (v !== version || !/^https:\/\//.test(url) || !/^[0-9a-f]{64}$/.test(sha256)) return null;
-    return { version: v, url, sha256, size: Number(j.size) || 0 };
+    if (!version || !/^https:\/\//.test(url) || !/^[0-9a-f]{64}$/.test(sha256)) return null;
+    return { version, url, sha256, size: Number(j.size) || 0 };
   } catch (e) { return null; }
+}
+async function fetchLatestMeta(version) {
+  const meta = await fetchLatestJsonMeta();
+  if (!meta) return null;
+  return !version || meta.version === version ? meta : null;
 }
 function openApkDownload() {
   const url = apkDownloadUrl();
@@ -2836,9 +2860,50 @@ function initHomeActions() {
   const repo = document.getElementById('homeRepoBtn'); if (repo) repo.href = githubRepoUrl();
   wrap.hidden = false; // markup ships hidden; the website is the only place that shows it
 }
-function dismissUpdate() {
-  try { localStorage.setItem('labu_update_dismissed', document.getElementById('updVer').textContent); } catch (e) {}
-  const b = document.getElementById('updateBanner'); if (b) b.hidden = true;
+function setUpdateStatus(text) {
+  const el = document.getElementById('updateStatus');
+  if (!el) return;
+  el.textContent = text || '';
+  el.hidden = !text;
+}
+function updateFabVisual() {
+  const fab = document.getElementById('updateFab');
+  const label = document.getElementById('updateFabText');
+  if (!fab || !label) return;
+  const version = document.getElementById('updVer').textContent || '';
+  let text = 'Update';
+  if (updateState === 'preparing') text = 'Preparing…';
+  else if (updateState === 'downloading') text = updatePercent >= 0 ? 'Downloading ' + updatePercent + '%' : 'Downloading…';
+  else if (updateState === 'permission') text = 'Allow installs';
+  else if (updateState === 'installing' || updateState === 'ready') text = 'Installing…';
+  else if (updateState === 'error') text = 'Retry update';
+  else if (version) text = 'Update ' + version;
+  label.textContent = text;
+  fab.classList.toggle('error', updateState === 'error');
+  fab.setAttribute('aria-label', 'Show update: ' + text);
+}
+function openUpdatePopup() {
+  const overlay = document.getElementById('updateOverlay');
+  if (overlay) overlay.hidden = false;
+  const fab = document.getElementById('updateFab');
+  if (fab) fab.hidden = true;
+  updateMinimized = false;
+}
+function minimizeUpdate() {
+  if (updateState === 'idle') return;
+  const overlay = document.getElementById('updateOverlay');
+  if (overlay) overlay.hidden = true;
+  updateMinimized = true;
+  const fab = document.getElementById('updateFab');
+  if (fab) fab.hidden = false;
+  updateFabVisual();
+}
+function restoreUpdate() {
+  const fab = document.getElementById('updateFab');
+  if (fab) fab.hidden = true;
+  const overlay = document.getElementById('updateOverlay');
+  if (overlay) overlay.hidden = false;
+  updateMinimized = false;
 }
 function setUpdButton(label, handler) {
   const btn = document.getElementById('updBtn');
@@ -2848,64 +2913,86 @@ function setUpdButton(label, handler) {
   btn.href = apkDownloadUrl();
   btn.onclick = handler ? (e) => { e.preventDefault(); handler(); } : null;
 }
-function setUpdateProgress(state, percent, message) {
-  const banner = document.getElementById('updateBanner');
+function renderUpdateState() {
+  const overlay = document.getElementById('updateOverlay');
   const progress = document.getElementById('updProgress');
   const fill = document.getElementById('updProgressFill');
   const note = document.getElementById('updProgressNote');
-  if (!banner || !progress || !fill || !note) return;
-  banner.hidden = false;
-  if (state === 'preparing' || state === 'downloading') {
+  const hint = document.getElementById('updHint');
+  const btn = document.getElementById('updBtn');
+  if (!overlay || !progress || !fill || !note || !hint || !btn) return;
+  overlay.hidden = updateMinimized;
+  const fab = document.getElementById('updateFab');
+  if (fab) fab.hidden = !updateMinimized;
+  if (updateState === 'available') {
+    progress.hidden = true;
+    fill.style.width = '0%';
+    note.textContent = '';
+    btn.hidden = false;
+    btn.textContent = 'Update now';
+    hint.textContent = 'Tap outside to minimize this prompt.';
+  } else if (updateState === 'preparing' || updateState === 'downloading') {
     progress.hidden = false;
-    const base = message || (percent >= 0 ? 'Downloading update…' : 'Preparing update…');
-    fill.style.width = percent >= 0 ? Math.max(0, Math.min(100, percent)) + '%' : '20%';
-    note.textContent = percent >= 0 && !/%/.test(base) ? base + ' ' + percent + '%' : base;
-    setUpdButton('', null);
-    document.getElementById('updBtn').hidden = true;
-  } else if (state === 'permission') {
-    progress.hidden = false;
-    note.textContent = message || 'Allow installs from Khristian Labu, then return here.';
+    const base = updateMessage || (updateState === 'preparing' ? 'Preparing update…' : 'Downloading update…');
+    fill.style.width = updatePercent >= 0 ? Math.max(1, Math.min(99, updatePercent)) + '%' : '8%';
+    note.textContent = updatePercent >= 0 && !/%/.test(base) ? base + ' ' + updatePercent + '%' : base;
+    btn.hidden = true;
+    hint.textContent = 'Tap outside to keep downloading in the background.';
+  } else if (updateState === 'permission') {
+    progress.hidden = true;
+    note.textContent = '';
+    btn.hidden = false;
     setUpdButton('Open settings', () => window.KhristianUpdate.openInstallSettings());
-  } else if (state === 'installing') {
+    hint.textContent = 'Allow installs from Khristian Labu, then return here.';
+  } else if (updateState === 'installing' || updateState === 'ready') {
     progress.hidden = false;
     fill.style.width = '100%';
-    note.textContent = message || 'Opening the Android installer…';
-    document.getElementById('updBtn').hidden = true;
-  } else if (state === 'ready') {
+    note.textContent = updateMessage || 'Opening the Android installer…';
+    btn.hidden = true;
+    hint.textContent = 'Android will ask you to confirm the install.';
+  } else if (updateState === 'installed') {
     progress.hidden = false;
     fill.style.width = '100%';
-    note.textContent = message || 'Update downloaded. Opening the installer…';
-    document.getElementById('updBtn').hidden = true;
-  } else if (state === 'installed') {
-    progress.hidden = false;
-    fill.style.width = '100%';
-    note.textContent = message || 'Update installed. Reloading…';
-    document.getElementById('updBtn').hidden = true;
-  } else if (state === 'error') {
+    note.textContent = updateMessage || 'Update installed.';
+    btn.hidden = true;
+    hint.textContent = '';
+  } else if (updateState === 'error') {
     progress.hidden = false;
     fill.style.width = '0%';
-    note.textContent = message || 'Update failed.';
-    setUpdButton('Retry', () => startInAppUpdate({ version: (latestUpdate && latestUpdate.version) || document.getElementById('updVer').textContent }));
-    toast(message || 'Update failed.', 'error');
+    note.textContent = updateMessage || 'Update failed.';
+    btn.hidden = false;
+    setUpdButton('Retry', () => startInAppUpdate({ version: (latestUpdate && latestUpdate.version) || document.getElementById('updVer').textContent, meta: latestUpdate }));
+    hint.textContent = 'Your partial download is kept, so Retry can resume it.';
   }
+  updateFabVisual();
+}
+function setUpdateProgress(state, percent, message) {
+  updateState = state || 'idle';
+  updatePercent = Number.isFinite(percent) ? percent : -1;
+  updateMessage = message || '';
+  renderUpdateState();
 }
 async function startInAppUpdate(info) {
   if (!isNativeUpdater()) { openApkDownload(); return; }
   info = info || {};
   const version = String(info.version || document.getElementById('updVer').textContent || '');
-  setUpdateProgress('preparing', -1, 'Preparing update…');
-  const meta = (latestUpdate && latestUpdate.version === version) ? latestUpdate : await fetchLatestMeta(version);
+  updateState = 'preparing';
+  updatePercent = -1;
+  updateMessage = '';
+  openUpdatePopup();
+  renderUpdateState();
+  const meta = (info.meta && info.meta.version === version ? info.meta : null)
+    || (latestUpdate && latestUpdate.version === version ? latestUpdate : null)
+    || await fetchLatestMeta(version);
   if (!meta) {
-    setUpdateProgress('error', 0, 'Update details are unavailable. Opening the download page.');
-    openApkDownload();
+    setUpdateProgress('error', -1, 'Update details are unavailable. Try again.');
     return;
   }
   latestUpdate = meta;
   try {
     window.KhristianUpdate.start(meta.url, meta.sha256, String(meta.size || ''), meta.version);
   } catch (e) {
-    setUpdateProgress('error', 0, 'Could not start the update. Opening the download page.');
-    openApkDownload();
+    setUpdateProgress('error', -1, 'Could not start the update. Try again.');
   }
 }
 window.__labuUpdateProgress = function(state, percent, message) {
@@ -2913,27 +3000,34 @@ window.__labuUpdateProgress = function(state, percent, message) {
 };
 function showUpdateBanner(latest, meta) {
   latestUpdate = meta && meta.version === latest ? meta : null;
+  updateState = 'available';
+  updatePercent = -1;
+  updateMessage = '';
+  updateMinimized = false;
+  setUpdateStatus('');
   document.getElementById('updVer').textContent = latest;
   document.getElementById('updProgress').hidden = true;
   document.getElementById('updProgressFill').style.width = '0%';
   document.getElementById('updProgressNote').textContent = '';
-  const btn = document.getElementById('updBtn');
-  btn.hidden = false;
-  btn.href = apkDownloadUrl();
-  if (isNativeUpdater()) {
-    setUpdButton('Update now', () => startInAppUpdate({ version: latest }));
-  } else {
-    // Browser visitors still get the direct APK asset download.
-    btn.textContent = 'Update now';
-    btn.onclick = null;
-  }
-  document.getElementById('updateBanner').hidden = false;
+  setUpdButton('Update now', () => startInAppUpdate({ version: latest, meta: latestUpdate }));
+  openUpdatePopup();
+  renderUpdateState();
   const lv = document.getElementById('latestVersion');
   if (lv) { document.getElementById('latestVersionVal').textContent = latest; lv.style.display = ''; }
 }
-// ponytail: version.json is a tiny static file (no rate limit, CORS-open) so it is the
-// primary source; the GitHub API is only a fallback.
+// ponytail: version.json can lag the R2 metadata right after a publish, so use the
+// highest version from both sources. latest.json also carries URL/size/SHA-256.
 async function fetchUpdateInfo() {
+  let best = null;
+  const consider = (version, meta) => {
+    version = String(version || '').replace(/^v/, '');
+    if (!version) return;
+    if (!best || compareVer(version, best.version) > 0) {
+      best = { version, meta: meta && meta.version === version ? meta : null };
+    }
+  };
+  const latest = await fetchLatestJsonMeta();
+  if (latest) consider(latest.version, latest);
   const hosts = [
     'https://raw.githubusercontent.com/' + REPO + '/main/version.json',
     'https://labu.lengkhawm.online/version.json',
@@ -2943,41 +3037,40 @@ async function fetchUpdateInfo() {
       const res = await fetch(u, { headers: { 'Accept': 'application/json' }, cache: 'no-store' });
       if (!res.ok) continue;
       const j = await res.json();
-      const version = String(j.version || '').replace(/^v/, '');
-      if (version) return { version };
+      consider(j.version, null);
     } catch (e) { /* try next host */ }
   }
-  try {
-    const res = await fetch('https://api.github.com/repos/' + REPO + '/releases/latest',
-      { headers: { 'Accept': 'application/vnd.github+json' } });
-    if (!res.ok) return null;
-    const d = await res.json();
-    const version = String(d.tag_name || '').replace(/^v/, '');
-    return version ? { version } : null;
-  } catch (e) { return null; }
+  if (!best) {
+    try {
+      const res = await fetch('https://api.github.com/repos/' + REPO + '/releases/latest',
+        { headers: { 'Accept': 'application/vnd.github+json' } });
+      if (res.ok) {
+        const d = await res.json();
+        consider(d.tag_name, null);
+      }
+    } catch (e) { /* no release fallback */ }
+  }
+  return best;
 }
-// ponytail: Settings → Check for update. On a newer release show the banner and send
-// the user straight to the GitHub release page for a manual download/install.
 async function manualCheckUpdate() {
-  toast('Checking for updates…', 'success');
+  if (!isNativeUpdater()) return;
+  setUpdateStatus('Checking for updates…');
   const info = await fetchUpdateInfo();
-  if (!info) { toast('Could not check for updates', 'error'); return; }
+  if (!info) { setUpdateStatus('Could not check for updates. Try again.'); return; }
   if (compareVer(info.version, APP_VERSION) > 0) {
-    showUpdateBanner(info.version);
-    toast('Update available: v' + info.version, 'success');
-    if (isNativeUpdater()) startInAppUpdate(info);
-    else openApkDownload();
+    showUpdateBanner(info.version, info.meta);
+    startInAppUpdate(info);
   } else {
-    toast('You are on the latest version (' + APP_VERSION + ')', 'success');
+    setUpdateStatus('You are on the latest version (' + APP_VERSION + ').');
   }
 }
-// ponytail: silent check on start-up; the banner links to the releases page.
+// ponytail: native-only startup check. The website always serves the newest build.
 async function checkForUpdate() {
+  if (!isNativeUpdater()) return;
   const info = await fetchUpdateInfo();
-  if (!info) return;
-  if (compareVer(info.version, APP_VERSION) <= 0) return;
-  if (localStorage.getItem('labu_update_dismissed') === info.version) return;
-  showUpdateBanner(info.version);
+  if (!info || compareVer(info.version, APP_VERSION) <= 0) return;
+  showUpdateBanner(info.version, info.meta);
+  startInAppUpdate(info);
 }
 
 // ─── INDEXEDDB (replaces the localStorage full-corpus store, which has a ~5MB quota) ───
@@ -8278,17 +8371,9 @@ async function doDelete() {
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
-// ─── TOAST ───
-function toast(msg, type) {
-  // Routine confirmations stay silent; only update-related notices use toasts.
-  if (!/update|version/i.test(String(msg))) return;
-  const c = document.getElementById('toastContainer');
-  const t = document.createElement('div');
-  t.className = 'toast ' + (type || '');
-  t.textContent = msg;
-  c.appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(() => t.remove(), 300); }, 2500);
-}
+// Toasts were removed from the product. Keep this no-op so existing call sites
+// stay harmless while feedback moves into the relevant view or update card.
+function toast() {}
 
 // ─── UTILS ───
 // ponytail: reuse one detached div instead of allocating per call — esc() runs on
@@ -9008,7 +9093,7 @@ async function captureFullSong() {
   // page up by its height for the duration of the capture (the "page jumps" bug).
   const hideStyle = document.createElement('style');
   hideStyle.id = 'capture-hide-chrome';
-  hideStyle.textContent = 'nav,#tabBar{visibility:hidden!important;}#waFabWrap,#otaProgress,#toastContainer{display:none!important;}';
+  hideStyle.textContent = 'nav,#tabBar{visibility:hidden!important;}#waFabWrap{display:none!important;}';
   document.head.appendChild(hideStyle);
   try {
     const canvas = await html2canvas(clone, {
@@ -9031,7 +9116,7 @@ async function captureFullSong() {
         // over the top of every shared image. This was THE "overlay" users saw.
         s.textContent = 'body::before,body::after{display:none!important;background:none!important;}' +
           '.modal-overlay{display:none!important;}' +
-          'nav,#tabBar{visibility:hidden!important;}#waFabWrap,#otaProgress,#toastContainer,.toast{display:none!important;}';
+          'nav,#tabBar{visibility:hidden!important;}#waFabWrap{display:none!important;}';
         clonedDoc.head.appendChild(s);
         clonedDoc.body.classList.add('capture-mode');
       }

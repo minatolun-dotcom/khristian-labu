@@ -889,43 +889,32 @@ await section('home actions', async () => {
   await native.close();
 });
 
-// ═══════════════ 9b. UPDATE CHECK (banner → direct APK download) ═══════════════
+// ═══════════════ 9b. UPDATE CHECK (native dialog → resumable download) ═══════════════
 await section('update check', async () => {
-  const page = await newPage();
-  await page.addInitScript(() => {
-    window.__opened = [];
-    window.open = u => { window.__opened.push(u); return null; };
+  // The website is always the newest build; it must not offer a manual check or
+  // open an update dialog at startup.
+  const web = await newPage();
+  await web.addInitScript(() => {
     const realFetch = window.fetch.bind(window);
     window.fetch = async (url, opts) => {
       if (String(url).includes('version.json')) return { ok: true, json: async () => ({ version: '9.9.9' }) };
+      if (String(url).includes('latest.json')) return { ok: true, json: async () => ({ version: '9.9.9' }) };
       return realFetch(url, opts);
     };
   });
-  await waitLoaded(page);
-  await page.waitForSelector('#updateBanner:not([hidden])', { timeout: 15000 });
-  ok('start-up check shows the update banner', (await page.textContent('#updVer')).includes('9.9.9'));
-  const href = await page.locator('#updBtn').getAttribute('href');
-  ok('banner links straight to the APK asset', href === 'https://github.com/minatolun-dotcom/khristian-labu/releases/latest/download/khristian-labu.apk', href);
-  ok('native update progress UI is present but idle', (await page.locator('#updProgress').count()) === 1 && await page.locator('#updProgress').isHidden());
-  // The card must be fully on screen and stay put until answered.
-  const box = await page.locator('#updateBanner').boundingBox();
-  const vp = page.viewportSize();
-  ok('update card is fully on screen', !!box && box.x >= 0 && box.y >= 0 && box.x + box.width <= vp.width && box.y + box.height <= vp.height, JSON.stringify({ box, vp }));
-  ok('update card sits in the middle of the screen', !!box && Math.abs((box.y + box.height / 2) - vp.height / 2) < 40, String(box && box.y));
-  await page.waitForTimeout(4000);
-  ok('update card does not auto-hide', await page.locator('#updateBanner').isVisible());
-  await page.locator('.upd-close').click();
-  ok('close button hides the update card', await page.locator('#updateBanner').isHidden());
+  await waitLoaded(web);
+  await web.waitForTimeout(700);
+  const webState = await web.evaluate(() => ({
+    row: !!document.getElementById('checkUpdateRow'),
+    rowDisplay: document.getElementById('checkUpdateRow') ? getComputedStyle(document.getElementById('checkUpdateRow')).display : 'missing',
+    overlay: !document.getElementById('updateOverlay').hidden,
+    fab: !document.getElementById('updateFab').hidden,
+  }));
+  ok('website hides Check for update', webState.row && webState.rowDisplay === 'none', JSON.stringify(webState));
+  ok('website does not run a startup update check', !webState.overlay && !webState.fab, JSON.stringify(webState));
+  await web.close();
 
-  // Settings is its own page (desktop nav → page), and the check sends the user out
-  await openSettings(page);
-  ok('settings opens as a page, not a popup', (await page.locator('#settingsModal').count()) === 0 && await page.locator('#settingsView').isVisible());
-  await page.locator('#settingsView').getByText('Check for update').click();
-  await page.waitForTimeout(900);
-  ok('manual check opens the APK download', (await page.evaluate(() => window.__opened)).includes('https://github.com/minatolun-dotcom/khristian-labu/releases/latest/download/khristian-labu.apk'));
-  await page.close();
-
-  // Native build: the banner drives the downloaded/verified/install flow.
+  // Native startup: latest.json is newer than version.json, so the max wins.
   const native = await newPage();
   await native.addInitScript(() => {
     window.__starts = [];
@@ -938,7 +927,7 @@ await section('update check', async () => {
     };
     const realFetch = window.fetch.bind(window);
     window.fetch = async (url, opts) => {
-      if (String(url).includes('version.json')) return { ok: true, json: async () => ({ version: '9.9.9' }) };
+      if (String(url).includes('version.json')) return { ok: true, json: async () => ({ version: '1.5.64' }) };
       if (String(url).includes('latest.json')) return { ok: true, json: async () => ({
         version: '9.9.9',
         url: 'https://dl.labu.lengkhawm.online/apk/9999/khristian-labu.apk',
@@ -948,13 +937,16 @@ await section('update check', async () => {
       return realFetch(url, opts);
     };
   });
-  await native.addInitScript(() => { try { localStorage.setItem('labu_update_dismissed', ''); } catch (e) {} });
   await waitLoaded(native);
-  await native.waitForSelector('#updateBanner:not([hidden])', { timeout: 15000 });
-  await native.locator('#updBtn').click();
+  await native.waitForSelector('#updateOverlay:not([hidden])', { timeout: 15000 });
   await native.waitForFunction(() => window.__starts.length === 1, null, { timeout: 5000 });
+  ok('native startup picks the newer latest.json version', (await native.textContent('#updVer')) === '9.9.9');
+  ok('native settings exposes Check for update', await native.evaluate(() => getComputedStyle(document.getElementById('checkUpdateRow')).display !== 'none'));
   const started = await native.evaluate(() => window.__starts[0]);
   ok('native update uses the verified APK metadata', started.url.includes('/apk/9999/') && started.sha256 === 'a'.repeat(64) && started.size === '123456' && started.version === '9.9.9', JSON.stringify(started));
+  const box = await native.locator('#updateBanner').boundingBox();
+  const vp = native.viewportSize();
+  ok('update dialog is centered on screen', !!box && Math.abs((box.y + box.height / 2) - vp.height / 2) < 40 && box.x >= 0 && box.x + box.width <= vp.width, JSON.stringify({ box, vp }));
   await native.evaluate(() => window.__labuUpdateProgress('downloading', 42, 'Downloading update…'));
   const dl = await native.evaluate(() => ({
     visible: !document.getElementById('updProgress').hidden,
@@ -963,6 +955,22 @@ await section('update check', async () => {
     buttonHidden: document.getElementById('updBtn').hidden,
   }));
   ok('native download shows progress and hides the action', dl.visible && dl.fill === '42%' && dl.note.includes('42') && dl.buttonHidden, JSON.stringify(dl));
+  await native.mouse.click(5, 5);
+  const minimized = await native.evaluate(() => ({
+    overlay: document.getElementById('updateOverlay').hidden,
+    fab: !document.getElementById('updateFab').hidden,
+    label: document.getElementById('updateFabText').textContent,
+  }));
+  ok('clicking outside minimizes but keeps downloading', minimized.overlay && minimized.fab && /42%/.test(minimized.label), JSON.stringify(minimized));
+  await native.evaluate(() => window.__labuUpdateProgress('downloading', 67, 'Downloading update…'));
+  ok('floating download pill tracks progress', /67%/.test(await native.textContent('#updateFabText')));
+  await native.locator('#updateFab').click();
+  const restored = await native.evaluate(() => ({
+    overlay: document.getElementById('updateOverlay').hidden,
+    fab: document.getElementById('updateFab').hidden,
+    fill: document.getElementById('updProgressFill').style.width,
+  }));
+  ok('floating pill restores the dialog', !restored.overlay && restored.fab && restored.fill === '67%', JSON.stringify(restored));
   await native.evaluate(() => window.__labuUpdateProgress('permission', 0, 'Allow installs'));
   const permission = await native.evaluate(() => ({ label: document.getElementById('updBtn').textContent, visible: !document.getElementById('updBtn').hidden }));
   ok('unknown-sources state offers Settings', permission.label === 'Open settings' && permission.visible, JSON.stringify(permission));
@@ -971,28 +979,62 @@ await section('update check', async () => {
   await native.evaluate(() => window.__labuUpdateProgress('error', 0, 'Checksum failed'));
   const retry = await native.evaluate(() => ({ label: document.getElementById('updBtn').textContent, note: document.getElementById('updProgressNote').textContent }));
   ok('native update errors show Retry', retry.label === 'Retry' && retry.note.includes('Checksum'), JSON.stringify(retry));
+  ok('update flow creates no toasts', (await native.locator('.toast').count()) === 0);
   await native.close();
 
-  // already up to date: no banner, no redirect, a toast instead
-  const page2 = await newPage();
-  await page2.addInitScript(() => {
-    window.__opened = [];
-    window.open = u => { window.__opened.push(u); return null; };
-    localStorage.setItem('labu_update_dismissed', '');
+  // Already current: inline Settings status, no dialog, no redirect, no toast.
+  const current = await newPage();
+  await current.addInitScript(() => {
+    window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', isPluginAvailable: () => false, Plugins: {} };
+    window.KhristianUpdate = { isInstallAllowed: () => true, openInstallSettings: () => {}, start: () => {} };
     const realFetch = window.fetch.bind(window);
     window.fetch = async (url, opts) => {
       if (String(url).includes('version.json')) return { ok: true, json: async () => ({ version: '0.0.1' }) };
+      if (String(url).includes('latest.json')) return { ok: true, json: async () => ({ version: '0.0.1' }) };
       return realFetch(url, opts);
     };
   });
-  await waitLoaded(page2);
-  await page2.evaluate(() => openSettings());
-  await page2.waitForSelector('#settingsView.active');
-  await page2.locator('#settingsView').getByText('Check for update').click();
-  await page2.waitForTimeout(900);
-  ok('up-to-date check opens nothing', (await page2.evaluate(() => window.__opened.length)) === 0);
-  ok('up-to-date check leaves the banner hidden', await page2.locator('#updateBanner').isHidden());
-  await page2.close();
+  await waitLoaded(current);
+  await current.evaluate(() => openSettings());
+  await current.waitForSelector('#settingsView.active');
+  await current.locator('#checkUpdateRow').click();
+  await current.waitForFunction(() => !document.getElementById('updateStatus').hidden);
+  ok('up-to-date check shows inline status', (await current.textContent('#updateStatus')).includes('latest version'));
+  ok('up-to-date check leaves the dialog hidden', await current.locator('#updateOverlay').isHidden());
+  ok('up-to-date check creates no toast', (await current.locator('.toast').count()) === 0);
+  await current.close();
+
+  // Manual check must also notice a newer latest.json when version.json is stale.
+  const manual = await newPage();
+  await manual.addInitScript(() => {
+    window.__latestVersion = '0.0.1';
+    window.__starts = [];
+    window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', isPluginAvailable: () => false, Plugins: {} };
+    window.KhristianUpdate = {
+      isInstallAllowed: () => true,
+      openInstallSettings: () => {},
+      start: (url, sha256, size, version) => { window.__starts.push({ url, sha256, size, version }); },
+    };
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (url, opts) => {
+      if (String(url).includes('version.json')) return { ok: true, json: async () => ({ version: '1.5.64' }) };
+      if (String(url).includes('latest.json')) return { ok: true, json: async () => ({
+        version: window.__latestVersion,
+        url: 'https://dl.labu.lengkhawm.online/apk/9998/khristian-labu.apk',
+        sha256: 'b'.repeat(64),
+        size: 123456,
+      }) };
+      return realFetch(url, opts);
+    };
+  });
+  await waitLoaded(manual);
+  await manual.evaluate(() => { window.__latestVersion = '9.9.9'; openSettings(); });
+  await manual.waitForSelector('#settingsView.active');
+  await manual.waitForTimeout(500);
+  await manual.locator('#checkUpdateRow').click({ force: true });
+  await manual.waitForFunction(() => window.__starts.length === 1, null, { timeout: 5000 });
+  ok('manual check does not report latest when latest.json is newer', (await manual.textContent('#updVer')) === '9.9.9' && (await manual.evaluate(() => window.__latestVersion)) === '9.9.9');
+  await manual.close();
 });
 
 // ═══════════════ 10. HISTORY API ═══════════════

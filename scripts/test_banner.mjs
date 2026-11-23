@@ -1,6 +1,5 @@
-// Layout regression test for the update banner: with OTA diagnostics visible, the
-// banner must stay a compact top strip — no giant rectangle, no vertical text
-// (the diagnostic rows used to be squeezed into ~1-character flex columns).
+// Layout regression test for the update dialog: it must stay centered, fit the
+// viewport, and minimize to the floating progress pill when the backdrop is clicked.
 // Run: node scripts/test_banner.mjs   (needs: npx playwright install chromium)
 import http from 'http'; import fs from 'fs'; import path from 'path';
 import { chromium } from 'playwright';
@@ -22,31 +21,38 @@ await page.goto(`http://localhost:${server.address().port}/`, { waitUntil: 'load
 await page.waitForSelector('#groupGrid .cat-card');
 
 const r = await page.evaluate(() => {
-  showUpdateBanner('1.5.23', 'https://x/khristian-labu.apk');
-  const step = document.getElementById('otaStepDetail');
-  const err = document.getElementById('otaErrorDetail');
-  step.style.display = 'block';
-  err.style.display = 'block';
-  step.textContent = 'Step: failed installing 1.5.23: Download called without url (very long diagnostic line to force wrapping behaviour check 1234567890)';
-  err.textContent = 'OTA error: Bundle checksum is not encrypted. Upload bundle with --key flag when encryption is configured.';
-  const b = document.getElementById('updateBanner');
-  const br = b.getBoundingClientRect();
-  const er = err.getBoundingClientRect();
+  showUpdateBanner('1.5.23');
+  const b = document.getElementById('updateBanner').getBoundingClientRect();
+  const o = document.getElementById('updateOverlay');
+  const fab = document.getElementById('updateFab');
   return {
-    vw: innerWidth,
-    banner: { w: br.width, h: br.height },
-    errW: er.width,
-    errLines: Math.round(er.height / (parseFloat(getComputedStyle(err).fontSize) * 1.2)),
+    vw: innerWidth, vh: innerHeight,
+    banner: { w: b.width, h: b.height, top: b.top, center: b.top + b.height / 2 },
+    overlayHidden: o.hidden,
+    fabHidden: fab.hidden,
   };
 });
 
 let fails = 0;
-if (r.banner.w > r.vw - 16) { console.error(`FAIL: banner wider than viewport (${r.banner.w} > ${r.vw - 16})`); fails++; }
-if (r.banner.h > 220) { console.error(`FAIL: banner is a giant rectangle (height ${r.banner.h}px)`); fails++; }
-if (r.errW < 120) { console.error(`FAIL: error text column collapsed to ${r.errW}px (vertical text)`); fails++; }
-if (r.errLines > 8) { console.error(`FAIL: error text wraps into ${r.errLines} lines`); fails++; }
-console.log(`banner ${r.banner.w}x${r.banner.h} | error col ${Math.round(r.errW)}px, ~${r.errLines} line(s)`);
+if (r.banner.w > r.vw - 16) { console.error(`FAIL: dialog wider than viewport (${r.banner.w} > ${r.vw - 16})`); fails++; }
+if (r.banner.h > 340) { console.error(`FAIL: dialog is too tall (${r.banner.h}px)`); fails++; }
+if (Math.abs(r.banner.center - r.vh / 2) > 40) { console.error(`FAIL: dialog is not centered (${Math.round(r.banner.center)} vs ${r.vh / 2})`); fails++; }
+if (r.overlayHidden) { console.error('FAIL: overlay did not open'); fails++; }
+if (!r.fabHidden) { console.error('FAIL: floating pill visible while dialog is open'); fails++; }
 
+const minimized = await page.evaluate(() => {
+  minimizeUpdate();
+  return {
+    overlayHidden: document.getElementById('updateOverlay').hidden,
+    fabHidden: document.getElementById('updateFab').hidden,
+    label: document.getElementById('updateFabText').textContent,
+  };
+});
+if (!minimized.overlayHidden) { console.error('FAIL: minimize did not hide the dialog'); fails++; }
+if (minimized.fabHidden) { console.error('FAIL: minimize did not show the floating pill'); fails++; }
+if (!/1\.5\.23/.test(minimized.label)) { console.error(`FAIL: floating pill label is "${minimized.label}"`); fails++; }
+
+console.log(`dialog ${Math.round(r.banner.w)}x${Math.round(r.banner.h)} centered | minimized pill: ${minimized.label}`);
 await browser.close(); server.close();
 if (fails) process.exit(1);
-console.log('BANNER LAYOUT OK');
+console.log('UPDATE DIALOG LAYOUT OK');
