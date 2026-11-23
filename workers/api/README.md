@@ -1,8 +1,8 @@
 # Khristian Labu API (Cloudflare Worker + D1)
 
-Cloudflare Worker + D1 for the approved-change overlay. The web app and the
-1.5.63 debug build use the Worker; the public 1.5.62 APK still uses Supabase
-until a release-signed 1.5.63 ships.
+Cloudflare Worker + D1 for the approved-change overlay. The live web app and
+release 1.5.63+ use the Worker; APKs 1.5.62 and older still use Supabase during
+the compatibility window.
 
 Production:
 

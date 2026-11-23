@@ -1,6 +1,6 @@
 # Cloudflare-first migration plan — Khristian Labu
 
-**Status:** Phase 1 complete; Phase 2 pipeline complete (debug in-place install passed; release-key migration pending); Phase 3 API complete (Google sign-in pending); Phase 4 infrastructure and clients complete, with the signed-APK gate and production web cutover still pending; Phase 5 pending.
+**Status:** Phase 1 complete; Phase 2 pipeline complete (release 1.5.63 published; debug-to-release migration on the test phone still pending); Phase 3 API complete (Google sign-in pending); Phase 4 production cutover complete, with the 30–60 day compatibility soak in progress; Phase 5 pending.
 **Last audited:** 2026-11-23
 **Scope:** website hosting, database/auth, APK build/distribution, and the supporting Cloudflare configuration.
 
@@ -21,7 +21,8 @@
 - **2026-11-23 — Phase 4 production infrastructure complete.** Created `labu-prod` D1 in APAC and the production Worker at `https://api.labu.lengkhawm.online`. Imported the full Supabase export: **772 published edits**, **2 proposals**, publish version **772**. Better Auth tables were created and the allowlisted admin was seeded. The 25-check API contract suite passed against production, and the production test rows were removed so it matches the imported baseline.
 - **2026-11-23 — web and APK client cut over to the Worker (1.5.63).** `index.html` now reads `LABU_CLOUD_API` and uses `/api/state`, `/api/published-edits`, `/api/proposals`, `/api/admin/*`, and `/api/auth/*`; Supabase is no longer in the client path. A debug-signed 1.5.63 was installed in place on the SM-S921B, and its WebView was verified reading production state version 772. The release-signed 1.5.62 APK still points at Supabase, so the public web cutover is held to avoid splitting the review queue between two databases.
 - Production D1 export, the fresh Supabase export, and the D1 import SQL were uploaded to private R2 under `d1/2026-11-23-prod/` and `supabase/2026-11-23-prod/`; the D1 readback checksum matches.
-- The 1.5.63 Pages artifact builds locally with the production Worker URL. It has **not** been deployed; public Pages remains the Supabase-backed build until the signed APK exists.
+- **2026-11-23 — signed 1.5.63 published.** Pushed tag `v1.5.63`; [run 45228490708](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45228490708) built and published the release in 3m34s. APK: **37,391,762 bytes**, SHA-256 `df8e184f3164ee50a7095445f26dfbe95a0aa15d0d4814d7ad8ac6917ed94dc4`. The signer certificate digest matches 1.5.62 (`1f4f4bb4dcfdbfd34b769b1fdb29a588a3cb82529e9b58a1504e410a89000afb`), so existing release installs update in place. R2 `latest.json` and GitHub Release `v1.5.63` both point at it.
+- **2026-11-23 — production web cutover complete.** Pushed `main`; [run 45229428623](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45229428623) deployed Pages. The live site serves 1.5.63, `sw.js` cache `labu-v134`, and a browser check loaded state version 772 with 772 edits, no page errors, and 200s from `/api/state` and `/api/published-edits`.
 
 ---
 
@@ -740,24 +741,24 @@ Staging details:
 - Test: `npm run test:api` against local Wrangler; `LABU_API_URL=https://api-staging.labu.lengkhawm.online npm run test:api` against staging
 - Google sign-in: Worker code accepts `GOOGLE_CLIENT_IDS` (web + Android audience list) and `GOOGLE_CLIENT_SECRET`; no credentials exist yet, so public Google sign-in is not active
 
-### Phase 4 — production cutover (infrastructure + clients complete; signed-APK gate pending)
+### Phase 4 — production cutover (complete, 2026-11-23; compatibility soak in progress)
 
 - [x] Export the final Supabase data at a quiet point and import it into `labu-prod` D1 (772 edits, 2 proposals, version 772).
 - [x] Deploy the production Worker at `https://api.labu.lengkhawm.online`.
 - [x] Point `index.html` at `LABU_CLOUD_API`; remove Supabase from the web client path.
 - [x] Build and install a debug-signed 1.5.63 on the connected device; verify the WebView reads production state.
-- [ ] Publish 1.5.63 signed with the release key.
-- [ ] Deploy the 1.5.63 web build to Pages and complete the public cutover.
+- [x] Publish 1.5.63 signed with the release key.
+- [x] Deploy the 1.5.63 web build to Pages and complete the public cutover.
 - [x] Keep Supabase online for old APKs (still read/write until they are replaced).
-- [x] Temporary Worker → Supabase publish bridge is not needed while the web cutover is held.
-- [ ] Monitor errors, sync lag, and update adoption after the release APK ships.
+- [x] Temporary Worker → Supabase publish bridge is not needed: new web/APK traffic uses D1, and the old APK is being retired by update adoption.
+- [ ] Monitor errors, sync lag, and update adoption during the 30–60 day soak.
 - [ ] Decommission Supabase after the 30–60 day compatibility window.
 
-**Gate:** the release keystore exists only in GitHub Actions secrets; there is no local
-`*.jks`/`*.keystore` or `KEYSTORE_*` value. A release-signed 1.5.63 requires either the
-keystore or an authorized commit/push so `.github/workflows/android-release.yml` can build it.
-Until then, public web stays on the Supabase-backed build so old APK submissions and new
-web approvals cannot diverge.
+**Release facts:** `latest.json` → 1.5.63 (1563), SHA-256
+`df8e184f3164ee50a7095445f26dfbe95a0aa15d0d4814d7ad8ac6917ed94dc4`. The release
+certificate matches 1.5.62, so normal Play-style side-load updates work. The test phone
+still has the debug-signed 1.5.63, which cannot update over the release signature without
+a one-time backup and uninstall/reinstall.
 
 ### Phase 5 — cleanup (1 day)
 
