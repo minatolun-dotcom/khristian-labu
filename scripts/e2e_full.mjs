@@ -322,8 +322,7 @@ await section('reader features', async () => {
   await page.waitForTimeout(400);
   const after = await page.evaluate(() => document.getElementById('songScroll').scrollTop);
   ok('verse jump scrolls down', after > before, before + ' → ' + after);
-  // scroll memory: let the verse-jump smooth scroll settle first (Chromium won't
-  // cancel it mid-flight, which would corrupt the position we save), then scroll.
+  // Opening a song always starts at the top; a previous reading position is not resumed.
   await page.waitForTimeout(1500);
   await page.evaluate(() => { document.getElementById('songScroll').scrollTop = 403; });
   await page.waitForTimeout(200);
@@ -331,8 +330,9 @@ await section('reader features', async () => {
   await page.waitForSelector('#searchResults .song-item');
   await page.locator('#searchResults .song-item').nth(idx).click();
   await page.waitForSelector('#songDetail .verse');
-  const restored = await page.evaluate(() => document.getElementById('songScroll').scrollTop);
-  ok('reader scroll restored', Math.abs(restored - 403) < 20, 'got ' + restored);
+  await page.waitForTimeout(200);
+  const reopenedAt = await page.evaluate(() => document.getElementById('songScroll').scrollTop);
+  ok('reader opens at the top instead of restoring old scroll', reopenedAt < 2, 'got ' + reopenedAt);
   // WhatsApp FAB + menu (check the .wa-fab button — the wrapper div has zero size)
   ok('wa fab visible in detail', await page.locator('#waFabWrap .wa-fab').isVisible());
   await page.locator('#waFabWrap .wa-fab').click();
@@ -603,8 +603,8 @@ await section('admin CRUD', async () => {
   await page.fill('#formAuthor', 'E2E Author');
   await page.fill('#formVerses', 'V: E2EMARKER first line\nE2EMARKER second line');
   await page.locator('#songModal').locator('button:has-text("Save Song")').click();
-  await page.waitForTimeout(500);
-  ok('song added toast', (await page.locator('.toast').allInnerTexts()).some(t => t.includes('Song added')));
+  await page.waitForFunction(() => !document.getElementById('songModal').classList.contains('open'));
+  ok('song added without a toast', (await page.locator('.toast').count()) === 0);
   // search it in admin
   await page.fill('#adminSearchInput', 'E2E TEST SONG');
   await page.waitForTimeout(400);
