@@ -4,6 +4,49 @@ A gospel songbook app — 5,723 hymns across 17 songbooks in 6 collections.
 
 [Try it live](https://labu.lengkhawm.online/) · [Download the APK](https://github.com/minatolun-dotcom/khristian-labu/releases)
 
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| **Web app** | Hand-written HTML, CSS, and JavaScript in `index.html`; no frontend framework or web build step |
+| **Offline / PWA** | Service worker (`sw.js`), Web App Manifest, IndexedDB, and `localStorage` |
+| **Android** | Capacitor 8 shell, Java Activity/updater bridge, Android SDK 36, minSdk 24 |
+| **API** | Cloudflare Workers with Hono and Better Auth |
+| **Database** | Cloudflare D1 (SQLite) for the approved-edit overlay, proposal queue, and auth tables |
+| **Hosting** | Cloudflare Pages for the web app; Cloudflare R2 for APKs and `latest.json` |
+| **Releases** | GitHub Actions + Gradle signing, GitHub Releases as fallback |
+| **Testing** | Playwright end-to-end tests, Python corpus validation, and Node regression scripts |
+| **Song tools** | html2canvas image sharing, Web Audio playback, Google Identity and Drive backup |
+
+## How it works
+
+One `index.html` is served to browsers and bundled into the Android APK. Editors stay
+offline-first: local changes apply immediately, then sync as proposals through the
+Worker. Approved changes live in D1 as a small overlay, so every device picks them up
+without downloading a new corpus or APK.
+
+```mermaid
+flowchart TD
+    DEV[Push to main] --> PAGES[Cloudflare Pages<br/>index.html + songs + assets]
+    DEV --> WORKER[Cloudflare Worker<br/>Hono + Better Auth]
+    WORKER --> D1[(Cloudflare D1<br/>approved edits + proposals)]
+    DEV -->|tag v*| CI[GitHub Actions<br/>Gradle build + sign]
+    CI --> R2[(Cloudflare R2<br/>APK + latest.json)]
+    CI --> GH[GitHub Release<br/>fallback]
+
+    PAGES --> WEB[Browser / installed PWA]
+    R2 --> APK[Capacitor Android app]
+    WEB -. approved edits .-> WORKER
+    APK -. approved edits .-> WORKER
+
+    APK --> UPD{Newer version?}
+    UPD -->|yes| DOWNLOAD[Download + SHA-256 verify<br/>resume with HTTP Range]
+    DOWNLOAD --> INSTALL[Android installer]
+    UPD -->|no| READY[Keep using app]
+```
+
+For the deeper runtime, sync, reader, and update details, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
 ## Screenshots
 
 **Web**
