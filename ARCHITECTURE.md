@@ -6,11 +6,15 @@
 flowchart TD
     A[git push to main] --> B[GitHub repo]
     B --> C[Cloudflare Pages<br/>serves dist/ → live web app]
+    B --> W[Cloudflare Worker API<br/>api.labu.lengkhawm.online]
+    W --> DB[(Cloudflare D1<br/>published overlay + queue)]
     B --> D[GitHub Actions Android build<br/>on v* tags]
     D --> E[Capacitor bundles www/ into a signed APK]
     E --> F[Upload APK to R2<br/>+ GitHub Releases]
     C --> G[Any browser]
     F --> H[Android device]
+    G -. approved overlay .-> W
+    H -. approved overlay .-> W
 ```
 
 ## Runtime (web & APK share the same index.html)
@@ -42,14 +46,14 @@ flowchart TD
 | Playlists (multiple) | `localStorage` | named lists |
 | Search | in-memory filter | live as you type |
 | Settings | `localStorage` | theme, wake-lock, reset |
-| Manage Songs (admin) | IndexedDB `edits` | edit/add/export; survive data updates |
+| Manage Songs (admin) | IndexedDB `edits` + Worker | edit/add/export; proposals and approvals sync through D1 |
 
 ## Key design points
 
 - **One codebase, two targets** — `www/` (index.html + songs.json + logo + assets) is served to the web *and* bundled into the Android APK via Capacitor. No separate mobile code.
 - **Data loads at runtime** (`fetch`), not embedded — a `songs.json` change ships without touching app code. `DATA_VERSION` bumps invalidate the IndexedDB cache.
 - **Offline edits** — user song edits are stored separately in IndexedDB (`edits`) and replayed over the base corpus on every load, so they survive `songs.json` updates.
-- **Approved-change sync (Supabase)** — submitted edits become pending proposals; an admin approval appends to `published_edits` and bumps `publish_state.version`. Devices replay base corpus → approved overlay → own edits, so an approval reaches web and APK installs without a rebuild. See `supabase/README.md`.
+- **Approved-change sync (Cloudflare Worker + D1)** — submitted edits become pending proposals; an admin approval appends to `published_edits` and bumps `publish_state.version`. Devices replay base corpus → approved overlay → own edits, so an approval reaches web and APK installs without a rebuild. See `workers/api/README.md`. The Supabase client path is legacy and only remains for old APKs.
 - **Gzip speedup** — web/APK fetch `songs.json.gzip` (630KB) via `DecompressionStream`, falling back to plain `songs.json` (2.2MB).
 - **Hybrid app** — the APK is a native Android shell running the web assets in a Chromium WebView: installs like a real app, works offline, but the UI is web tech (not Kotlin/native UI).
 - **Centered, responsive UI** — homepage group cards centered on desktop/tablet; menu popup is a centered modal (two-column landscape layout on desktop, single column on mobile).
@@ -57,7 +61,7 @@ flowchart TD
 - **List DOM persistence** — song-list rows are cached per list (keyed by category/fav/recent/playlist id) as both HTML and live detached nodes. Back/forward nav returns to a list whose rows are already rendered and just re-shows the view (or re-attaches cached nodes) — zero DOM rebuild, no re-fade. Edits and fav-toggles invalidate the caches so lists re-render fresh when data actually changed.
 - **Reader footer** — the font/line-spacing controls AND the song actions (edit / playlist / favorite / share, moved here from above the title) live in a dedicated footer element. `#detailView` is a flex column: the lyrics scroll inside `#songScroll` (a `flex:0 1 auto; overflow-y:auto` container), and `#readerControlsHost` is a separate in-flow sibling **below** it. Because the scroll container clips at the footer's top edge, lyrics can physically never render, scroll, or disappear behind the footer — at any scroll position, with any footer height (system font scaling, safe-area insets), on any device. Long songs fill the space above the footer and scroll; short songs end naturally right above it (no dead zone) with the container scroll-locked until the font size or line spacing grows past the fold. Bottom safe-area (`--sab`) is synced from Capacitor's `--safe-area-inset-bottom`, and the footer's real height (`--footer-h`) keeps the WhatsApp share FAB/menu floating above it.
 
-## Approved-change sync (Supabase)
+## Approved-change sync (Cloudflare Worker + D1)
 
 Editing stays offline-first: a change applies on the device immediately and is
 queued as a proposal. The admin reviews the queue in Manage Songs and approves;
@@ -78,13 +82,14 @@ flowchart LR
     L --> S
 ```
 
-Only the diff layer lives in Supabase, so the corpus is never re-uploaded and
-`DATA_VERSION` does not change when something is approved. The config is two
-public values (project URL + anon key); with them blank the app is purely local.
+Only the diff layer lives in Cloudflare D1, so the corpus is never re-uploaded and
+`DATA_VERSION` does not change when something is approved. The client config is the
+public `LABU_CLOUD_API` Worker origin; with it blank the app is purely local. Admin
+sessions use Better Auth bearer tokens on the APK and session cookies on the web.
 
 ## App updates (free, self-hosted distribution)
 
-The website is served by **Cloudflare Pages** and deployed from the staged `dist/` build by `.github/workflows/pages.yml` on every push to `main`. The APK is built and signed by `.github/workflows/android-release.yml`, stored in **Cloudflare R2** at `dl.labu.lengkhawm.online`, and also attached to a **GitHub Release** as fallback. Update checks are **detection only** — the app points the user at the release asset and they download and install the new APK manually. No Play Store, no backend, no paid cloud.
+The website is served by **Cloudflare Pages** and deployed from the staged `dist/` build by `.github/workflows/pages.yml` on every push to `main`. The approved-change API runs on a **Cloudflare Worker + D1** at `api.labu.lengkhawm.online`. The APK is built and signed by `.github/workflows/android-release.yml`, stored in **Cloudflare R2** at `dl.labu.lengkhawm.online`, and also attached to a **GitHub Release** as fallback. Update checks are **detection only** — the app points the user at the release asset and they download and install the new APK manually. No Play Store and no paid cloud.
 
 ```mermaid
 flowchart LR

@@ -1,4 +1,4 @@
-// Verifies the approved-change sync loop against a mocked Supabase project:
+// Verifies the approved-change sync loop against a mocked Worker API:
 //   1. an approved edit in the published layer appears on a device that has none
 //   2. a normal device's local edit is submitted as a pending proposal
 //   3. an admin can sign in, see the queue, approve it, and the device re-syncs
@@ -38,7 +38,7 @@ const PUBLISHED = {
 };
 const PROPOSAL = {
   id: 7, kind: 'song', status: 'pending', submitter_name: 'tester',
-  created_at: new Date().toISOString(), summary: 'Edit “Pending Hymn”',
+  created_at: Date.now(), summary: 'Edit “Pending Hymn”',
   payload: { id: 'cloud_admin_approved', cat: 'B&P', op: 'update', song: song('cloud_admin_approved', 'Pending Hymn') },
 };
 
@@ -60,7 +60,7 @@ try {
   const submitted = [];
   const calls = [];
 
-  await page.route('https://mock.supabase.co/**', async route => {
+  await page.route('https://mock.labu.api/**', async route => {
     const req = route.request();
     const url = new globalThis.URL(req.url());
     const path = url.pathname;
@@ -69,24 +69,27 @@ try {
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     const body = () => { try { return JSON.parse(req.postData() || '{}'); } catch (e) { return {}; } };
 
-    if (path === '/rest/v1/publish_state') return json([{ version }]);
-    if (path === '/rest/v1/published_edits') return json(published);
-    if (path === '/rest/v1/rpc/am_i_admin') return json(isAdmin);
-    if (path === '/auth/v1/token') {
-      return json({ access_token: 'admin-token', refresh_token: 'refresh', expires_in: 3600, user: { id: 'u1', email: 'admin@example.com' } });
+    if (path === '/api/auth/sign-in/email') {
+      return json({ token: 'admin-token', user: { id: 'u1', email: 'admin@example.com' } });
     }
-    if (path === '/rest/v1/proposals') {
-      return json(isAdmin ? proposals.filter(p => p.status === 'pending') : []);
-    }
-    if (path === '/rest/v1/rpc/submit_proposal') { submitted.push(body()); return json(1); }
-    if (path === '/rest/v1/rpc/publish_edit') {
+    if (path === '/api/auth/sign-out') return json({ success: true });
+    if (path === '/api/admin/me') return isAdmin ? json({ isAdmin: true, user: { id: 'u1', email: 'admin@example.com' } }) : json({ error: 'authentication required' }, 401);
+    if (path === '/api/state') return json({ version });
+    if (path === '/api/published-edits') return json(published);
+    if (path === '/api/admin/proposals') return isAdmin ? json(proposals.filter(p => p.status === 'pending')) : json({ error: 'admin access required' }, 403);
+    if (path === '/api/proposals') {
       const b = body();
-      published.push({ seq: published.length + 1, kind: b.p_kind, payload: b.p_payload });
-      version += 1;
-      return json(version);
+      submitted.push(b);
+      return json({ id: 1, duplicate: false }, 201);
     }
-    if (path === '/rest/v1/rpc/approve_proposals') {
-      body().p_ids.forEach(id => {
+    if (path === '/api/admin/publish') {
+      const b = body();
+      published.push({ seq: published.length + 1, kind: b.kind, payload: b.payload });
+      version += 1;
+      return json({ version });
+    }
+    if (path === '/api/admin/approve') {
+      body().ids.forEach(id => {
         const p = proposals.find(x => x.id === id);
         if (p && p.status === 'pending') {
           p.status = 'approved';
@@ -94,14 +97,20 @@ try {
         }
       });
       version += 1;
-      return json(version);
+      return json({ version, approved: body().ids.length });
     }
-    if (path === '/rest/v1/rpc/reject_proposals') return json(1);
-    return json({}, 404);
+    if (path === '/api/admin/reject') {
+      body().ids.forEach(id => {
+        const p = proposals.find(x => x.id === id);
+        if (p) p.status = 'rejected';
+      });
+      return json({ rejected: body().ids.length });
+    }
+    return json({ error: 'not found' }, 404);
   });
 
   await page.addInitScript(() => {
-    window.LABU_SUPABASE = { url: 'https://mock.supabase.co', anonKey: 'anon-key' };
+    window.LABU_CLOUD_API = 'https://mock.labu.api';
   });
   await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof songsReady !== 'undefined' && songsReady === true, null, { timeout: 30000 });
@@ -126,7 +135,7 @@ try {
   });
   for (let i = 0; i < 60 && submitted.length === 0; i++) await page.waitForTimeout(100);
   check('local edit is submitted as a proposal', submitted.length === 1, 'submissions=' + submitted.length);
-  check('proposal carries the edit payload', submitted[0] && submitted[0].p_payload && submitted[0].p_payload.id === 'local_pending_hymn');
+  check('proposal carries the edit payload', submitted[0] && submitted[0].payload && submitted[0].payload.id === 'local_pending_hymn');
   // Submission is silent by design: the device already shows its own change, so the
   // user must not be told their edit went to an admin for review.
   const reviewToasts = await page.evaluate(() =>
@@ -156,7 +165,7 @@ try {
   await page.waitForFunction(() =>
     SONGS['B&P'].songs.some(s => s.id === 'cloud_admin_approved'), null, { timeout: 10000 });
   check('approving publishes the edit and syncs this device', true);
-  check('approve RPC was called', calls.filter(c => c.includes('approve_proposals')).length === 1);
+  check('admin approve endpoint was called', calls.filter(c => c === 'POST /api/admin/approve').length === 1);
   const queueEmptied = await page.waitForFunction(() =>
     document.getElementById('cloudPanel').textContent.includes('Nothing waiting'), null, { timeout: 10000 })
     .then(() => true).catch(() => false);

@@ -2558,22 +2558,18 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.62'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.63'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
-// ─── CLOUD SYNC (Supabase) — approved changes reach every device ───
-// Project URL and publishable (anon) key, baked in from .env by
-// scripts/set_cloud_config.mjs. The key is a public identifier (safe to ship);
-// RLS plus the security-definer RPCs decide every write. Clear both and the app
-// runs exactly as before:
-// edits stay on this device and nothing is submitted. window.LABU_SUPABASE wins,
-// so a fork (or the test harness) can point at another project without editing here.
-const SUPABASE_CONF = (typeof window !== 'undefined' && window.LABU_SUPABASE) || {
-  url: 'https://rxbrozmwznjmdgirekma.supabase.co',
-  anonKey: 'sb_publishable_3ITN3SrrFkaGIMFpNAOTFg_cjQ-cg2d', // publishable key — public by design, RLS guards writes
-};
-const SUPABASE_URL = String(SUPABASE_CONF.url || '').replace(/\/+$/, '');
-const SUPABASE_ANON_KEY = String(SUPABASE_CONF.anonKey || '');
-const CLOUD_ON = !!(SUPABASE_URL && SUPABASE_ANON_KEY);
+// ─── CLOUD SYNC (Cloudflare Worker + D1) — approved changes reach every device ───
+// The API URL is baked in for production. `window.LABU_CLOUD_API` wins so a fork
+// or test harness can point at staging, and an empty value disables cloud sync
+// exactly as before: edits stay on this device and nothing is submitted.
+const CLOUD_API = String(
+  (typeof window !== 'undefined' && window.LABU_CLOUD_API !== undefined)
+    ? window.LABU_CLOUD_API
+    : 'https://api.labu.lengkhawm.online'
+).replace(/\/+$/, '');
+const CLOUD_ON = !!CLOUD_API;
 const CLOUD_POLL_MS = 5 * 60 * 1000;
 // ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
 // ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
@@ -3008,59 +3004,34 @@ let _cloudSyncing = false;
 function cloudSession() {
   try {
     const s = JSON.parse(localStorage.getItem('labu_cloud_session') || 'null');
-    return s && s.access_token ? s : null;
+    // A Supabase session from an older app build must not be sent to the Worker.
+    return s && s.access_token && s.api === CLOUD_API ? s : null;
   } catch (e) { return null; }
 }
 function cloudSaveSession(s) {
   try {
-    if (s) localStorage.setItem('labu_cloud_session', JSON.stringify(s));
+    if (s) localStorage.setItem('labu_cloud_session', JSON.stringify({ ...s, api: CLOUD_API }));
     else localStorage.removeItem('labu_cloud_session');
   } catch (e) {}
 }
-async function cloudRefreshSession() {
-  const s = cloudSession();
-  if (!s || !s.refresh_token) return null;
-  try {
-    const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
-      method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: s.refresh_token }),
-    });
-    if (!r.ok) return null;
-    const d = await r.json();
-    if (!d.access_token) return null;
-    const next = {
-      access_token: d.access_token,
-      refresh_token: d.refresh_token || s.refresh_token,
-      expires_at: Date.now() + (Number(d.expires_in) || 3600) * 1000,
-      email: (d.user && d.user.email) || s.email,
-    };
-    cloudSaveSession(next);
-    return next;
-  } catch (e) { return null; }
-}
-async function cloudToken() {
-  let s = cloudSession();
-  if (!s) return SUPABASE_ANON_KEY;
-  if (s.expires_at && Date.now() > s.expires_at - 60000) s = await cloudRefreshSession();
-  return (s && s.access_token) || SUPABASE_ANON_KEY;
-}
 async function cloudReq(path, opts) {
   opts = opts || {};
-  const token = await cloudToken();
-  const headers = Object.assign({ apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + token }, opts.headers || {});
+  const s = cloudSession();
+  const headers = Object.assign({}, opts.headers || {});
+  if (s && s.access_token) headers.Authorization = 'Bearer ' + s.access_token;
   const hasBody = Object.prototype.hasOwnProperty.call(opts, 'body');
   if (hasBody) headers['Content-Type'] = 'application/json';
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), opts.timeout || 8000);
   try {
-    const r = await fetch(SUPABASE_URL + path, {
+    const r = await fetch(CLOUD_API + path, {
       method: opts.method || (hasBody ? 'POST' : 'GET'),
       headers,
       body: hasBody ? JSON.stringify(opts.body) : undefined,
       signal: ctl.signal,
     });
     const text = await r.text();
+    if (r.status === 401) { cloudAdmin = false; cloudSaveSession(null); }
     if (!r.ok) throw new Error('cloud ' + r.status + ' ' + text.slice(0, 160));
     return text ? JSON.parse(text) : null;
   } finally { clearTimeout(timer); }
@@ -3074,12 +3045,12 @@ async function cloudLoadLayer(force) {
   if (cached && Array.isArray(cached.edits)) { PUB = cached; PUB_CHORDS = {}; }
   let version;
   try {
-    const st = await cloudReq('/rest/v1/publish_state?select=version&id=eq.1', { timeout: 5000 });
-    version = Array.isArray(st) && st[0] ? Number(st[0].version) || 0 : 0;
+    const st = await cloudReq('/api/state', { timeout: 5000 });
+    version = st ? Number(st.version) || 0 : 0;
   } catch (e) { return; }
   if (!force && PUB.version === version) return;
   try {
-    const rows = await cloudReq('/rest/v1/published_edits?select=seq,kind,payload&order=seq.asc');
+    const rows = await cloudReq('/api/published-edits');
     PUB = { version: version, edits: (rows || []).filter(x => x && x.payload) };
     PUB_CHORDS = {};
     try { localStorage.setItem('labu_pub_cache', JSON.stringify(PUB)); } catch (e) {}
@@ -3131,23 +3102,25 @@ async function cloudCheckAdmin() {
   if (!CLOUD_ON) return false;
   if (!cloudSession()) { cloudAdmin = false; return false; }
   if (cloudAdmin) return true;
-  try { cloudAdmin = (await cloudReq('/rest/v1/rpc/am_i_admin', { body: {} })) === true; }
-  catch (e) { cloudAdmin = false; }
+  try {
+    const me = await cloudReq('/api/admin/me');
+    cloudAdmin = !!(me && me.isAdmin);
+  } catch (e) { cloudAdmin = false; }
   return cloudAdmin;
 }
 async function cloudPublishNow(kind, payload) {
-  await cloudReq('/rest/v1/rpc/publish_edit', { body: { p_kind: kind, p_payload: payload } });
+  await cloudReq('/api/admin/publish', { body: { kind: kind, payload: payload } });
   try { localStorage.removeItem('labu_pub_cache'); } catch (e) {}
   PUB.version = -1; // force the next check to re-read the layer
 }
 async function cloudSendProposal(item) {
   const s = cloudSession();
-  await cloudReq('/rest/v1/rpc/submit_proposal', { body: {
-    p_kind: item.kind,
-    p_payload: item.payload,
-    p_summary: item.summary || cloudDescribe(item.kind, item.payload),
-    p_name: s ? (s.email || '') : '',
-    p_base_version: DATA_VERSION,
+  await cloudReq('/api/proposals', { body: {
+    kind: item.kind,
+    payload: item.payload,
+    summary: item.summary || cloudDescribe(item.kind, item.payload),
+    name: s ? (s.email || '') : '',
+    baseVersion: DATA_VERSION,
   } });
 }
 // Fire-and-forget: the local save has already happened, so a slow/absent network
@@ -3194,9 +3167,9 @@ async function cloudCheckForUpdates(force) {
   _cloudSyncing = true;
   try {
     let st;
-    try { st = await cloudReq('/rest/v1/publish_state?select=version&id=eq.1'); }
+    try { st = await cloudReq('/api/state'); }
     catch (e) { return false; }
-    const version = Array.isArray(st) && st[0] ? Number(st[0].version) || 0 : 0;
+    const version = st ? Number(st.version) || 0 : 0;
     if (!force && version === PUB.version) return false;
     await cloudLoadLayer(true);
     if (!songsReady) return false;
@@ -3235,8 +3208,8 @@ function cloudStart() {
 }
 
 // ─── REVIEW UI (Manage Songs) ───
-function cloudAgo(iso) {
-  const t = Date.parse(iso || '');
+function cloudAgo(value) {
+  const t = typeof value === 'number' ? value : Date.parse(value || '');
   if (!t) return '';
   const m = Math.round((Date.now() - t) / 60000);
   if (m < 1) return 'just now';
@@ -3260,7 +3233,7 @@ async function renderCloudPanel() {
     return;
   }
   try {
-    cloudPending = (await cloudReq('/rest/v1/proposals?select=id,kind,payload,summary,submitter_name,created_at&status=eq.pending&order=created_at.asc&limit=100')) || [];
+    cloudPending = (await cloudReq('/api/admin/proposals')) || [];
   } catch (e) {
     box.innerHTML = '<div class="cloud-bar"><span class="cloud-state">Review queue unavailable — check your connection.</span><button class="btn btn-ghost" onclick="renderCloudPanel()">Retry</button></div>';
     return;
@@ -3294,19 +3267,11 @@ async function cloudSignIn() {
   if (!email || !pass) { err.textContent = 'Email and password are required'; return; }
   btn.disabled = true;
   try {
-    const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=password', {
-      method: 'POST',
-      headers: { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email, password: pass }),
+    const d = await cloudReq('/api/auth/sign-in/email', {
+      body: { email: email, password: pass },
     });
-    const d = await r.json();
-    if (!r.ok || !d.access_token) throw new Error(d.error_description || d.msg || d.message || 'Sign in failed');
-    cloudSaveSession({
-      access_token: d.access_token,
-      refresh_token: d.refresh_token,
-      expires_at: Date.now() + (Number(d.expires_in) || 3600) * 1000,
-      email: email,
-    });
+    if (!d || !d.token) throw new Error('Sign in failed');
+    cloudSaveSession({ access_token: d.token, email: (d.user && d.user.email) || email, user: d.user || null });
     cloudAdmin = false;
     if (!(await cloudCheckAdmin())) {
       cloudSaveSession(null);
@@ -3322,9 +3287,11 @@ async function cloudSignIn() {
   } finally { btn.disabled = false; }
 }
 function cloudSignOut() {
+  const had = !!cloudSession();
   cloudSaveSession(null);
   cloudAdmin = false;
   cloudPending = [];
+  if (had) cloudReq('/api/auth/sign-out', { body: {} }).catch(() => {});
   renderCloudPanel();
   toast('Signed out', 'success');
 }
@@ -3335,7 +3302,7 @@ async function cloudAfterReview(msg) {
   renderCloudPanel();
 }
 async function cloudApprove(id) {
-  try { await cloudReq('/rest/v1/rpc/approve_proposals', { body: { p_ids: [id] } }); }
+  try { await cloudReq('/api/admin/approve', { body: { ids: [id] } }); }
   catch (e) { toast('Could not approve: ' + (e.message || e), 'error'); return; }
   cloudPending = cloudPending.filter(p => p.id !== id);
   await cloudAfterReview('Approved — syncing to all devices');
@@ -3343,13 +3310,13 @@ async function cloudApprove(id) {
 async function cloudApproveAll() {
   const ids = cloudPending.map(p => p.id);
   if (!ids.length) return;
-  try { await cloudReq('/rest/v1/rpc/approve_proposals', { body: { p_ids: ids } }); }
+  try { await cloudReq('/api/admin/approve', { body: { ids: ids } }); }
   catch (e) { toast('Could not approve: ' + (e.message || e), 'error'); return; }
   cloudPending = [];
   await cloudAfterReview('Approved ' + ids.length + ' — syncing to all devices');
 }
 async function cloudReject(id) {
-  try { await cloudReq('/rest/v1/rpc/reject_proposals', { body: { p_ids: [id] } }); }
+  try { await cloudReq('/api/admin/reject', { body: { ids: [id] } }); }
   catch (e) { toast('Could not reject: ' + (e.message || e), 'error'); return; }
   cloudPending = cloudPending.filter(p => p.id !== id);
   renderCloudPanel();

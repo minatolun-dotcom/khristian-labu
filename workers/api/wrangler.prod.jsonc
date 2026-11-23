@@ -1,0 +1,33 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "labu-api",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-11-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "upload_source_maps": true,
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "labu-prod",
+      "database_id": "e141007a-d35c-4060-b75a-47cac022f440",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "ENVIRONMENT": "production",
+    "BETTER_AUTH_URL": "https://api.labu.lengkhawm.online",
+    "CORS_ORIGINS": "https://labu.lengkhawm.online,https://localhost,capacitor://localhost",
+    "ADMIN_EMAILS": "minatolun@gmail.com"
+  },
+  "routes": [
+    {
+      "pattern": "api.labu.lengkhawm.online",
+      "custom_domain": true
+    }
+  ]
+}

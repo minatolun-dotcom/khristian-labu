@@ -8,10 +8,19 @@
     "sync:splash": "python3 scripts/sync_android_splash.py",
     "build:pages": "node scripts/build-pages.mjs",
     "deploy:pages": "npm run build:pages && npx wrangler pages deploy dist --project-name khristian-labu --branch main",
+    "api:dev": "wrangler dev --config workers/api/wrangler.jsonc --port 8791",
+    "api:deploy": "wrangler deploy --config workers/api/wrangler.jsonc",
+    "api:deploy:prod": "wrangler deploy --config workers/api/wrangler.prod.jsonc",
+    "api:migrate:local": "wrangler d1 migrations apply labu-staging --local --config workers/api/wrangler.jsonc",
+    "api:migrate:remote": "wrangler d1 migrations apply labu-staging --remote --config workers/api/wrangler.jsonc",
+    "api:migrate:prod": "wrangler d1 migrations apply labu-prod --remote --config workers/api/wrangler.prod.jsonc",
+    "api:export": "node scripts/export_supabase.mjs",
+    "api:import": "node scripts/import_d1.mjs",
     "build": "npm run sync && npx cap build android",
     "test": "python3 scripts/validate_data.py && node scripts/test_chord_audit_structure.mjs && node scripts/test_share_image.mjs && node scripts/test_persistence.mjs && node scripts/test_cloud_sync.mjs && node scripts/e2e_full.mjs",
     "test:audit": "node scripts/test_chord_audit_structure.mjs",
     "test:cloud": "node scripts/test_cloud_sync.mjs",
+    "test:api": "node scripts/test_staging_api.mjs",
     "test:data": "python3 scripts/validate_data.py",
     "test:share": "node scripts/test_share_image.mjs",
     "test:persistence": "node scripts/test_persistence.mjs"
@@ -30,12 +39,15 @@
     "@capacitor/share": "^8.0.1",
     "@capacitor/status-bar": "^8.0.3",
     "@capawesome/capacitor-google-sign-in": "^0.1.2",
-    "@supabase/server": "^1.9.2"
+    "@supabase/server": "^1.9.2",
+    "better-auth": "^1.7.27",
+    "hono": "^4.13.21"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@types/node": "^26.1.1",
     "playwright": "^1.62.1",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "wrangler": "^4.166.0"
   }
 }

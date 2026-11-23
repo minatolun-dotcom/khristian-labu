@@ -12,6 +12,9 @@ secret
 .env
 .env.*
 !.env.example
+.dev.vars
+.prod.vars
+workers/api/.wrangler/
 
 # ─── audit captures ───
 shots/
@@ -33,3 +36,4 @@ sources/zomi/
 
 # ─── local data backups ───
 backups/
+d1/

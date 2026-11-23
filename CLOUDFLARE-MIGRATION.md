@@ -1,6 +1,6 @@
 # Cloudflare-first migration plan — Khristian Labu
 
-**Status:** Phase 1 complete; Phase 2 pipeline complete (on-device install check pending); Phases 3–5 proposed.
+**Status:** Phase 1 complete; Phase 2 pipeline complete (debug in-place install passed; release-key migration pending); Phase 3 API complete (Google sign-in pending); Phase 4 infrastructure and clients complete, with the signed-APK gate and production web cutover still pending; Phase 5 pending.
 **Last audited:** 2026-11-23
 **Scope:** website hosting, database/auth, APK build/distribution, and the supporting Cloudflare configuration.
 
@@ -14,6 +14,14 @@
 - Published signed **1.5.62 (1562)** to R2 and GitHub Releases in [run 45211032332](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45211032332). Both downloads are byte-identical: **37,392,250 bytes**, SHA-256 `e2a1f41e2c19cee44a829bf4ccf95b51f1c9ad8d36dccfbe3ef4257abea4a564`.
 - **2026-11-23 — rollback drill passed.** Moving the proxied CNAME to `minatolun-dotcom.github.io` reached GitHub Pages in about 20 seconds (`x-github-request-id`, `max-age=600`). Restoring DNS alone left the Pages custom domain `deactivated` and returned a temporary 522; deleting and re-adding `labu.lengkhawm.online` under Pages restored `active` and 200. This is now the required return path.
 - GitHub Pages remains enabled as rollback. Do not disable it before **2026-11-30**.
+- **2026-11-23 — Phase 3 API staging complete.** Created `labu-staging` D1 in APAC, added the Worker at `https://api-staging.labu.lengkhawm.online`, and implemented Better Auth on native D1 with `admin` and `bearer` plugins. Exported and imported **772 published edits**, **2 proposals**, publish version **772**; all 772 payload checksums match the Supabase export. The full API contract suite passed locally and remotely (25 checks). Test data was removed afterward, leaving the imported baseline.
+- Staging admin auth uses the allowlisted email/password break-glass path (`minatolun@gmail.com`). Google OAuth is coded but disabled until web/Android client credentials are supplied. At that point the app and APK still used Supabase; Phase 4 later migrated the web client and the 1.5.63 debug build to the Worker.
+- The Worker custom-domain certificate is an advanced certificate pack and took a few minutes to become active; it is now serving TLS normally.
+- **2026-11-23 — 1.5.62 on-device install passed (debug key).** Built a local debug-signed 1.5.62 with Java 21, then installed it in place over 1.5.61 on the connected SM-S921B. The signature matched, so app data was preserved; `versionCode`/`versionName` are now 1562/1.5.62, cold launch took 3.2 s, and there were no fatal Android or renderer errors. The release-signed APK still uses a different certificate and still requires a one-time uninstall/reinstall.
+- **2026-11-23 — Phase 4 production infrastructure complete.** Created `labu-prod` D1 in APAC and the production Worker at `https://api.labu.lengkhawm.online`. Imported the full Supabase export: **772 published edits**, **2 proposals**, publish version **772**. Better Auth tables were created and the allowlisted admin was seeded. The 25-check API contract suite passed against production, and the production test rows were removed so it matches the imported baseline.
+- **2026-11-23 — web and APK client cut over to the Worker (1.5.63).** `index.html` now reads `LABU_CLOUD_API` and uses `/api/state`, `/api/published-edits`, `/api/proposals`, `/api/admin/*`, and `/api/auth/*`; Supabase is no longer in the client path. A debug-signed 1.5.63 was installed in place on the SM-S921B, and its WebView was verified reading production state version 772. The release-signed 1.5.62 APK still points at Supabase, so the public web cutover is held to avoid splitting the review queue between two databases.
+- Production D1 export, the fresh Supabase export, and the D1 import SQL were uploaded to private R2 under `d1/2026-11-23-prod/` and `supabase/2026-11-23-prod/`; the D1 readback checksum matches.
+- The 1.5.63 Pages artifact builds locally with the production Worker URL. It has **not** been deployed; public Pages remains the Supabase-backed build until the signed APK exists.
 
 ---
 
@@ -578,6 +586,8 @@ labu-artifacts/
 labu-backups/
   supabase/2026-11-23/*.json
   d1/2026-11-23/*.sql
+  supabase/2026-11-23-prod/*.json
+  d1/2026-11-23-prod/*.sql
 ```
 
 - APK paths are immutable; never overwrite a version path.
@@ -665,7 +675,7 @@ This is the previously researched path, now part of the plan:
 - [ ] Back up Supabase.
 - [x] Release signing is configured and `apksigner` verification passes; on-device migration remains untested.
 - [x] Commit the Android native source.
-- [ ] Add `.env.example` placeholders for Cloudflare/Better Auth/R2; never add values.
+- [x] Add `.env.example` placeholders for Cloudflare/Better Auth/R2; never add values.
 
 ### Phase 1 — Pages cutover (complete, 2026-11-23)
 
@@ -693,7 +703,7 @@ Live URLs:
 - [x] Add GitHub Actions build/sign/upload workflow.
 - [x] Publish APK v1.5.62 to R2 and GitHub Releases.
 - [x] Verify signature, checksum, R2 download, and GitHub Release fallback.
-- [ ] Verify install/upgrade on a physical Android device (no device attached; old debug-signed builds may require a one-time reinstall).
+- [x] Verify install/upgrade on a physical Android device — debug-signed 1.5.62 installed in place over 1.5.61 on the connected SM-S921B; data preserved, cold launch 3.2 s, no fatal errors. The release-signed APK still requires a one-time uninstall/reinstall because its key differs.
 - [ ] Add the in-app updater in a later app release (not part of 1.5.62).
 
 Published artifacts:
@@ -705,32 +715,49 @@ Published artifacts:
 - Size: 37,392,250 bytes
 - `aapt` confirms package `org.khristianlabu.app`, version `1.5.62` (1562), minSdk 24, targetSdk 36.
 
-### Phase 3 — D1 + Better Auth staging (4–6 days)
+### Phase 3 — D1 + Better Auth staging (API complete, 2026-11-23)
 
-- [ ] Create `labu-staging` D1.
-- [ ] Write D1 migrations and Better Auth schema.
-- [ ] Create the Worker and `/api/auth/*`.
-- [ ] Implement public state/overlay/proposal endpoints.
-- [ ] Implement admin approval/publish endpoints.
-- [ ] Configure Google OAuth client IDs and `ADMIN_EMAILS`.
-- [ ] Add bearer sessions for the APK.
-- [ ] Add rate limiting and CORS.
-- [ ] Import a copy of Supabase data into staging.
-- [ ] Update `scripts/test_cloud_sync.mjs` for the new API and run contract tests.
-- [ ] Test the full admin/device loop.
+- [x] Create `labu-staging` D1.
+- [x] Write D1 migrations and Better Auth schema.
+- [x] Create the Worker and `/api/auth/*`.
+- [x] Implement public state/overlay/proposal endpoints.
+- [x] Implement admin approval/publish endpoints.
+- [ ] Configure Google OAuth client IDs and `ADMIN_EMAILS` — allowlist is set; Google credentials are still missing.
+- [x] Add bearer sessions for the APK.
+- [x] Add rate limiting and CORS.
+- [x] Import a copy of Supabase data into staging.
+- [x] Add `scripts/test_staging_api.mjs` and run the 25-check contract suite locally and remotely.
+- [x] Test the full admin/device loop — the staging browser loop passed; the device loop was verified in Phase 4 against production.
 
-### Phase 4 — production cutover (2–3 days + 30–60 day soak)
+Staging details:
 
-- [ ] Freeze cloud writes briefly.
-- [ ] Export final Supabase delta.
-- [ ] Import into `labu-prod` D1.
-- [ ] Deploy the production Worker.
-- [ ] Point the app's `LABU_CLOUD_API`/`SUPABASE_CONF` equivalent at the Worker.
-- [ ] Publish a new APK signed with the release key.
-- [ ] Keep Supabase online read-only for old APKs.
-- [ ] If needed, enable the temporary Worker → Supabase publish bridge.
-- [ ] Monitor errors, sync lag, and update adoption.
-- [ ] Decommission the bridge and Supabase after the compatibility window.
+- Worker: `https://api-staging.labu.lengkhawm.online` (fallback `https://labu-api-staging.minatolun.workers.dev`)
+- D1: `labu-staging` (`75c4dc65-e770-42d6-8e29-b643907f99f6`, APAC)
+- Data: 772 published edits (seq 13–784), 2 approved proposals, version 772
+- Auth: Better Auth on native D1, `admin` + `bearer`; email/password break-glass active
+- Secrets: `BETTER_AUTH_SECRET` and `SETUP_TOKEN` set on the Worker; local copies live only in gitignored `workers/api/.dev.vars`
+- Backup: full payload export and D1 SQL export in private R2 `labu-backups/supabase/2026-11-23/` and `labu-backups/d1/2026-11-23/`
+- Test: `npm run test:api` against local Wrangler; `LABU_API_URL=https://api-staging.labu.lengkhawm.online npm run test:api` against staging
+- Google sign-in: Worker code accepts `GOOGLE_CLIENT_IDS` (web + Android audience list) and `GOOGLE_CLIENT_SECRET`; no credentials exist yet, so public Google sign-in is not active
+
+### Phase 4 — production cutover (infrastructure + clients complete; signed-APK gate pending)
+
+- [x] Export the final Supabase data at a quiet point and import it into `labu-prod` D1 (772 edits, 2 proposals, version 772).
+- [x] Deploy the production Worker at `https://api.labu.lengkhawm.online`.
+- [x] Point `index.html` at `LABU_CLOUD_API`; remove Supabase from the web client path.
+- [x] Build and install a debug-signed 1.5.63 on the connected device; verify the WebView reads production state.
+- [ ] Publish 1.5.63 signed with the release key.
+- [ ] Deploy the 1.5.63 web build to Pages and complete the public cutover.
+- [x] Keep Supabase online for old APKs (still read/write until they are replaced).
+- [x] Temporary Worker → Supabase publish bridge is not needed while the web cutover is held.
+- [ ] Monitor errors, sync lag, and update adoption after the release APK ships.
+- [ ] Decommission Supabase after the 30–60 day compatibility window.
+
+**Gate:** the release keystore exists only in GitHub Actions secrets; there is no local
+`*.jks`/`*.keystore` or `KEYSTORE_*` value. A release-signed 1.5.63 requires either the
+keystore or an authorized commit/push so `.github/workflows/android-release.yml` can build it.
+Until then, public web stays on the Supabase-backed build so old APK submissions and new
+web approvals cannot diverge.
 
 ### Phase 5 — cleanup (1 day)
 

@@ -1,4 +1,8 @@
-# Approved-change sync (Supabase)
+# Approved-change sync (Supabase) — legacy
+
+> **Legacy path.** The web app and 1.5.63+ APKs use the Cloudflare Worker + D1 API in
+> `workers/api/README.md`. Keep this project online for old APKs during the compatibility
+> window; do not use this guide for new installs or new features.
 
 Goal: a user edits a song or chord chart, the admin approves it, and every
 install plus the website picks it up automatically — no rebuild, no redeploy,

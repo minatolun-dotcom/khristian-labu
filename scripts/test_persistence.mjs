@@ -36,7 +36,7 @@ const check = (name, condition, detail = '') => {
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   // Keep test edits local: the shipped config points at the live Supabase project.
-  await page.addInitScript(() => { window.LABU_SUPABASE = {}; });
+  await page.addInitScript(() => { window.LABU_CLOUD_API = ''; });
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(e.message));
   await page.goto(URL, { waitUntil: 'domcontentloaded' });

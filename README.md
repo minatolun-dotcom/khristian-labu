@@ -33,13 +33,14 @@ Download the latest APK from [Releases](https://github.com/minatolun-dotcom/khri
 ([R2 release metadata](https://dl.labu.lengkhawm.online/latest.json)). The app checks `version.json` on
 launch and from Settings → Check for update.
 
-If Android reports a signature mismatch when installing 1.5.62 over an older build, export a local
-backup first, then uninstall the old app and install 1.5.62. That is a one-time migration from the
-debug-signed builds; later signed releases install over each other normally.
+If Android reports a signature mismatch when installing a signed release over an older build,
+export a local backup first, then uninstall the old app and install the release. That is a one-time
+migration from the debug-signed builds; later signed releases install over each other normally.
 
 ## Development
 
-The app is `index.html` and `sw.js` — there is no web build step.
+The app is `index.html` and `sw.js` — there is no web build step. The approved-change
+API lives in `workers/api` on Cloudflare Worker + D1 (see `workers/api/README.md`).
 
 ```bash
 python3 scripts/serve_dev.py 8080   # http://localhost:8080
@@ -67,7 +68,9 @@ git tag vX.Y.Z && git push origin main --tags
 ## Tests
 
 ```bash
-npm test   # corpus validation + full browser E2E
+npm test        # corpus validation + full browser E2E
+npm run test:cloud   # approved-change client against a mocked Worker
+npm run test:api     # 25-check contract suite (local or LABU_API_URL)
 ```
 
 ## License
