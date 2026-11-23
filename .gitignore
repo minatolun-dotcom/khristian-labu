@@ -1,8 +1,10 @@
 node_modules/
-android/
 www/
 .toolchain/
 khristian-labu.keystore
+*.jks
+*.keystore
+android/.kotlin/
 
 # ─── secrets (never commit) ───
 secret

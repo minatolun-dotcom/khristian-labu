@@ -1,0 +1,150 @@
+name: Build and publish Android APK
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      R2_PUBLIC_BASE: https://dl.labu.lengkhawm.online
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" >/dev/null
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync web assets
+        run: npm run sync
+
+      - name: Validate release keystore
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "KEYSTORE_BASE64 is empty"
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          test -s "$RUNNER_TEMP/release.keystore"
+          keytool -list -keystore "$RUNNER_TEMP/release.keystore" \
+            -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+
+      - name: Read version
+        run: |
+          set -euo pipefail
+          VERSION_CODE=$(sed -nE 's/^[[:space:]]*versionCode ([0-9]+).*/\1/p' android/app/build.gradle | head -1)
+          VERSION_NAME=$(sed -nE 's/^[[:space:]]*versionName "([^"]+)".*/\1/p' android/app/build.gradle | head -1)
+          test -n "$VERSION_CODE"
+          test -n "$VERSION_NAME"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "Building $VERSION_NAME ($VERSION_CODE)"
+
+      - name: Build signed release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Verify APK signature
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK"
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs "$APK"
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          SIZE=$(stat -c%s "$APK")
+          echo "APK_SHA256=$SHA" >> "$GITHUB_ENV"
+          echo "APK_SIZE=$SIZE" >> "$GITHUB_ENV"
+          echo "APK_SHA256=$SHA"
+          echo "APK_SIZE=$SIZE"
+
+      - name: Upload APK to R2
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          npx --yes wrangler@4.156.0 r2 object put \
+            "labu-artifacts/apk/${VERSION_CODE}/khristian-labu.apk" \
+            --file="$APK" \
+            --content-type=application/vnd.android.package-archive \
+            --cache-control="public, max-age=31536000, immutable" \
+            --remote
+
+      - name: Write latest.json
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          node -e '
+            const fs = require("fs");
+            const e = process.env;
+            fs.writeFileSync("release-assets/latest.json", JSON.stringify({
+              version: e.VERSION_NAME,
+              versionCode: Number(e.VERSION_CODE),
+              url: `${e.R2_PUBLIC_BASE}/apk/${e.VERSION_CODE}/khristian-labu.apk`,
+              sha256: e.APK_SHA256,
+              size: Number(e.APK_SIZE),
+              publishedAt: new Date().toISOString()
+            }, null, 2) + "\n");
+          '
+          npx --yes wrangler@4.156.0 r2 object put \
+            "labu-artifacts/latest.json" \
+            --file=release-assets/latest.json \
+            --content-type=application/json \
+            --cache-control="public, max-age=60" \
+            --remote
+
+      - name: Publish GitHub Release
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          TAG="v${VERSION_NAME}"
+          URL="${R2_PUBLIC_BASE}/apk/${VERSION_CODE}/khristian-labu.apk"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${APK}#khristian-labu.apk" --clobber
+            gh release edit "$TAG" --latest
+          else
+            gh release create "$TAG" "${APK}#khristian-labu.apk" \
+              --title "Khristian Labu ${VERSION_NAME}" \
+              --notes "Signed Android build. R2 mirror: ${URL}" \
+              --latest
+          fi

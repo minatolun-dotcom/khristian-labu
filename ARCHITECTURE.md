@@ -6,11 +6,11 @@
 flowchart TD
     A[git push to main] --> B[GitHub repo]
     B --> C[Cloudflare Pages<br/>serves dist/ → live web app]
-    G[local Gradle build] --> H[Bundle www/ into Android APK<br/>via Capacitor]
-    H --> I[Upload APK to GitHub Release]
-    D --> G[Tag v* → GitHub Release]
-    E --> H[Android device]
-    C --> I[Any browser]
+    B --> D[GitHub Actions Android build<br/>on v* tags]
+    D --> E[Capacitor bundles www/ into a signed APK]
+    E --> F[Upload APK to R2<br/>+ GitHub Releases]
+    C --> G[Any browser]
+    F --> H[Android device]
 ```
 
 ## Runtime (web & APK share the same index.html)
@@ -84,7 +84,7 @@ public values (project URL + anon key); with them blank the app is purely local.
 
 ## App updates (free, self-hosted distribution)
 
-The website is served by **Cloudflare Pages** and deployed from the staged `dist/` build by `.github/workflows/pages.yml` on every push to `main`. The APK is compiled locally and distributed via **GitHub Releases**; no GitHub Actions workflow builds or publishes it yet. Update checks are **detection only** — the app points the user at the release page and they download and install the new APK manually. No Play Store, no backend, no paid cloud.
+The website is served by **Cloudflare Pages** and deployed from the staged `dist/` build by `.github/workflows/pages.yml` on every push to `main`. The APK is built and signed by `.github/workflows/android-release.yml`, stored in **Cloudflare R2** at `dl.labu.lengkhawm.online`, and also attached to a **GitHub Release** as fallback. Update checks are **detection only** — the app points the user at the release asset and they download and install the new APK manually. No Play Store, no backend, no paid cloud.
 
 ```mermaid
 flowchart LR

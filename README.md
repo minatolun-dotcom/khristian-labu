@@ -49,14 +49,15 @@ cd android && ./gradlew assembleDebug --no-daemon
 # android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The padded Android launch-screen icons are tracked in `resources/android-splash/`.
-`npm run sync` installs them into the generated `android/` project.
+The Android native project is tracked. Generated build outputs and copied web assets are ignored.
+The padded launch-screen icons remain in `resources/android-splash/` and are installed by `npm run sync`.
 
-To release, bump `APP_VERSION` in `index.html`, `version.json`, and `CACHE` in `sw.js`, then:
+Release builds are produced by `.github/workflows/android-release.yml` on a `v*` tag or manual dispatch. The workflow signs with the repository's `KEYSTORE_*` secrets, publishes the APK to `https://dl.labu.lengkhawm.online/apk/<versionCode>/khristian-labu.apk`, and creates the GitHub Release fallback.
+
+To release, bump `APP_VERSION` in `index.html`, `version.json`, `CACHE` in `sw.js`, and `versionCode`/`versionName` in `android/app/build.gradle`, then:
 
 ```bash
 git tag vX.Y.Z && git push origin main --tags
-gh release create vX.Y.Z android/app/build/outputs/apk/debug/app-debug.apk#khristian-labu.apk --latest
 ```
 
 ## Tests
