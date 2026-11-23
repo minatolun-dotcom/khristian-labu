@@ -5,7 +5,7 @@
 ```mermaid
 flowchart TD
     A[git push to main] --> B[GitHub repo]
-    B --> C[GitHub Pages<br/>serves main/ → live web app]
+    B --> C[Cloudflare Pages<br/>serves dist/ → live web app]
     G[local Gradle build] --> H[Bundle www/ into Android APK<br/>via Capacitor]
     H --> I[Upload APK to GitHub Release]
     D --> G[Tag v* → GitHub Release]
@@ -84,7 +84,7 @@ public values (project URL + anon key); with them blank the app is purely local.
 
 ## App updates (free, self-hosted distribution)
 
-The website (Pages) updates automatically on every push. The APK is compiled locally and distributed via **GitHub Releases**; no GitHub Actions workflow builds or publishes it. Update checks are **detection only** — the app points the user at the release page and they download and install the new APK manually. No Play Store, no backend, no paid cloud.
+The website is served by **Cloudflare Pages** and deployed from the staged `dist/` build by `.github/workflows/pages.yml` on every push to `main`. The APK is compiled locally and distributed via **GitHub Releases**; no GitHub Actions workflow builds or publishes it yet. Update checks are **detection only** — the app points the user at the release page and they download and install the new APK manually. No Play Store, no backend, no paid cloud.
 
 ```mermaid
 flowchart LR
@@ -96,8 +96,8 @@ flowchart LR
     H -- no --> J[no update]
 ```
 
-- **Web users**: the Pages build updates automatically on every push (no action needed).
-- **APK users**: `fetchUpdateInfo()` compares the newest release against the embedded `APP_VERSION`. The primary source is the **static `version.json`** (committed in the repo, served by `raw.githubusercontent.com` + GitHub Pages — no rate limit, no auth, CORS-open); the GitHub Releases API is only a fallback because its 60 req/hr/IP cap silently killed the check on phones sharing mobile NAT IPs. The check runs once at start-up and on demand from Settings → **Check for update**; when a newer version exists, the app shows a centered, persistent update card (until the user taps **Update now** or dismisses it) and the Settings action also opens the download. Both point at the release **asset** (`releases/latest/download/khristian-labu.apk`), so the system browser downloads the APK and Android offers to install it. There is no custom in-app installer.
+- **Web users**: the Cloudflare Pages deployment updates from GitHub Actions on every push to `main` (no action needed).
+- **APK users**: `fetchUpdateInfo()` compares the newest release against the embedded `APP_VERSION`. The primary source is the **static `version.json`** (committed in the repo, served by `raw.githubusercontent.com` + Cloudflare Pages — no rate limit, no auth, CORS-open); the GitHub Releases API is only a fallback because its 60 req/hr/IP cap silently killed the check on phones sharing mobile NAT IPs. The check runs once at start-up and on demand from Settings → **Check for update**; when a newer version exists, the app shows a centered, persistent update card (until the user taps **Update now** or dismisses it) and the Settings action also opens the download. Both point at the release **asset** (`releases/latest/download/khristian-labu.apk`), so the system browser downloads the APK and Android offers to install it. There is no custom in-app installer.
 - **Free tier**: GitHub Releases + API are free; the unauthenticated API limit (60 req/hr per IP) is ample for occasional client checks.
 
 ## PWA / offline support
