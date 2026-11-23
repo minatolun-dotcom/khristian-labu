@@ -11,7 +11,7 @@ A gospel songbook app — 5,723 hymns across 17 songbooks in 6 collections.
 | **Web app** | Hand-written HTML, CSS, and JavaScript in `index.html`; no frontend framework or web build step |
 | **Offline / PWA** | Service worker (`sw.js`), Web App Manifest, IndexedDB, and `localStorage` |
 | **Android** | Capacitor 8 shell, Java Activity/updater bridge, Android SDK 36, minSdk 24 |
-| **API** | Cloudflare Workers with Hono and Better Auth |
+| **API** | Cloudflare Workers with Better Auth (plain `fetch` router) |
 | **Database** | Cloudflare D1 (SQLite) for the approved-edit overlay, proposal queue, and auth tables |
 | **Hosting** | Cloudflare Pages for the web app; Cloudflare R2 for APKs and `latest.json` |
 | **Releases** | GitHub Actions + Gradle signing, GitHub Releases as fallback |
@@ -27,10 +27,10 @@ without downloading a new corpus or APK.
 
 ```mermaid
 flowchart TD
-    DEV[Push to main] --> PAGES[Cloudflare Pages<br/>index.html + songs + assets]
-    DEV --> WORKER[Cloudflare Worker<br/>Hono + Better Auth]
+    PUSH[Push to main] --> PAGES[Cloudflare Pages<br/>index.html + songs + assets]
+    DEPLOY[Manual Wrangler deploy] --> WORKER[Cloudflare Worker<br/>Better Auth API]
     WORKER --> D1[(Cloudflare D1<br/>approved edits + proposals)]
-    DEV -->|tag v*| CI[GitHub Actions<br/>Gradle build + sign]
+    PUSH -->|tag v*| CI[GitHub Actions<br/>Gradle build + sign]
     CI --> R2[(Cloudflare R2<br/>APK + latest.json)]
     CI --> GH[GitHub Release<br/>fallback]
 
@@ -45,7 +45,9 @@ flowchart TD
     UPD -->|no| READY[Keep using app]
 ```
 
-For the deeper runtime, sync, reader, and update details, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
+The Worker is deployed separately with `npm run api:deploy`; Pages and the Android
+release are driven by GitHub Actions. For the deeper runtime, sync, reader, and
+update details, see [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Screenshots
 
