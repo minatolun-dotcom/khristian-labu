@@ -142,11 +142,14 @@ jobs:
           APK=android/app/build/outputs/apk/release/app-release.apk
           TAG="v${VERSION_NAME}"
           URL="${R2_PUBLIC_BASE}/apk/${VERSION_CODE}/khristian-labu.apk"
+          mkdir -p release-assets
+          cp "$APK" release-assets/khristian-labu.apk
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${APK}#khristian-labu.apk" --clobber
+            gh release delete-asset "$TAG" app-release.apk --yes >/dev/null 2>&1 || true
+            gh release upload "$TAG" release-assets/khristian-labu.apk --clobber
             gh release edit "$TAG" --latest
           else
-            gh release create "$TAG" "${APK}#khristian-labu.apk" \
+            gh release create "$TAG" release-assets/khristian-labu.apk \
               --title "Khristian Labu ${VERSION_NAME}" \
               --notes "Signed Android build. R2 mirror: ${URL}" \
               --latest
