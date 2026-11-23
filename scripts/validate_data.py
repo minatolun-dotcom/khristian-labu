@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Thorough data-corpus validation for Khristian Labu."""
-import json, gzip, re, sys, os
+import json, gzip, re, sys, os, hashlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 fails = []
@@ -90,6 +90,8 @@ print(f"  -> {total} songs validated; {no_number} songs without a number (by des
 plain = open(os.path.join(ROOT, 'songs.json'), 'rb').read()
 gz = gzip.open(os.path.join(ROOT, 'songs.json.gzip'), 'rb').read()
 check('songs.json.gzip decompresses to identical bytes', gz == plain, f'{len(plain)} vs {len(gz)}')
+check('groups.json has a corpus hash', isinstance(meta.get('dataHash'), str) and len(meta['dataHash']) == 16)
+check('groups.json corpus hash matches songs.json', meta.get('dataHash') == hashlib.sha256(plain).hexdigest()[:16], 'run merge_songbooks.py')
 
 # 6. config files parse
 for f in ['groups.json', 'manifest.webmanifest', 'version.json']:

@@ -15,7 +15,7 @@ const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
   fs.createReadStream(file).pipe(res);
 });
-await new Promise(r => server.listen(0, r));
+await new Promise(r => server.listen(0, '127.0.0.1', r));
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
 await page.goto(`http://localhost:${server.address().port}/`, { waitUntil: 'load' });

@@ -103,6 +103,127 @@ await section('load & home', async () => {
   await page.close();
 });
 
+// ═══════════════ 1a. SOLFA TUNE TABS ═══════════════
+await section('solfa tune tabs', async () => {
+  const page = await newPage();
+  await waitLoaded(page);
+  await page.waitForFunction(() => Object.keys(CHORD_CHARTS).filter(k => k.endsWith('__t2')).length === 8);
+  const seeded = await page.evaluate(() => {
+    const keys = { BL_1: 'B', BL_21: 'G', BL_22: 'F', BL_35: 'F', BL_105: 'B', BL_127: 'G', BL_131: 'A', BL_239: 'F' };
+    return Object.keys(keys).map(id => {
+      const c = CHORD_CHARTS[id + '__t2'];
+      if (!c) return { id: id, ok: false };
+      const lastLine = c.verseLines[c.verseLines.length - 1];
+      const last = lastLine[lastLine.length - 1];
+      return { id: id, ok: true, key: c.key, want: keys[id], chords: c.chords, last: (last[last.length - 1] || {}).ch, verses: c.verses };
+    });
+  });
+  ok('all eight Tune 2 charts are seeded in their printed keys with a tonic cadence',
+    seeded.every(s => s.ok && s.key === s.want && s.last === s.want && s.verses > 0 && s.chords.length >= 3),
+    JSON.stringify(seeded.filter(s => !s.ok || s.key !== s.want || s.last !== s.want)));
+  await page.locator('#groupGrid .cat-card').first().click();
+  await page.waitForSelector('#categoryGrid .cat-card');
+  await page.locator('#categoryGrid .cat-card').filter({ hasText: 'Biakna Late' }).first().click();
+  await page.waitForSelector('#songGrid .song-item');
+  await page.locator('#songGrid .song-item').filter({ hasText: 'Jesu Min Lian' }).first().click();
+  await page.waitForSelector('#songDetail .verse');
+  await page.evaluate(() => setReaderMode('solfa'));
+  await page.waitForSelector('.solfa-tunes');
+  await page.waitForFunction(() => { const i = document.getElementById('solfaSheetImg'); return i && i.complete && i.naturalWidth > 0; });
+  const tabs = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('.solfa-tunes button')];
+    const img = document.getElementById('solfaSheetImg');
+    return { labels: b.map(x => x.textContent.trim()), active: b.findIndex(x => x.classList.contains('active')), src: img.getAttribute('src'), w: img.naturalWidth };
+  });
+  ok('two-tune hymn shows Tune 1 / Tune 2 tabs',
+    tabs.labels.join('|') === 'Tune 1|Tune 2' && tabs.active === 0 && tabs.src.endsWith('BL_1-t1.avif') && tabs.w > 0,
+    JSON.stringify(tabs));
+  await page.locator('.solfa-tunes button').nth(1).click();
+  await page.waitForFunction(() => { const i = document.getElementById('solfaSheetImg'); return i && i.getAttribute('src').endsWith('BL_1-t2.avif') && i.complete && i.naturalWidth > 0; });
+  const t2 = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('.solfa-tunes button')];
+    const img = document.getElementById('solfaSheetImg');
+    return { active: b.findIndex(x => x.classList.contains('active')), w: img.naturalWidth, h: img.naturalHeight };
+  });
+  ok('Tune 2 tab swaps in the second sheet', t2.active === 1 && t2.w > 0 && t2.h > 0, JSON.stringify(t2));
+  await sleep(500);
+  const tuneBand = await page.evaluate(() => {
+    const root = document.querySelector('.solfa-tunes');
+    const pill = root.querySelector('.tune-pill');
+    const active = root.querySelector('button.active');
+    const pr = pill.getBoundingClientRect(), ar = active.getBoundingClientRect();
+    const cs = getComputedStyle(pill);
+    return { has: !!pill, dx: Math.round(Math.abs(pr.left - ar.left)), dw: Math.round(Math.abs(pr.width - ar.width)), dur: cs.transitionDuration, prop: cs.transitionProperty };
+  });
+  ok('tune switch slides its selection band like the reader switch',
+    tuneBand.has && tuneBand.dx <= 1 && tuneBand.dw <= 1 && tuneBand.dur !== '0s' && /transform/.test(tuneBand.prop), JSON.stringify(tuneBand));
+  await page.evaluate(() => { setReaderMode('lyrics'); setReaderMode('solfa'); });
+  const kept = await page.evaluate(() => ({
+    src: document.getElementById('solfaSheetImg').getAttribute('src'),
+    active: [...document.querySelectorAll('.solfa-tunes button')].findIndex(b => b.classList.contains('active'))
+  }));
+  ok('chosen tune survives a view switch', kept.src.endsWith('BL_1-t2.avif') && kept.active === 1, JSON.stringify(kept));
+  const files = await page.evaluate(async () => Promise.all(['assets/solfa/BL_1-t1.avif', 'assets/solfa/BL_1-t2.avif']
+    .map(async p => (await fetch(p, { method: 'HEAD' })).status)));
+  ok('both tune sheet files are served', files.every(s => s === 200), JSON.stringify(files));
+  const headerGap = await page.evaluate(() => {
+    const h = document.querySelector('.song-detail-header').getBoundingClientRect();
+    const t = document.querySelector('.solfa-tunes').getBoundingClientRect();
+    return Math.round(t.top - h.bottom);
+  });
+  ok('solfa header rule has breathing room below it', headerGap >= 12, 'gap ' + headerGap);
+
+  // Chords get the same tune switch, with an independent chart per tune.
+  await page.evaluate(() => setReaderMode('chords'));
+  await page.waitForSelector('.chord-sheet');
+  const chordsT2 = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('.solfa-tunes button')];
+    return {
+      labels: b.map(x => x.textContent.trim()), active: b.findIndex(x => x.classList.contains('active')),
+      key: (document.querySelector('.chord-key-value') || {}).textContent || '',
+      pills: [...document.querySelectorAll('.chord-summary .chord-pill')].map(x => x.textContent.trim())
+    };
+  });
+  ok('chords tab shows Tune 1 / Tune 2 and its seeded Tune 2 chart',
+    chordsT2.labels.join('|') === 'Tune 1|Tune 2' && chordsT2.active === 1
+      && chordsT2.key.trim() === 'B' && chordsT2.pills.includes('F#') && !chordsT2.pills.includes('G'), JSON.stringify(chordsT2));
+  await page.locator('.solfa-tunes button').first().click();
+  await page.waitForSelector('.chord-sheet');
+  await sleep(500);
+  const chordBand = await page.evaluate(() => {
+    const root = document.querySelector('.solfa-tunes');
+    const pill = root.querySelector('.tune-pill');
+    const active = root.querySelector('button.active');
+    const pr = pill.getBoundingClientRect(), ar = active.getBoundingClientRect();
+    return { dx: Math.round(Math.abs(pr.left - ar.left)), dw: Math.round(Math.abs(pr.width - ar.width)), dur: getComputedStyle(pill).transitionDuration };
+  });
+  ok('chords tune switch keeps the sliding band after re-render',
+    chordBand.dx <= 1 && chordBand.dw <= 1 && chordBand.dur !== '0s', JSON.stringify(chordBand));
+  const tune1Key = (await page.locator('.chord-key-value').textContent()).trim();
+  ok('Tune 1 still shows the first chord chart', tune1Key === 'G', tune1Key);
+  await page.locator('.solfa-tunes button').nth(1).click();
+  await page.waitForSelector('.chord-sheet');
+  await page.evaluate(() => openChordEditor());
+  await page.waitForSelector('#chordModal.open');
+  const t2EditorKey = await page.inputValue('#chordEditKey');
+  ok('Tune 2 chord editor defaults to its printed key (B)', t2EditorKey === 'B', t2EditorKey);
+  await page.evaluate(() => {
+    CE.blocks[0].lines[0].chords = [{ pos: 0, ch: 'B' }];
+    saveChordEditor();
+  });
+  await page.waitForTimeout(350);
+  const chartSep = await page.evaluate(() => ({
+    t1: (chordChartFor(currentList[currentSongIdx], 0).chords || []).slice(),
+    t2: ((CHORD_CHARTS['BL_1__t2'] || {}).chords || []).slice(),
+    stored: Object.keys(JSON.parse(localStorage.getItem('labu_chord_charts_v1') || '{}')),
+    shownKey: (document.querySelector('.chord-key-value') || {}).textContent || ''
+  }));
+  ok('second tune saves a separate chord chart',
+    chartSep.t2.includes('B') && chartSep.t1.includes('G') && !chartSep.t1.includes('B')
+      && chartSep.stored.includes('BL_1__t2') && chartSep.shownKey.trim() === 'B', JSON.stringify(chartSep));
+  await page.close();
+});
+
 // ═══════════════ 1b. VIEW HIDING (detail view must not render below home) ═══════════════
 await section('view hiding', async () => {
   const page = await newPage({ width: 390, height: 844 });
@@ -496,13 +617,18 @@ await section('admin CRUD', async () => {
   await page.waitForTimeout(500);
   ok('find & replace preview counts matches', (await page.textContent('#frStats')).includes('match'));
   await page.locator('#findReplaceModal').locator('button:has-text("Replace All")').click();
-  // the save is async (IndexedDB + per-book records), so wait for the result itself
-  const replaced = await page.waitForFunction(
-    () => [...document.querySelectorAll('.toast')].some(t => t.textContent.includes('Replaced')),
-    null, { timeout: 15000 }
-  ).then(() => true).catch(() => false);
-  ok('replace executed', replaced);
-  await page.waitForFunction(() => !document.getElementById('findReplaceModal').classList.contains('open'), null, { timeout: 15000 }).catch(() => {});
+  // Closing the modal is the app's completion signal; the success toast is
+  // ephemeral and can disappear before Playwright starts polling.
+  const replaceResult = await page.waitForFunction(() => {
+    const modal = document.getElementById('findReplaceModal');
+    if (!modal.classList.contains('open')) return { ok: true };
+    const err = [...document.querySelectorAll('.toast')]
+      .map(t => t.textContent)
+      .find(t => /Could not save replacement|No matches to replace/.test(t));
+    return err ? { ok: false, error: err } : false;
+  }, null, { timeout: 20000 }).then(h => h.jsonValue()).catch(() => ({ ok: false, error: 'timed out waiting for the replace modal' }));
+  ok('replace executed', replaceResult.ok, JSON.stringify(replaceResult));
+  if (!replaceResult.ok) throw new Error(replaceResult.error);
   // edit song title
   await page.locator('#adminSongList .admin-song-row button[title="Edit"]').click();
   await page.waitForSelector('#songModal.open');
@@ -937,6 +1063,30 @@ await section('chord studio', async () => {
   ok('tap a lyric + pick a chord inserts it at that character', await page.evaluate(() => CE.blocks[0].lines[0].chords.some(c => c.pos === 5 && c.ch === 'C')));
   ok('editor marks the chart dirty', await page.evaluate(() => CE.dirty === true));
 
+  // adjacent chords must sit beside each other, never stacked or overlapping
+  await page.locator(l0 + ' .ce-ch[data-i="6"]').click();
+  await page.waitForSelector('#ceWheel:not([hidden])');
+  await page.locator('#ceWheelStage .ce-wheel-chip[data-chord="D"]').click();
+  await sleep(200);
+  const neighbour = await page.evaluate(() => {
+    const line = document.querySelector('.ce-line[data-b="0"][data-l="0"]');
+    const chips = [...line.querySelectorAll('.ce-chord')].map(el => {
+      const r = el.getBoundingClientRect();
+      return { pos: el.dataset.pos, l: r.left, r: r.right, t: Math.round(r.top), b: r.bottom };
+    });
+    const hits = [];
+    for (let i = 0; i < chips.length; i++) for (let j = i + 1; j < chips.length; j++) {
+      const a = chips[i], b = chips[j];
+      if (a.l < b.r - 0.5 && b.l < a.r - 0.5 && a.t < b.b - 0.5 && b.t < a.b - 0.5) hits.push(a.pos + '/' + b.pos);
+    }
+    return { hits: hits, rows: new Set(chips.map(c => c.t)).size };
+  });
+  ok('adjacent chords sit side by side without overlapping', neighbour.hits.length === 0 && neighbour.rows === 1, JSON.stringify(neighbour));
+  await page.locator(l0 + ' .ce-chord[data-pos="6"]').click();
+  await page.waitForSelector('#ceWheel:not([hidden])');
+  await page.locator('#ceWheelRemove').click();
+  await sleep(260);
+
   // replace
   await page.locator(l0 + ' .ce-chord[data-pos="5"]').click();
   await page.waitForSelector('#ceWheel:not([hidden])');
@@ -1043,6 +1193,57 @@ await section('chord studio', async () => {
   });
   ok('reader places every chord above its character (0px drift)', readAlign.length > 0 && readAlign.every(d => Math.abs(d) <= 1), JSON.stringify(readAlign));
   ok('reader shows the saved chart', (await page.locator('.chord-sheet .chord-read').count()) > 0);
+
+  // guitar chord popup
+  await page.locator('.chord-summary .chord-pill').first().click();
+  await page.waitForSelector('#chordPop:not([hidden])');
+  const popInfo = await page.evaluate(() => {
+    const pop = document.getElementById('chordPop');
+    const r = pop.getBoundingClientRect();
+    const pill = document.querySelector('.chord-summary .chord-pill').getBoundingClientRect();
+    return {
+      name: document.getElementById('chordPopName').textContent,
+      pill: document.querySelector('.chord-summary .chord-pill').textContent,
+      dots: document.querySelectorAll('#chordPopDiagram .gcd-dot, #chordPopDiagram .gcd-barre').length,
+      strings: document.querySelectorAll('#chordPopDiagram .gcd-string').length,
+      anim: pop.classList.contains('in'),
+      origin: getComputedStyle(pop).transformOrigin,
+      dx: Math.abs((pill.left + pill.width / 2) - (r.left + r.width / 2)),
+      half: r.width / 2
+    };
+  });
+  ok('chord pill opens a guitar shape popup that zooms from the pill',
+    popInfo.name === popInfo.pill.trim() && popInfo.dots > 0 && popInfo.strings === 6 && popInfo.anim && popInfo.dx < popInfo.half,
+    JSON.stringify(popInfo));
+  const shapeAudit = await page.evaluate(() => {
+    const roots = ['C', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+    const quals = ['', 'm', '7', 'maj7', 'm7', '6', 'm6', '9', 'sus2', 'sus4', 'dim', 'dim7', 'aug'];
+    const names = ['G/B', 'Am/G', 'D/F#'];
+    roots.forEach(r => quals.forEach(q => names.push(r + q)));
+    return names.map(name => {
+      const p = guitarParseChord(name);
+      const tones = new Set(guitarIntervals(p.quality).map(i => (p.rootPc + i) % 12));
+      const sh = guitarShapeFor(name);
+      if (!sh) return { name: name, ok: false, why: 'no shape' };
+      const pcs = sh.sounding.map(s => (GUITAR_STRING_PC[s] + sh.frets[s]) % 12);
+      const target = p.bassPc == null ? p.rootPc : p.bassPc;
+      const allIn = pcs.every((pc, i) => tones.has(pc) || (i === 0 && pc === target));
+      return { name: name, ok: allIn && pcs[0] === target && sh.span <= 4 && sh.sounding.length >= 4 };
+    });
+  });
+  ok('every chord gets a valid guitar voicing (chord tones + correct bass)',
+    shapeAudit.every(s => s.ok), JSON.stringify(shapeAudit.filter(s => !s.ok)).slice(0, 220));
+  await page.locator('#chordPopPlay').click();
+  await sleep(220);
+  const guitar = await page.evaluate(() => ({
+    last: typeof _guitarLast !== 'undefined' ? _guitarLast : null,
+    voices: typeof _guitarVoices !== 'undefined' ? _guitarVoices.length : 0,
+    playing: document.getElementById('chordPopPlay').classList.contains('playing')
+  }));
+  ok('speaker button strums the chord in a guitar voice', !!guitar.last && guitar.last.midi.length >= 4 && guitar.voices >= 4, JSON.stringify({ notes: guitar.last && guitar.last.midi.length, voices: guitar.voices, playing: guitar.playing }));
+  await page.locator('#chordPopBackdrop').click({ position: { x: 5, y: 5 } });
+  await sleep(150);
+  ok('chord popup closes from the backdrop', await page.evaluate(() => document.getElementById('chordPop').hidden));
   await page.locator('.chord-tool-edit').click();
   await page.waitForSelector('#chordModal.open #ceCanvas .ce-line');
   await sleep(200);
@@ -1107,7 +1308,7 @@ await section('chord studio', async () => {
     });
     return { rows, dx };
   });
-  ok('wrapped lyric lines keep every chord on its character', wrap.rows > 1 && wrap.dx.length > 0 && wrap.dx.every(d => d !== null && Math.abs(d) <= 1), JSON.stringify(wrap));
+  ok('wrapped lyric lines keep every chord on or after its character', wrap.rows > 1 && wrap.dx.length > 0 && wrap.dx.every(d => d !== null && d >= -1), JSON.stringify(wrap));
   await mp.locator('#ceSaveBtn').click();
   await sleep(600);
   const readWrap = await mp.evaluate(() => {
@@ -1121,6 +1322,14 @@ await section('chord studio', async () => {
     return out;
   });
   ok('reader keeps wrapped-line chords on their characters', readWrap.length > 0 && readWrap.every(d => Math.abs(d) <= 1), JSON.stringify(readWrap));
+  await mp.locator('.chord-summary .chord-pill').first().click();
+  await mp.waitForSelector('#chordPop:not([hidden])');
+  const popBox = await mp.locator('#chordPop').evaluate(el => {
+    const r = el.getBoundingClientRect();
+    return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), bottom: Math.round(r.bottom), vw: innerWidth, vh: innerHeight };
+  });
+  ok('mobile chord popup stays inside the viewport',
+    popBox.left >= 0 && popBox.right <= popBox.vw && popBox.top >= 0 && popBox.bottom <= popBox.vh, JSON.stringify(popBox));
   await mp.close();
 });
 

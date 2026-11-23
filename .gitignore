@@ -27,3 +27,6 @@ sources/klab/
 sources/la/
 sources/lakkhawm/
 sources/zomi/
+
+# ─── local data backups ───
+backups/

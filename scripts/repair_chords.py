@@ -43,11 +43,27 @@ FLAT_KEYS = {"F", "Bb", "Eb", "Ab", "Db", "Gb", "Cb"}
 
 ROOT_RE = re.compile(r"^([A-G](?:#|b)?)(.*)$")
 
+# songs.json carries a different key label from the printed sheet for these
+# entries. The chart key is the PDF key, so repair cadence/duplicates in that
+# key instead of transposing the chart to the metadata key.
+VERIFIED_CHART_KEYS = {
+    "BL_106": "Fb",  # PDF p.138, "Doh is Fb (Damdam in)"
+    "BL_110": "B",   # PDF p.142, "Doh is B"
+    "BL_265": "G",   # PDF p.314, "Doh is G"
+    "BL_357": "Eb",  # PDF p.414, "Doh is Eb"
+    # PDF p.63 prints "Doh is F", but it points to No.35 Tune 1, whose only
+    # sheet (PDF p.61) is in E. Keep the verified Tune 1 sheet key; the F label
+    # is unsupported by the source book, so do not transpose the chart to it.
+    "BL_36": "E",
+}
+
 
 def norm_key(raw):
     """'Doh is G.' / 'key Ab' / 'Doh is Fb (Damdam in)' -> 'G' / 'Ab' / 'Fb'."""
     s = re.sub(r"^(?:key\s*|doh\s+is\s*)", "", (raw or "").strip(), flags=re.I)
-    m = re.match(r"^([A-G](?:#|b)?)", s)
+    s = re.sub(r"\s*flat\b", "b", s, flags=re.I)
+    s = re.sub(r"\s*sharp\b", "#", s, flags=re.I)
+    m = re.match(r"^([A-G](?:#|b)?)", s[0].upper() + s[1:] if s else s)
     return m.group(1) if m else None
 
 
@@ -113,6 +129,14 @@ def repair(chart, song, stats):
     """Mutate chart in place. Returns False when the chart must be left alone."""
     printed = norm_key(song.get("key"))
     chart_key = norm_key(chart.get("key"))
+    verified = VERIFIED_CHART_KEYS.get(song.get("id"))
+    if verified and chart_key == verified:
+        printed = verified
+    # "Kaih No. X" entries point at a tune printed under another hymn, so their
+    # own key line is a cross-reference rather than a key. The chart key is the
+    # only tonic available; use it for cadence and duplicate cleanup.
+    if not printed and chart_key and re.match(r"^Kaih\b", str(song.get("key") or ""), re.I):
+        printed = chart_key
     if not printed or not (chart.get("verseLines") or []):
         stats["skipped"] += 1
         return False

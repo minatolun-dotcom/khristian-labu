@@ -68,7 +68,7 @@ class NoStoreHandler(SimpleHTTPRequestHandler):
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
     handler = partial(NoStoreHandler, directory=ROOT)
-    with ThreadingHTTPServer(('0.0.0.0', port), handler) as httpd:
+    with ThreadingHTTPServer(('127.0.0.1', port), handler) as httpd:
         print(f'serving {ROOT} at http://localhost:{port} (no-store)', flush=True)
         httpd.serve_forever()
 

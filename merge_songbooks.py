@@ -10,7 +10,7 @@ Source assets (already extracted to sources/):
 The existing 4 books (B&P, BL, PN, SM) are preserved untouched.
 A top-level "groups" array describes the 3 main songbooks + their sub-divisions.
 """
-import json, re, html, os, gzip
+import json, re, html, os, gzip, hashlib
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -421,7 +421,13 @@ def main():
 
     songs['groups'] = groups
 
+    # ponytail: emit both plain and gzipped corpus; app fetches .gzip when supported.
+    # Use .gzip (not .gz) so Android's asset merger doesn't treat it as a duplicate of songs.json.
+    payload = json.dumps(songs, ensure_ascii=False, separators=(',', ':'))
+    data_hash = hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16]
+
     # ponytail: tiny metadata so the home grid paints instantly without parsing the full corpus.
+    # The content hash invalidates IndexedDB/service-worker caches even when DATA_VERSION is not bumped.
     meta = []
     for g in groups:
         books = []
@@ -430,11 +436,8 @@ def main():
             books.append({'code': code, 'name': (bk.get('info') or {}).get('name', code), 'count': len(bk.get('songs', []))})
         meta.append({'id': g['id'], 'name': g['name'], 'desc': g.get('desc', ''), 'icon': g.get('icon', ''), 'books': books})
     with open(os.path.join(ROOT, 'groups.json'), 'w', encoding='utf-8') as f:
-        json.dump({'groups': meta}, f, ensure_ascii=False, separators=(',', ':'))
+        json.dump({'groups': meta, 'dataHash': data_hash}, f, ensure_ascii=False, separators=(',', ':'))
 
-    # ponytail: emit both plain and gzipped corpus; app fetches .gzip when supported.
-    # Use .gzip (not .gz) so Android's asset merger doesn't treat it as a duplicate of songs.json.
-    payload = json.dumps(songs, ensure_ascii=False, separators=(',', ':'))
     with open(os.path.join(ROOT, 'songs.json'), 'w', encoding='utf-8') as f:
         f.write(payload)
     with gzip.open(os.path.join(ROOT, 'songs.json.gzip'), 'wt', encoding='utf-8') as f:
