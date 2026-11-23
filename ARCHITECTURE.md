@@ -89,20 +89,29 @@ sessions use Better Auth bearer tokens on the APK and session cookies on the web
 
 ## App updates (free, self-hosted distribution)
 
-The website is served by **Cloudflare Pages** and deployed from the staged `dist/` build by `.github/workflows/pages.yml` on every push to `main`. The approved-change API runs on a **Cloudflare Worker + D1** at `api.labu.lengkhawm.online`. The APK is built and signed by `.github/workflows/android-release.yml`, stored in **Cloudflare R2** at `dl.labu.lengkhawm.online`, and also attached to a **GitHub Release** as fallback. Update checks are **detection only** — the app points the user at the release asset and they download and install the new APK manually. No Play Store and no paid cloud.
+The website is served by **Cloudflare Pages** and deployed from the staged `dist/` build by `.github/workflows/pages.yml` on every push to `main`. The approved-change API runs on a **Cloudflare Worker + D1** at `api.labu.lengkhawm.online`. The APK is built and signed by `.github/workflows/android-release.yml`, stored in **Cloudflare R2** at `dl.labu.lengkhawm.online`, and also attached to a **GitHub Release** as fallback. No Play Store and no paid cloud.
 
 ```mermaid
 flowchart LR
-    A[build APK locally] --> B[create GitHub Release]
-    B --> C[commit + push version.json]
+    A[GitHub Actions build + sign] --> B[R2 APK + latest.json]
+    B --> C[GitHub Release fallback]
     F[app launch / Settings check] --> G[fetch version.json]
     G --> H{newer than APP_VERSION?}
-    H -- yes --> I[banner / open GitHub Releases page]
-    H -- no --> J[no update]
+    H -- yes --> I[persistent update card]
+    I --> J[native: fetch latest.json]
+    J --> K[download to app cache]
+    K --> L{SHA-256 + size match?}
+    L -- no --> M[error + Retry]
+    L -- yes --> N[FileProvider → Android installer]
+    N --> O{unknown sources allowed?}
+    O -- no --> P[Open settings → retry on resume]
+    O -- yes --> Q[system install confirmation]
+    H -- no --> R[no update]
 ```
 
 - **Web users**: the Cloudflare Pages deployment updates from GitHub Actions on every push to `main` (no action needed).
-- **APK users**: `fetchUpdateInfo()` compares the newest release against the embedded `APP_VERSION`. The primary source is the **static `version.json`** (committed in the repo, served by `raw.githubusercontent.com` + Cloudflare Pages — no rate limit, no auth, CORS-open); the GitHub Releases API is only a fallback because its 60 req/hr/IP cap silently killed the check on phones sharing mobile NAT IPs. The check runs once at start-up and on demand from Settings → **Check for update**; when a newer version exists, the app shows a centered, persistent update card (until the user taps **Update now** or dismisses it) and the Settings action also opens the download. Both point at the release **asset** (`releases/latest/download/khristian-labu.apk`), so the system browser downloads the APK and Android offers to install it. There is no custom in-app installer.
+- **APK users**: `fetchUpdateInfo()` compares the newest release against the embedded `APP_VERSION`. The primary source is the **static `version.json`** (committed in the repo, served by `raw.githubusercontent.com` + Cloudflare Pages — no rate limit, no auth, CORS-open); the GitHub Releases API is only a fallback because its 60 req/hr/IP cap silently killed the check on phones sharing mobile NAT IPs. The check runs once at start-up and on demand from Settings → **Check for update**. A newer version shows a centered, persistent update card.
+- **Native update path (1.5.64+)**: **Update now** fetches `latest.json` from R2 (CORS-open for `GET`/`HEAD`), then calls the `KhristianUpdate` JavaScript bridge. `UpdateInstaller.java` downloads directly to app-private cache, enforces the published byte size, computes SHA-256, and only launches the installer when the hash matches. Android still shows its own install confirmation. If `canRequestPackageInstalls()` is false, the app opens the per-app unknown-sources settings page and retries on `onResume`. The card shows download progress, permission guidance, errors, and Retry. A failed or missing `latest.json` falls back to the direct APK asset; browser visitors always use the browser path.
 - **Free tier**: GitHub Releases + API are free; the unauthenticated API limit (60 req/hr per IP) is ample for occasional client checks.
 
 ## PWA / offline support

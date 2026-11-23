@@ -31,7 +31,9 @@ A gospel songbook app — 5,723 hymns across 17 songbooks in 6 collections.
 
 Download the latest APK from [Releases](https://github.com/minatolun-dotcom/khristian-labu/releases)
 ([R2 release metadata](https://dl.labu.lengkhawm.online/latest.json)). The app checks `version.json` on
-launch and from Settings → Check for update.
+launch and from Settings → Check for update. In the Android app, **Update now** downloads the signed
+APK in-app, verifies its published SHA-256, then opens Android's installer. If Android blocks installs
+from the app, the card offers **Open settings**. Browser visitors still get the direct APK asset.
 
 If Android reports a signature mismatch when installing a signed release over an older build,
 export a local backup first, then uninstall the old app and install the release. That is a one-time

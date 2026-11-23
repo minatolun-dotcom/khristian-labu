@@ -729,8 +729,14 @@ body[data-view="list"] #listFastScroll.on{display:block;pointer-events:auto;}
 .upd-text b{color:var(--accent-ink);}
 .upd-btn{background:var(--warm);color:var(--warm-ink);padding:0.5rem 1.1rem;border-radius:999px;font-size:0.85rem;font-weight:600;text-decoration:none;white-space:nowrap;transition:filter 0.2s;}
 .upd-btn:hover{filter:brightness(1.1);}
+.upd-btn[hidden]{display:none;}
 .upd-close{background:none;border:none;color:var(--text3);font-size:1.4rem;cursor:pointer;line-height:1;padding:0 0.4rem;}
 .upd-close:hover{color:var(--text);}
+.upd-progress{flex:1 1 100%;display:flex;flex-direction:column;gap:6px;margin-top:2px;}
+.upd-progress[hidden]{display:none;}
+.upd-progress-track{height:6px;border-radius:999px;overflow:hidden;background:var(--border);}
+.upd-progress-fill{height:100%;width:0;border-radius:inherit;background:var(--warm);transition:width 0.2s ease;}
+.upd-progress-note{font-size:0.74rem;line-height:1.4;color:var(--text3);text-align:center;}
 @media(max-width:768px){.update-banner{max-width:calc(100vw - 2rem);padding:16px;}}
 
 /* ─── CONFIRM DIALOG ─── */
@@ -1401,9 +1407,13 @@ body.edge-back #detailView .song-detail{box-shadow:-18px 0 48px rgba(0,0,0,.38);
   </div>
 </nav>
 <div id="updateBanner" class="update-banner" role="dialog" aria-live="polite" hidden>
-  <span class="upd-text">Version <b id="updVer"></b> is ready to install</span>
+  <span class="upd-text" id="updText">Version <b id="updVer"></b> is ready to install</span>
   <a id="updBtn" class="upd-btn" target="_blank" rel="noopener">Update now</a>
   <button class="upd-close" onclick="dismissUpdate()" aria-label="Dismiss">×</button>
+  <div class="upd-progress" id="updProgress" hidden>
+    <div class="upd-progress-track"><div class="upd-progress-fill" id="updProgressFill"></div></div>
+    <div class="upd-progress-note" id="updProgressNote"></div>
+  </div>
 </div>
 <div class="modal-overlay" id="sidebarModal" onclick="if(event.target===this)closeSidebar()">
   <div class="modal" style="max-width:360px;">
@@ -2558,8 +2568,10 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.63'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.64'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
+const LATEST_JSON = 'https://dl.labu.lengkhawm.online/latest.json';
+let latestUpdate = null;
 // ─── CLOUD SYNC (Cloudflare Worker + D1) — approved changes reach every device ───
 // The API URL is baked in for production. `window.LABU_CLOUD_API` wins so a fork
 // or test harness can point at staging, and an empty value disables cloud sync
@@ -2787,8 +2799,21 @@ function compareVer(a, b) {
 }
 // ponytail: link the release ASSET, not the HTML release page — the browser then
 // downloads the APK and Android prompts to install it in one step.
-function apkDownloadUrl() { return 'https://github.com/' + REPO + '/releases/latest/download/khristian-labu.apk'; }
+function apkDownloadUrl() { return (latestUpdate && latestUpdate.url) || 'https://github.com/' + REPO + '/releases/latest/download/khristian-labu.apk'; }
 function isNativeApp() { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
+function isNativeUpdater() { return isNativeApp() && !!window.KhristianUpdate && typeof window.KhristianUpdate.start === 'function'; }
+async function fetchLatestMeta(version) {
+  try {
+    const res = await fetch(LATEST_JSON + '?v=' + encodeURIComponent(version), { cache: 'no-store' });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const v = String(j.version || '').replace(/^v/, '');
+    const url = String(j.url || '');
+    const sha256 = String(j.sha256 || '').toLowerCase();
+    if (v !== version || !/^https:\/\//.test(url) || !/^[0-9a-f]{64}$/.test(sha256)) return null;
+    return { version: v, url, sha256, size: Number(j.size) || 0 };
+  } catch (e) { return null; }
+}
 function openApkDownload() {
   const url = apkDownloadUrl();
   const launcher = isNativeApp() && window.Capacitor.Plugins && window.Capacitor.Plugins.AppLauncher;
@@ -2815,12 +2840,93 @@ function dismissUpdate() {
   try { localStorage.setItem('labu_update_dismissed', document.getElementById('updVer').textContent); } catch (e) {}
   const b = document.getElementById('updateBanner'); if (b) b.hidden = true;
 }
-function showUpdateBanner(latest) {
-  document.getElementById('updVer').textContent = latest;
+function setUpdButton(label, handler) {
   const btn = document.getElementById('updBtn');
+  if (!btn) return;
+  btn.textContent = label;
+  btn.hidden = false;
   btn.href = apkDownloadUrl();
-  // In the APK, hand the URL to the system browser via AppLauncher so the download works.
-  btn.onclick = (e) => { if (isNativeApp()) { e.preventDefault(); openApkDownload(); } };
+  btn.onclick = handler ? (e) => { e.preventDefault(); handler(); } : null;
+}
+function setUpdateProgress(state, percent, message) {
+  const banner = document.getElementById('updateBanner');
+  const progress = document.getElementById('updProgress');
+  const fill = document.getElementById('updProgressFill');
+  const note = document.getElementById('updProgressNote');
+  if (!banner || !progress || !fill || !note) return;
+  banner.hidden = false;
+  if (state === 'preparing' || state === 'downloading') {
+    progress.hidden = false;
+    const base = message || (percent >= 0 ? 'Downloading update…' : 'Preparing update…');
+    fill.style.width = percent >= 0 ? Math.max(0, Math.min(100, percent)) + '%' : '20%';
+    note.textContent = percent >= 0 && !/%/.test(base) ? base + ' ' + percent + '%' : base;
+    setUpdButton('', null);
+    document.getElementById('updBtn').hidden = true;
+  } else if (state === 'permission') {
+    progress.hidden = false;
+    note.textContent = message || 'Allow installs from Khristian Labu, then return here.';
+    setUpdButton('Open settings', () => window.KhristianUpdate.openInstallSettings());
+  } else if (state === 'installing') {
+    progress.hidden = false;
+    fill.style.width = '100%';
+    note.textContent = message || 'Opening the Android installer…';
+    document.getElementById('updBtn').hidden = true;
+  } else if (state === 'ready') {
+    progress.hidden = false;
+    fill.style.width = '100%';
+    note.textContent = message || 'Update downloaded. Opening the installer…';
+    document.getElementById('updBtn').hidden = true;
+  } else if (state === 'installed') {
+    progress.hidden = false;
+    fill.style.width = '100%';
+    note.textContent = message || 'Update installed. Reloading…';
+    document.getElementById('updBtn').hidden = true;
+  } else if (state === 'error') {
+    progress.hidden = false;
+    fill.style.width = '0%';
+    note.textContent = message || 'Update failed.';
+    setUpdButton('Retry', () => startInAppUpdate({ version: (latestUpdate && latestUpdate.version) || document.getElementById('updVer').textContent }));
+    toast(message || 'Update failed.', 'error');
+  }
+}
+async function startInAppUpdate(info) {
+  if (!isNativeUpdater()) { openApkDownload(); return; }
+  info = info || {};
+  const version = String(info.version || document.getElementById('updVer').textContent || '');
+  setUpdateProgress('preparing', -1, 'Preparing update…');
+  const meta = (latestUpdate && latestUpdate.version === version) ? latestUpdate : await fetchLatestMeta(version);
+  if (!meta) {
+    setUpdateProgress('error', 0, 'Update details are unavailable. Opening the download page.');
+    openApkDownload();
+    return;
+  }
+  latestUpdate = meta;
+  try {
+    window.KhristianUpdate.start(meta.url, meta.sha256, String(meta.size || ''), meta.version);
+  } catch (e) {
+    setUpdateProgress('error', 0, 'Could not start the update. Opening the download page.');
+    openApkDownload();
+  }
+}
+window.__labuUpdateProgress = function(state, percent, message) {
+  setUpdateProgress(String(state || ''), Number(percent), String(message || ''));
+};
+function showUpdateBanner(latest, meta) {
+  latestUpdate = meta && meta.version === latest ? meta : null;
+  document.getElementById('updVer').textContent = latest;
+  document.getElementById('updProgress').hidden = true;
+  document.getElementById('updProgressFill').style.width = '0%';
+  document.getElementById('updProgressNote').textContent = '';
+  const btn = document.getElementById('updBtn');
+  btn.hidden = false;
+  btn.href = apkDownloadUrl();
+  if (isNativeUpdater()) {
+    setUpdButton('Update now', () => startInAppUpdate({ version: latest }));
+  } else {
+    // Browser visitors still get the direct APK asset download.
+    btn.textContent = 'Update now';
+    btn.onclick = null;
+  }
   document.getElementById('updateBanner').hidden = false;
   const lv = document.getElementById('latestVersion');
   if (lv) { document.getElementById('latestVersionVal').textContent = latest; lv.style.display = ''; }
@@ -2859,7 +2965,8 @@ async function manualCheckUpdate() {
   if (compareVer(info.version, APP_VERSION) > 0) {
     showUpdateBanner(info.version);
     toast('Update available: v' + info.version, 'success');
-    openApkDownload();
+    if (isNativeUpdater()) startInAppUpdate(info);
+    else openApkDownload();
   } else {
     toast('You are on the latest version (' + APP_VERSION + ')', 'success');
   }

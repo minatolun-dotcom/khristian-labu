@@ -906,7 +906,7 @@ await section('update check', async () => {
   ok('start-up check shows the update banner', (await page.textContent('#updVer')).includes('9.9.9'));
   const href = await page.locator('#updBtn').getAttribute('href');
   ok('banner links straight to the APK asset', href === 'https://github.com/minatolun-dotcom/khristian-labu/releases/latest/download/khristian-labu.apk', href);
-  ok('in-app downloader is gone', (await page.locator('#otaProgress').count()) === 0);
+  ok('native update progress UI is present but idle', (await page.locator('#updProgress').count()) === 1 && await page.locator('#updProgress').isHidden());
   // The card must be fully on screen and stay put until answered.
   const box = await page.locator('#updateBanner').boundingBox();
   const vp = page.viewportSize();
@@ -924,6 +924,54 @@ await section('update check', async () => {
   await page.waitForTimeout(900);
   ok('manual check opens the APK download', (await page.evaluate(() => window.__opened)).includes('https://github.com/minatolun-dotcom/khristian-labu/releases/latest/download/khristian-labu.apk'));
   await page.close();
+
+  // Native build: the banner drives the downloaded/verified/install flow.
+  const native = await newPage();
+  await native.addInitScript(() => {
+    window.__starts = [];
+    window.__settingsOpened = 0;
+    window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', isPluginAvailable: () => false, Plugins: {} };
+    window.KhristianUpdate = {
+      isInstallAllowed: () => true,
+      openInstallSettings: () => { window.__settingsOpened++; },
+      start: (url, sha256, size, version) => { window.__starts.push({ url, sha256, size, version }); },
+    };
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (url, opts) => {
+      if (String(url).includes('version.json')) return { ok: true, json: async () => ({ version: '9.9.9' }) };
+      if (String(url).includes('latest.json')) return { ok: true, json: async () => ({
+        version: '9.9.9',
+        url: 'https://dl.labu.lengkhawm.online/apk/9999/khristian-labu.apk',
+        sha256: 'a'.repeat(64),
+        size: 123456,
+      }) };
+      return realFetch(url, opts);
+    };
+  });
+  await native.addInitScript(() => { try { localStorage.setItem('labu_update_dismissed', ''); } catch (e) {} });
+  await waitLoaded(native);
+  await native.waitForSelector('#updateBanner:not([hidden])', { timeout: 15000 });
+  await native.locator('#updBtn').click();
+  await native.waitForFunction(() => window.__starts.length === 1, null, { timeout: 5000 });
+  const started = await native.evaluate(() => window.__starts[0]);
+  ok('native update uses the verified APK metadata', started.url.includes('/apk/9999/') && started.sha256 === 'a'.repeat(64) && started.size === '123456' && started.version === '9.9.9', JSON.stringify(started));
+  await native.evaluate(() => window.__labuUpdateProgress('downloading', 42, 'Downloading update…'));
+  const dl = await native.evaluate(() => ({
+    visible: !document.getElementById('updProgress').hidden,
+    fill: document.getElementById('updProgressFill').style.width,
+    note: document.getElementById('updProgressNote').textContent,
+    buttonHidden: document.getElementById('updBtn').hidden,
+  }));
+  ok('native download shows progress and hides the action', dl.visible && dl.fill === '42%' && dl.note.includes('42') && dl.buttonHidden, JSON.stringify(dl));
+  await native.evaluate(() => window.__labuUpdateProgress('permission', 0, 'Allow installs'));
+  const permission = await native.evaluate(() => ({ label: document.getElementById('updBtn').textContent, visible: !document.getElementById('updBtn').hidden }));
+  ok('unknown-sources state offers Settings', permission.label === 'Open settings' && permission.visible, JSON.stringify(permission));
+  await native.locator('#updBtn').click();
+  ok('unknown-sources Settings button calls the bridge', (await native.evaluate(() => window.__settingsOpened)) === 1);
+  await native.evaluate(() => window.__labuUpdateProgress('error', 0, 'Checksum failed'));
+  const retry = await native.evaluate(() => ({ label: document.getElementById('updBtn').textContent, note: document.getElementById('updProgressNote').textContent }));
+  ok('native update errors show Retry', retry.label === 'Retry' && retry.note.includes('Checksum'), JSON.stringify(retry));
+  await native.close();
 
   // already up to date: no banner, no redirect, a toast instead
   const page2 = await newPage();
