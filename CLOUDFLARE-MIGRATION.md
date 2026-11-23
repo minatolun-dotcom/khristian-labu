@@ -1,6 +1,6 @@
 # Cloudflare-first migration plan — Khristian Labu
 
-**Status:** Phase 1 complete; Phase 2 pipeline complete (release 1.5.63 published; debug-to-release migration on the test phone still pending); Phase 3 API complete (Google sign-in pending); Phase 4 production cutover complete, with the 30–60 day compatibility soak in progress; Phase 5 pending.
+**Status:** Phase 1 complete; Phase 2 pipeline complete (release 1.5.63 published; test phone migrated to the release signature); Phase 3 API complete (Google sign-in pending); Phase 4 production cutover complete, with the 30–60 day compatibility soak in progress; Phase 5 pending.
 **Last audited:** 2026-11-23
 **Scope:** website hosting, database/auth, APK build/distribution, and the supporting Cloudflare configuration.
 
@@ -756,9 +756,13 @@ Staging details:
 
 **Release facts:** `latest.json` → 1.5.63 (1563), SHA-256
 `df8e184f3164ee50a7095445f26dfbe95a0aa15d0d4814d7ad8ac6917ed94dc4`. The release
-certificate matches 1.5.62, so normal Play-style side-load updates work. The test phone
-still has the debug-signed 1.5.63, which cannot update over the release signature without
-a one-time backup and uninstall/reinstall.
+certificate matches 1.5.62, so normal Play-style side-load updates work.
+
+**Test-phone migration:** the debug-signed install was backed up, uninstalled, and replaced
+with the published release APK. The installed APK hash and certificate match the release;
+restore brought back **736 edits, 1 favourite, 20 recents, 1 chord chart**, and the reader/theme
+settings. The pre-swap backup is in gitignored `backups/device/2026-11-23/` and on the phone
+at `Download/khristian-labu-backup.json`.
 
 ### Phase 5 — cleanup (1 day)
 
