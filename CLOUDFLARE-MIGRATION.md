@@ -1,7 +1,7 @@
 # Cloudflare-first migration plan — Khristian Labu
 
-**Status:** Phase 1 complete; Phase 2 pipeline complete (release 1.5.63 published; test phone migrated to the release signature); Phase 3 API complete (Google sign-in pending); Phase 4 production cutover complete, with the 30–60 day compatibility soak in progress; Phase 5 pending.
-**Last audited:** 2026-11-23
+**Status:** Phase 1 complete; Phase 2 pipeline and in-app updater complete (1.5.65 published; the 1.5.64 → 1.5.65 update was installed through the app on the SM-S921B); Phase 3 API complete (Google sign-in pending); Phase 4 production cutover complete, with the 30–60 day compatibility soak in progress; Phase 5 pending.
+**Last audited:** 2026-11-24
 **Scope:** website hosting, database/auth, APK build/distribution, and the supporting Cloudflare configuration.
 
 ### Execution log
@@ -23,6 +23,7 @@
 - Production D1 export, the fresh Supabase export, and the D1 import SQL were uploaded to private R2 under `d1/2026-11-23-prod/` and `supabase/2026-11-23-prod/`; the D1 readback checksum matches.
 - **2026-11-23 — signed 1.5.63 published.** Pushed tag `v1.5.63`; [run 45228490708](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45228490708) built and published the release in 3m34s. APK: **37,391,762 bytes**, SHA-256 `df8e184f3164ee50a7095445f26dfbe95a0aa15d0d4814d7ad8ac6917ed94dc4`. The signer certificate digest matches 1.5.62 (`1f4f4bb4dcfdbfd34b769b1fdb29a588a3cb82529e9b58a1504e410a89000afb`), so existing release installs update in place. R2 `latest.json` and GitHub Release `v1.5.63` both point at it.
 - **2026-11-23 — production web cutover complete.** Pushed `main`; [run 45229428623](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45229428623) deployed Pages. The live site serves 1.5.63, `sw.js` cache `labu-v134`, and a browser check loaded state version 772 with 772 edits, no page errors, and 200s from `/api/state` and `/api/published-edits`.
+- **2026-11-23/24 — native updater released and tested.** `v1.5.64` [run 45238150902](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45238150902) and `v1.5.65` [run 45239082836](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45239082836) both signed and published; 1.5.65 is **37,395,678 bytes**, SHA-256 `bea6c925bcf3aaab9f6bd399fb055c6356cfbf2559fcae15e91549b69222757d`. R2 CORS now allows `GET`/`HEAD` for the public artifacts. On the SM-S921B, 1.5.64 installed over 1.5.63 with data intact; **Settings → Check for update** fetched 1.5.65, downloaded it in-app, verified size/SHA-256, and installed it. The phone reports 1565/1.5.65 and the saved favourite is still present. Browser suite: 201/201. Android auto-allowed `REQUEST_INSTALL_PACKAGES` for the self-update, so the denied uninstall-sources handoff was not exercised on this device; its JS state and native settings intent are covered by the E2E simulation and code path.
 
 ---
 
@@ -86,9 +87,9 @@ The data volume is tiny. The difficult parts are **Postgres-specific behavior** 
 ### 2.3 Android/APK
 
 - Package: `org.khristianlabu.app`
-- Version: `1.5.62`, versionCode `1562`
+- Version at audit: `1.5.62`, versionCode `1562`; current after updater testing: `1.5.65`, versionCode `1565`
 - compileSdk/targetSdk: 36; minSdk: 24
-- APK size: 37,392,250 bytes (~35.7 MiB)
+- APK size: 37,392,250 bytes (~35.7 MiB) at audit; 37,395,678 bytes for 1.5.64/1.5.65
 - The APK is built and signed by `.github/workflows/android-release.yml`; `apksigner` verification passes in CI.
 - Release signing uses the `KEYSTORE_*` repository secrets. Keystore values are never committed or printed.
 - `android/` native source is tracked. Generated outputs, `local.properties`, copied web assets, and keystore files are ignored.
@@ -582,6 +583,8 @@ Use `GITHUB_TOKEN` for the repository release; the `GITHUB_PAT` in `.env` is not
 labu-artifacts/
   apk/1562/khristian-labu.apk
   apk/1563/khristian-labu.apk
+  apk/1564/khristian-labu.apk
+  apk/1565/khristian-labu.apk
   latest.json
 
 labu-backups/
@@ -704,7 +707,7 @@ Live URLs:
 - [x] Publish APK v1.5.62 to R2 and GitHub Releases.
 - [x] Verify signature, checksum, R2 download, and GitHub Release fallback.
 - [x] Verify install/upgrade on a physical Android device — debug-signed 1.5.62 installed in place over 1.5.61 on the connected SM-S921B; data preserved, cold launch 3.2 s, no fatal errors. The release-signed APK still requires a one-time uninstall/reinstall because its key differs.
-- [ ] Add the in-app updater in a later app release (not part of 1.5.62).
+- [x] Add the in-app updater in 1.5.64 and test the 1.5.64 → 1.5.65 install on the SM-S921B.
 
 Published artifacts:
 
