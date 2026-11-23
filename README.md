@@ -29,9 +29,13 @@ A gospel songbook app — 5,723 hymns across 17 songbooks in 6 collections.
 
 ## Install
 
-Download the latest APK from [Releases](https://github.com/minatolun-dotcom/khristian-labu/releases).
-To update, install it over the existing app; your data is kept. The app checks `version.json` on
+Download the latest APK from [Releases](https://github.com/minatolun-dotcom/khristian-labu/releases)
+([R2 release metadata](https://dl.labu.lengkhawm.online/latest.json)). The app checks `version.json` on
 launch and from Settings → Check for update.
+
+If Android reports a signature mismatch when installing 1.5.62 over an older build, export a local
+backup first, then uninstall the old app and install 1.5.62. That is a one-time migration from the
+debug-signed builds; later signed releases install over each other normally.
 
 ## Development
 

@@ -1,6 +1,6 @@
 # Cloudflare-first migration plan — Khristian Labu
 
-**Status:** Phase 1 complete; Phases 2–5 proposed.
+**Status:** Phase 1 complete; Phase 2 pipeline complete (on-device install check pending); Phases 3–5 proposed.
 **Last audited:** 2026-11-23
 **Scope:** website hosting, database/auth, APK build/distribution, and the supporting Cloudflare configuration.
 
@@ -9,7 +9,10 @@
 - **2026-11-23 — Phase 1 complete.** Created the `khristian-labu` Pages project, deployed the staged `dist/` build, attached `labu.lengkhawm.online`, changed the proxied CNAME from `minatolun-dotcom.github.io` to `khristian-labu.pages.dev`, and verified the Pages domain is active.
 - The live site now serves from Pages with no GitHub origin header; `/`, `songs.json`, and `songs.json.gzip` are byte-identical to the repo.
 - Added a scoped Cloudflare Cache Rule for `labu.lengkhawm.online/sw.js` because the zone-level 4-hour Browser Cache TTL was overriding the Pages `no-cache` header. The rule bypasses edge cache and respects the origin header.
-- Added `.github/workflows/pages.yml` and set `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` as repository Actions secrets. The first automated deploy runs on the next push to `main`; `npm run deploy:pages` is the manual recovery path.
+- Added `.github/workflows/pages.yml` and set `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` as repository Actions secrets. The automated deploy was verified in [run 45209121813](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45209121813); `npm run deploy:pages` remains the manual recovery path.
+- **2026-11-23 — Phase 2 pipeline complete.** Created `labu-artifacts` and `labu-backups`, attached the active `dl.labu.lengkhawm.online` R2 domain, tracked the native Android source, added release signing, and added `.github/workflows/android-release.yml`.
+- Published signed **1.5.62 (1562)** to R2 and GitHub Releases in [run 45211032332](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45211032332). Both downloads are byte-identical: **37,392,250 bytes**, SHA-256 `e2a1f41e2c19cee44a829bf4ccf95b51f1c9ad8d36dccfbe3ef4257abea4a564`.
+- **2026-11-23 — rollback drill passed.** Moving the proxied CNAME to `minatolun-dotcom.github.io` reached GitHub Pages in about 20 seconds (`x-github-request-id`, `max-age=600`). Restoring DNS alone left the Pages custom domain `deactivated` and returned a temporary 522; deleting and re-adding `labu.lengkhawm.online` under Pages restored `active` and 200. This is now the required return path.
 - GitHub Pages remains enabled as rollback. Do not disable it before **2026-11-30**.
 
 ---
@@ -22,7 +25,7 @@
 | API | **Cloudflare Worker** at `api.labu.lengkhawm.online` | Keeps static hosting and stateful API independently deployable. |
 | Database | **Cloudflare D1** | The app stores only a small diff/queue layer; SQLite is enough. |
 | Auth | **Better Auth on D1**, Google sign-in plus a break-glass admin path | Replaces Supabase Auth without inventing a password/session system. |
-| APK/artifacts | **Cloudflare R2**, custom domain `dl.labu.lengkhawm.online` | 39 MB APK does not fit Cloudflare Pages' 25 MiB per-file limit. |
+| APK/artifacts | **Cloudflare R2**, custom domain `dl.labu.lengkhawm.online` | The 37.4 MB APK does not fit Cloudflare Pages' 25 MiB per-file limit. |
 | APK build | **GitHub Actions**, publishing artifacts to R2 | Cloudflare cannot build an Android APK with Gradle/Android SDK. |
 | DNS/WAF/cache/analytics | **Cloudflare** | Already proxying the domain today. |
 | Supabase | **Retire after a compatibility window** | Old APKs have the Supabase URL baked in and cannot be switched remotely. |
@@ -51,7 +54,7 @@
   - total staged web content: ~37 MB
 - Cloudflare Pages limits: 20,000 files, 25 MiB per file, 500 builds/month on Free. Current site is comfortably inside those limits.
 - The app router uses `history.pushState(buildState(), '')` with an empty URL, not path-based deep links. A SPA `_redirects` fallback is not required for current routing.
-- `sw.js` uses cache `labu-v132` and precaches the shell. A cutover must account for the old service worker.
+- `sw.js` uses cache `labu-v133` and precaches the shell. The version bump forces the current shell cache to refresh.
 - `version.json` and the APK update checker currently use GitHub raw/GitHub Releases. Those URLs must remain available for old APKs.
 
 ### 2.2 Database and auth
@@ -74,15 +77,13 @@ The data volume is tiny. The difficult parts are **Postgres-specific behavior** 
 ### 2.3 Android/APK
 
 - Package: `org.khristianlabu.app`
-- Version: `1.5.61`, versionCode `1561`
+- Version: `1.5.62`, versionCode `1562`
 - compileSdk/targetSdk: 36; minSdk: 24
-- APK size: ~39 MB
-- The APK is built locally with Gradle and uploaded to GitHub Releases.
-- `android/app/build.gradle` has **no release signing configuration**.
-- The shipped APK is the debug artifact.
-- `android/` is gitignored, including `MainActivity.java`, the manifest, layouts, and splash resources. GitHub Actions cannot build the real app until that source is committed.
-- `android/app/src/main/assets/public/` is generated by `npm run sync`; it should remain generated, not committed.
-- No APK workflow exists yet. `.github/workflows/pages.yml` now deploys the website; the Android build workflow is still Phase 2.
+- APK size: 37,392,250 bytes (~35.7 MiB)
+- The APK is built and signed by `.github/workflows/android-release.yml`; `apksigner` verification passes in CI.
+- Release signing uses the `KEYSTORE_*` repository secrets. Keystore values are never committed or printed.
+- `android/` native source is tracked. Generated outputs, `local.properties`, copied web assets, and keystore files are ignored.
+- `android/app/src/main/assets/public/` is generated by `npm run sync` and is not committed.
 - The current update flow only opens the GitHub Release APK in the browser; there is no in-app installer.
 
 ### 2.4 Credentials and access
@@ -91,7 +92,8 @@ The data volume is tiny. The difficult parts are **Postgres-specific behavior** 
 - GitHub CLI is authenticated as `minatolun-dotcom` with `repo` and `workflow` scopes.
 - `.env` contains `SUPABASE_*`, `PAT`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `GITHUB_PAT`; `.env` is gitignored. Values must never be printed, committed, or shipped to the client.
 - No Cloudflare D1 database or KV namespace exists yet.
-- Existing R2 buckets belong to `zledgercraft`; **do not reuse them for this app**.
+- R2 buckets `labu-artifacts` (public APK and `latest.json`) and `labu-backups` (private) now exist. Do not reuse the separate `zledgercraft` buckets.
+- The Android workflow validated the release keystore and signed APK; the signing certificate is not committed.
 - The Cloudflare API token can list Pages/R2/D1 and read the `lengkhawm.online` zone (`920f905bb46558da94fc14df63506cf8`). The zone is active in the same account as the Pages project.
 - The Pages custom-domain cutover was completed through the API; the old GitHub Pages CNAME target is recorded in this document for rollback.
 
@@ -210,6 +212,16 @@ Order:
 6. Keep GitHub Pages enabled as a rollback for at least 7 days.
 7. After the soak, disable GitHub Pages and remove the stale `CNAME`/`.nojekyll` if they are no longer useful.
 
+**Tested rollback runbook (2026-11-23):**
+
+1. PATCH the proxied CNAME to `minatolun-dotcom.github.io` and purge the `labu.lengkhawm.online` host cache.
+2. Wait about 20 seconds; verify `x-github-request-id` and `Cache-Control: max-age=600`.
+3. To return, PATCH DNS to `khristian-labu.pages.dev` and purge the host cache.
+4. Do **not** assume the Pages custom domain reactivates. Delete and re-add `labu.lengkhawm.online` under the Pages project, then wait for `status: active`.
+5. Verify 200, Pages' `Cache-Control: public, max-age=0, must-revalidate`, and no `x-github-request-id`.
+
+Restoring DNS alone produced a temporary 522 during the drill; the delete/re-add step is mandatory.
+
 The domain is already proxied by Cloudflare, so WAF/cache/analytics rules will apply after cutover.
 
 ### A4. Headers and caching
@@ -266,7 +278,7 @@ The current app has inline scripts, Google Identity, and a vendor script. Do not
 - Search, reader, favorites, playlists, export, share image, and admin editing still work.
 - `npm test` passes against the staged site.
 - Mobile Chrome and the Capacitor WebView both load the app.
-- Rollback target is documented and tested before GitHub Pages is disabled.
+- Rollback drill passed on 2026-11-23; the runbook includes re-adding the Pages custom domain.
 
 ---
 
@@ -469,7 +481,7 @@ Do not shut down Supabase on the same day as the D1 cutover.
 
 ### C1. Cloudflare cannot build the APK
 
-Cloudflare Pages/Workers build Node/Workers projects. They do not provide a supported Android SDK/Gradle build environment, and Workers have execution/memory limits that are a poor fit for a 39 MB Android build.
+Cloudflare Pages/Workers build Node/Workers projects. They do not provide a supported Android SDK/Gradle build environment, and Workers have execution/memory limits that are a poor fit for a 37.4 MB Android build.
 
 Cloudflare Containers could theoretically run a custom Android build image, but it would add:
 
@@ -651,8 +663,8 @@ This is the previously researched path, now part of the plan:
 - [ ] Decide the admin identity: Google-only, Google + break-glass password, or password + TOTP.
 - [ ] Decide the legacy APK policy: bridge Supabase or accept frozen old clients.
 - [ ] Back up Supabase.
-- [ ] Create the release signing key and test migration.
-- [ ] Commit the Android native source.
+- [x] Release signing is configured and `apksigner` verification passes; on-device migration remains untested.
+- [x] Commit the Android native source.
 - [ ] Add `.env.example` placeholders for Cloudflare/Better Auth/R2; never add values.
 
 ### Phase 1 — Pages cutover (complete, 2026-11-23)
@@ -673,15 +685,25 @@ Live URLs:
 - Deployment: `https://4aac5eeb.khristian-labu.pages.dev/`
 - Rollback CNAME target: `minatolun-dotcom.github.io`
 
-### Phase 2 — R2 + APK pipeline (2–4 days)
+### Phase 2 — R2 + APK pipeline (pipeline complete, 2026-11-23)
 
-- [ ] Create `labu-artifacts` and `labu-backups`.
-- [ ] Add the R2 custom domain.
-- [ ] Add release signing config.
-- [ ] Add GitHub Actions build/sign/upload workflow.
-- [ ] Publish APK v1.5.62 to R2 and GitHub Releases.
-- [ ] Add the in-app updater in a later app version.
-- [ ] Verify signature, checksum, install, and fallback.
+- [x] Create `labu-artifacts` and `labu-backups`.
+- [x] Add the R2 custom domain.
+- [x] Add release signing config.
+- [x] Add GitHub Actions build/sign/upload workflow.
+- [x] Publish APK v1.5.62 to R2 and GitHub Releases.
+- [x] Verify signature, checksum, R2 download, and GitHub Release fallback.
+- [ ] Verify install/upgrade on a physical Android device (no device attached; old debug-signed builds may require a one-time reinstall).
+- [ ] Add the in-app updater in a later app release (not part of 1.5.62).
+
+Published artifacts:
+
+- APK: `https://dl.labu.lengkhawm.online/apk/1562/khristian-labu.apk`
+- Metadata: `https://dl.labu.lengkhawm.online/latest.json`
+- GitHub Release: `https://github.com/minatolun-dotcom/khristian-labu/releases/tag/v1.5.62`
+- SHA-256: `e2a1f41e2c19cee44a829bf4ccf95b51f1c9ad8d36dccfbe3ef4257abea4a564`
+- Size: 37,392,250 bytes
+- `aapt` confirms package `org.khristianlabu.app`, version `1.5.62` (1562), minSdk 24, targetSdk 36.
 
 ### Phase 3 — D1 + Better Auth staging (4–6 days)
 
