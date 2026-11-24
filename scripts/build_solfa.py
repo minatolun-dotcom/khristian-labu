@@ -225,6 +225,38 @@ def segments_for(rows, order_to_next):
 _TOP_CACHE = {}
 
 
+def header_top(pdf, page_no, title_pdf_y):
+    """Top crop edge just above a tune's printed title block.
+
+    A sheet keeps the song's own details — number, title, subtitle, credits and
+    the "Doh is ..." line — so the reader shows which tune the engraving is.
+    Only the page's running header (page number, book name) stays out: the band
+    is capped at TOP_PDF, and a mid-page tune starts at its own title.
+    """
+    key = ("hdr", page_no, round(title_pdf_y, 1))
+    if key in _TOP_CACHE:
+        return _TOP_CACHE[key]
+    img = pdf[page_no - 1].render(scale=SCALE).to_pil().convert("L")
+    left = round(X0 * SCALE)
+    right = min(img.width, round(X1 * SCALE))
+    band = img.crop((left, 0, right, img.height))
+    raw = band.tobytes()
+    bw = band.width
+
+    def ink(row):
+        return min(raw[row * bw:(row + 1) * bw]) < 245
+
+    y = min(band.height - 1, max(0, int(round((595.28 - title_pdf_y) * SCALE))))
+    # Enter the title line, then walk up to the top of its ink block.
+    while y < band.height - 1 and not ink(y):
+        y += 1
+    while y > 0 and ink(y):
+        y -= 1
+    top = min(TOP_PDF, 595.28 - y / SCALE)
+    _TOP_CACHE[key] = top
+    return top
+
+
 def snap_top(pdf, page_no, limit_pdf_y):
     """Crop top just above the first printed stave block below limit_pdf_y.
 
@@ -302,11 +334,11 @@ def build_asset(app_id, row_list, rows, pdf):
         nxt = rows[order + 1] if order + 1 < len(rows) else None
         if app_id == "C1":
             start = dict(start)
-            start["_start_pdf_y"] = snap_top(pdf, 619, 500)
+            start["_start_pdf_y"] = header_top(pdf, 619, start["title_y"])
             nxt = row_at(rows, 620, 500.8)
         else:
             start = dict(start)
-            start["_start_pdf_y"] = snap_top(pdf, start["page"], start["key_y"])
+            start["_start_pdf_y"] = header_top(pdf, start["page"], start["title_y"])
             if app_id == "0":
                 nxt = rows[order + 1]
         parts = []
@@ -323,7 +355,7 @@ def build_asset(app_id, row_list, rows, pdf):
             order = rows.index(r)
             nxt = rows[order + 1]
             start = dict(r)
-            start["_start_pdf_y"] = snap_top(pdf, r["page"], r["key_y"])
+            start["_start_pdf_y"] = header_top(pdf, r["page"], r["title_y"])
             for page, top, bottom in segments_for(rows, {"start": start, "next": nxt}):
                 part = render_segment(pdf, page, top, bottom)
                 if part:
@@ -440,7 +472,8 @@ def main():
             built[num] = dest
             continue
         if src == "C1":
-            sheet = render_segment(pdf, 619, snap_top(pdf, 619, 500), BOTTOM_PDF)
+            row = row_at(rows, 619, 492.3)
+            sheet = render_segment(pdf, 619, header_top(pdf, 619, row["title_y"]), BOTTOM_PDF)
         else:
             row_list = plan[src]
             sheet = build_asset(src, row_list, rows, pdf)

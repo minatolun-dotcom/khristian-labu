@@ -7,7 +7,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.76'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.77'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 const LATEST_JSON = 'https://dl.labu.lengkhawm.online/latest.json';
 let latestUpdate = null;
@@ -1468,7 +1468,9 @@ function currentSolfaSheet(song) {
 // at 480 DPI in R2; the reader upgrades to it quietly and swaps only once the
 // sharper image is decoded, so offline/slow loads simply keep the bundled sheet
 // on screen — no blank frame, no layout shift, nothing to notice.
-const SOLFA_HD_BASE = 'https://dl.labu.lengkhawm.online/solfa-hd/';
+// v2: the sheets now keep their printed title/key header, and these objects are
+// cached immutably for a year, so a new crop needs a new path to reach devices.
+const SOLFA_HD_BASE = 'https://dl.labu.lengkhawm.online/solfa-hd/v2/';
 const _solfaHd = { ready: Object.create(null), loading: Object.create(null), missing: Object.create(null) };
 
 function solfaHdUrl(src) {

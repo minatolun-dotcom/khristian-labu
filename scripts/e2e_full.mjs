@@ -110,7 +110,7 @@ await section('load & home', async () => {
 
 // ═══════════════ 1z. HD SOLFA UPGRADE (R2) ═══════════════
 await section('hd solfa upgrade', async () => {
-  const HD_BASE = 'https://dl.labu.lengkhawm.online/solfa-hd/';
+  const HD_BASE = 'https://dl.labu.lengkhawm.online/solfa-hd/v2/';
   // Serve Tune 2's bytes for Tune 1's request: the real 480 DPI crops are not
   // exact 2x of the bundled ones, so a different aspect ratio is the honest case.
   const hdBytes = fs.readFileSync('assets/solfa/BL_1-t2.avif');
