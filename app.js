@@ -7,7 +7,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.74'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.76'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 const LATEST_JSON = 'https://dl.labu.lengkhawm.online/latest.json';
 let latestUpdate = null;
@@ -192,6 +192,7 @@ async function init() {
   // ponytail: admin login removed — all users can manage songs
   renderSidebarGroups();
   const av = document.getElementById('appVersion'); if (av) av.textContent = APP_VERSION;
+  runningVersion().then(v => { if (av && v !== APP_VERSION) av.textContent = v; });
   const chordLoad = loadChordCharts();
   songsDone = loadSongs().catch(e => console.error('[Khristian Labu]', e));
   if (_wakeOn) requestWakeLock();
@@ -245,6 +246,19 @@ function compareVer(a, b) {
 function apkDownloadUrl() { return (latestUpdate && latestUpdate.url) || 'https://github.com/' + REPO + '/releases/latest/download/khristian-labu.apk'; }
 function isNativeApp() { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
 function isNativeUpdater() { return isNativeApp() && !!window.KhristianUpdate && typeof window.KhristianUpdate.start === 'function'; }
+// ponytail: the installed package is authoritative. A stale bundled APP_VERSION once
+// made 1.5.75 offer itself forever, so the checker asks Android for the real version.
+async function runningVersion() {
+  try {
+    const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+    if (App && typeof App.getInfo === 'function') {
+      const info = await App.getInfo();
+      const v = String((info && info.version) || '').replace(/^v/, '');
+      if (/^\d+\.\d+/.test(v)) return v;
+    }
+  } catch (e) { /* fall through to the bundled constant */ }
+  return APP_VERSION;
+}
 async function fetchLatestJsonMeta() {
   try {
     const res = await fetch(LATEST_JSON + '?t=' + Date.now(), { cache: 'no-store' });
@@ -505,11 +519,12 @@ async function manualCheckUpdate() {
   try {
     const info = await fetchUpdateInfo();
     if (!info) { setUpdateStatus('Could not check for updates. Try again.'); return; }
-    if (compareVer(info.version, APP_VERSION) > 0) {
+    const current = await runningVersion();
+    if (compareVer(info.version, current) > 0) {
       showUpdateBanner(info.version, info.meta);
       startInAppUpdate(info);
     } else {
-      setUpdateStatus('You are on the latest version (' + APP_VERSION + ').');
+      setUpdateStatus('You are on the latest version (' + current + ').');
     }
   } finally {
     setCheckUpdateBusy(false);
@@ -519,7 +534,9 @@ async function manualCheckUpdate() {
 async function checkForUpdate() {
   if (!isNativeUpdater()) return;
   const info = await fetchUpdateInfo();
-  if (!info || compareVer(info.version, APP_VERSION) <= 0) return;
+  if (!info) return;
+  // Compare against Android's view of the installed package, never the bundled string.
+  if (compareVer(info.version, await runningVersion()) <= 0) return;
   showUpdateBanner(info.version, info.meta);
   startInAppUpdate(info);
 }

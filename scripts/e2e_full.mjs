@@ -1164,6 +1164,38 @@ await section('update check', async () => {
   ok('update flow creates no toasts', (await native.locator('.toast').count()) === 0);
   await native.close();
 
+  // Regression: 1.5.75 shipped a stale bundled APP_VERSION (1.5.74) with a 1.5.75
+  // package, so it downloaded and "installed" itself on every launch. The installed
+  // package version from Capacitor App decides; the bundled constant does not.
+  const installed = await newPage();
+  await installed.addInitScript(() => {
+    window.__starts = [];
+    window.Capacitor = {
+      isNativePlatform: () => true, getPlatform: () => 'android', isPluginAvailable: () => false,
+      Plugins: { App: { addListener: () => {}, getInfo: async () => ({ version: '9.9.9', build: '9999' }) } },
+    };
+    window.KhristianUpdate = {
+      isInstallAllowed: () => true, openInstallSettings: () => {},
+      start: (url, sha256, size, version) => { window.__starts.push({ version }); },
+    };
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (url, opts) => {
+      if (String(url).includes('version.json')) return { ok: true, json: async () => ({ version: '9.9.9' }) };
+      if (String(url).includes('latest.json')) return { ok: true, json: async () => ({ version: '9.9.9' }) };
+      return realFetch(url, opts);
+    };
+  });
+  await waitLoaded(installed);
+  await installed.waitForTimeout(900);
+  const installedState = await installed.evaluate(() => ({
+    overlay: document.getElementById('updateOverlay').hidden,
+    starts: window.__starts.length,
+    shown: document.getElementById('appVersion').textContent,
+  }));
+  ok('an already-installed release never offers itself', installedState.overlay && installedState.starts === 0, JSON.stringify(installedState));
+  ok('settings shows the installed package version', installedState.shown === '9.9.9', JSON.stringify(installedState));
+  await installed.close();
+
   // Already current: inline Settings status, no dialog, no redirect, no toast.
   const current = await newPage();
   await current.addInitScript(() => {

@@ -83,6 +83,23 @@ jobs:
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "Building $VERSION_NAME ($VERSION_CODE)"
 
+      - name: Check version consistency
+        run: |
+          set -euo pipefail
+          JSON_VERSION=$(node -p "require('./version.json').version")
+          APP_VERSION=$(sed -nE "s/^const APP_VERSION = '([^']+)';.*/\1/p" app.js | head -1)
+          echo "version.json=$JSON_VERSION app.js=$APP_VERSION build.gradle=$VERSION_NAME ($VERSION_CODE)"
+          if [ "$JSON_VERSION" != "$VERSION_NAME" ]; then
+            echo "version.json ($JSON_VERSION) does not match versionName ($VERSION_NAME)"
+            exit 1
+          fi
+          # The updater compares against the bundled constant on old builds, so a
+          # stale APP_VERSION makes a fresh package offer itself in a loop.
+          if [ "$APP_VERSION" != "$VERSION_NAME" ]; then
+            echo "app.js APP_VERSION ($APP_VERSION) does not match versionName ($VERSION_NAME)"
+            exit 1
+          fi
+
       - name: Build signed release APK
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon --stacktrace
