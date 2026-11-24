@@ -109,6 +109,8 @@ async function captureAndScan(page, theme, label, settleMs) {
 }
 
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+// HD solfa lives on R2; this test only needs the bundled sheets.
+await page.route('https://dl.labu.lengkhawm.online/**', route => route.abort());
 await page.goto(URL, { waitUntil: 'load' });
 
 // A real veil (nav band) clusters >2000 samples at 4px grid (~780x130px).

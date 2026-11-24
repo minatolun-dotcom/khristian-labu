@@ -37,8 +37,13 @@ async function newPage(vp = { width: 1280, height: 800 }, extra = {}) {
   // The shipped config points at the live Supabase project; every edit here would
   // otherwise submit a real proposal. An empty override turns cloud sync off.
   await page.addInitScript(() => { window.LABU_CLOUD_API = ''; });
+  // HD solfa comes from R2. Abort it by default so the suite never depends on the
+  // network; the HD section installs its own mock route when it needs one.
+  await page.route('https://dl.labu.lengkhawm.online/**', route => route.abort());
   page.on('console', m => {
     if (m.type() !== 'error') return;
+    // The HD solfa host is aborted/mocked by this suite on purpose.
+    if (/dl\.labu\.lengkhawm\.online/.test((m.location() || {}).url || '')) return;
     // ignore network status failures (e.g. the GitHub update-check API rate-limiting
     // the shared sandbox IP) and app-level caught-error logs (e.g. a test stub making
     // the OTA download fail on purpose) — the app handles those; real JS errors still fail.
@@ -100,6 +105,94 @@ await section('load & home', async () => {
   ok('lyrics scroll area fills space above footer', footerPos.scrollH > 0 && footerPos.scrollH <= footerPos.viewportH, JSON.stringify(footerPos));
   const title = (await page.locator('#songDetail .song-header-center h1').textContent()).trim();
   ok('tab title syncs to song', (await page.title()).includes(title));
+  await page.close();
+});
+
+// ═══════════════ 1z. HD SOLFA UPGRADE (R2) ═══════════════
+await section('hd solfa upgrade', async () => {
+  const HD_BASE = 'https://dl.labu.lengkhawm.online/solfa-hd/';
+  const hdBytes = fs.readFileSync('assets/solfa/BL_1-t1.avif');
+  const openFirstSolfa = async page => {
+    await waitLoaded(page);
+    return page.evaluate(async () => {
+      const song = SONGS.BL.songs.find(s => s.id === 'BL_1');
+      currentList = SONGS.BL.songs;
+      currentCat = 'BL';
+      openSong(song);
+      setReaderMode('solfa');
+      await new Promise(r => {
+        const tick = () => { const i = document.getElementById('solfaSheetImg'); if (i && i.complete && i.naturalWidth > 0) r(); else setTimeout(tick, 25); };
+        tick();
+      });
+      const img = document.getElementById('solfaSheetImg');
+      return { src: img.getAttribute('src'), local: img.dataset.sheetSrc, h: img.getBoundingClientRect().height };
+    });
+  };
+
+  // R2 unreachable: the bundled sheet must stay exactly as it is.
+  const offline = await newPage();
+  const off = await openFirstSolfa(offline);
+  await offline.waitForTimeout(1500);
+  const offAfter = await offline.evaluate(() => {
+    const img = document.getElementById('solfaSheetImg');
+    return { src: img.getAttribute('src'), ready: solfaHdReady('assets/solfa/BL_1-t1.avif') };
+  });
+  ok('R2 failure leaves the bundled sheet in place',
+    off.src === 'assets/solfa/BL_1-t1.avif' && offAfter.src === 'assets/solfa/BL_1-t1.avif' && offAfter.ready === false,
+    JSON.stringify({ off, offAfter }));
+  await offline.close();
+
+  // R2 reachable: HD decodes off-DOM first, then swaps without moving the layout.
+  const page = await newPage();
+  await page.unroute('https://dl.labu.lengkhawm.online/**');
+  let hdHits = 0;
+  await page.route('https://dl.labu.lengkhawm.online/**', async route => {
+    hdHits++;
+    await new Promise(r => setTimeout(r, 700));
+    await route.fulfill({ status: 200, contentType: 'image/avif', body: hdBytes });
+  });
+  const first = await openFirstSolfa(page);
+  ok('bundled sheet paints first while HD loads', first.src === 'assets/solfa/BL_1-t1.avif', JSON.stringify(first));
+  await page.waitForFunction(() => {
+    const i = document.getElementById('solfaSheetImg');
+    return i && i.getAttribute('src').indexOf('/solfa-hd/') > -1 && i.complete && i.naturalWidth > 0;
+  }, null, { timeout: 8000 });
+  const hd = await page.evaluate(() => {
+    const img = document.getElementById('solfaSheetImg');
+    return {
+      src: img.getAttribute('src'), local: img.dataset.sheetSrc,
+      w: img.getAttribute('width'), h: img.getAttribute('height'),
+      box: Math.round(img.getBoundingClientRect().height)
+    };
+  });
+  ok('HD sheet replaces the bundled one', hd.src === HD_BASE + 'BL_1-t1.avif' && hdHits > 0, JSON.stringify({ hd, hdHits }));
+  ok('the local sheet stays the identity of the image', hd.local === 'assets/solfa/BL_1-t1.avif');
+  ok('swap pins the aspect ratio and keeps the layout still',
+    !!hd.w && !!hd.h && Math.abs(hd.box - Math.round(first.h)) <= 1, JSON.stringify({ first, hd }));
+
+  // Download: HD when R2 answers, bundled file when it does not.
+  const hdDownload = await page.evaluate(async () => {
+    const seen = [];
+    const orig = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () { seen.push({ href: this.href, name: this.download }); };
+    try { await downloadSolfa(); } finally { HTMLAnchorElement.prototype.click = orig; }
+    return seen;
+  });
+  ok('download takes the HD sheet from R2',
+    hdDownload.length === 1 && hdDownload[0].name === 'BL_1-t1.avif' && hdDownload[0].href.startsWith('blob:'),
+    JSON.stringify(hdDownload));
+  await page.unroute('https://dl.labu.lengkhawm.online/**');
+  await page.route('https://dl.labu.lengkhawm.online/**', route => route.abort());
+  const localDownload = await page.evaluate(async () => {
+    const seen = [];
+    const orig = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () { seen.push({ href: this.href, name: this.download }); };
+    try { await downloadSolfa(); } finally { HTMLAnchorElement.prototype.click = orig; }
+    return seen;
+  });
+  ok('download falls back to the bundled sheet when R2 fails',
+    localDownload.length === 1 && localDownload[0].name === 'BL_1-t1.avif' && localDownload[0].href.endsWith('assets/solfa/BL_1-t1.avif'),
+    JSON.stringify(localDownload));
   await page.close();
 });
 

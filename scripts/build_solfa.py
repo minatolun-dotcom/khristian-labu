@@ -31,7 +31,28 @@ X0, X1 = 40, 380
 TOP_PDF, BOTTOM_PDF = 550, 45  # content band, excludes running header/footer
 PAGE_SEGMENT_GAP = 10
 COMPACT_GAP = 18
+PAD = 8
 QUALITY = 55
+SPEED = 6
+
+HD_SCALE = 480 / 72
+
+
+def set_hd():
+    """Render the same sheets at 480 DPI for the R2 copies.
+
+    The app bundles the 240 DPI files; the HD set is display/download quality
+    and is uploaded to R2, never committed. Spacers scale with the render so the
+    HD sheet keeps the bundled sheet's proportions.
+    """
+    global SCALE, QUALITY, SPEED, OUT, PAGE_SEGMENT_GAP, COMPACT_GAP, PAD
+    SCALE = HD_SCALE
+    QUALITY = 70
+    SPEED = 8
+    OUT = ROOT / "solfa-hd"
+    PAGE_SEGMENT_GAP = 20
+    COMPACT_GAP = 36
+    PAD = 16
 
 # Songs whose tune is printed elsewhere ("Kaih No. X" / same tune note).
 SHARED = {
@@ -263,7 +284,7 @@ def render_segment(pdf, page_no, top_pdf, bottom_pdf):
     bbox = ImageOps.invert(crop).point(lambda v: 255 if v > 10 else 0).getbbox()
     if not bbox:
         return None
-    pad = 8
+    pad = PAD
     bbox = (
         max(0, bbox[0] - pad),
         max(0, bbox[1] - pad),
@@ -370,7 +391,10 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--only", default="")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--hd", action="store_true", help="build the 480 DPI R2 copies into solfa-hd/")
     args = ap.parse_args()
+    if args.hd:
+        set_hd()
 
     rows = load_rows()
     plan = build_plan(rows)
@@ -423,7 +447,7 @@ def main():
         if sheet is None:
             print(f"EMPTY {num} ({src})")
             continue
-        sheet.save(dest, "AVIF", quality=QUALITY, speed=6)
+        sheet.save(dest, "AVIF", quality=QUALITY, speed=SPEED)
         built[num] = dest
         print(f"{dest.name:16} {sheet.width}x{sheet.height} {dest.stat().st_size/1024:5.1f} KB")
     print(f"built {len(built)} assets")

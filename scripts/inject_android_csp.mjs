@@ -15,7 +15,7 @@ const csp = [
   "script-src-attr 'none'",
   "style-src 'self' 'sha256-UP0QZg7irvSMvOBz9mH2PIIE28+57UiavRfeVea0l3g='",
   "style-src-attr 'none'",
-  "img-src 'self' data: blob: https://*.googleusercontent.com",
+  "img-src 'self' data: blob: https://*.googleusercontent.com https://dl.labu.lengkhawm.online",
   "font-src 'self' data:",
   "connect-src 'self' data: https://api.labu.lengkhawm.online https://labu.lengkhawm.online https://accounts.google.com https://apis.google.com https://oauth2.googleapis.com https://www.googleapis.com https://api.github.com https://raw.githubusercontent.com https://dl.labu.lengkhawm.online",
   "frame-src https://accounts.google.com",

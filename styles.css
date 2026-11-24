@@ -1909,6 +1909,25 @@ input:focus,textarea:focus,select:focus{outline-width:1px!important;}
 .admin-cloud-panel{margin:0;}
 .admin-sync-card{margin-top:1rem;}
 .admin-account-page #adminAccountMsg{margin:.75rem 0 0;}
+.admin-account-loading{display:flex;align-items:center;gap:.55rem;margin:1rem 0 0;color:var(--text2);font-size:.84rem;line-height:1.4;}
+.admin-account-loading .btn-spinner{width:16px;height:16px;color:var(--accent);}
+.admin-icon-btn.is-busy{color:var(--accent-ink);cursor:progress;}
+.admin-icon-btn.is-busy .btn-spinner{width:15px;height:15px;}
+.admin-manage-list{display:flex;flex-direction:column;}
+.admin-row{display:flex;align-items:center;gap:.65rem;padding:.6rem 0;border-bottom:1px solid var(--rule);}
+.admin-row:last-child{border-bottom:0;}
+.admin-row-avatar{width:32px;height:32px;flex:none;display:grid;place-items:center;border-radius:50%;background:var(--accent-glow);color:var(--accent-ink);font-size:.8rem;font-weight:700;}
+.admin-row-main{flex:1;min-width:0;}
+.admin-row-name{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;font-size:.86rem;font-weight:600;color:var(--text);line-height:1.35;}
+.admin-row-login{font-size:.76rem;color:var(--text3);overflow-wrap:anywhere;margin-top:1px;}
+.admin-row-tools{display:flex;align-items:center;gap:.3rem;flex:none;}
+.admin-badge-owner,.admin-badge-self{flex:none;padding:1px 7px;border-radius:999px;font-size:.62rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;}
+.admin-badge-owner{background:var(--accent-glow);color:var(--accent-ink);border:1px solid var(--glass-rim);}
+.admin-badge-self{background:var(--surface-3);color:var(--text2);border:1px solid var(--rule);}
+.admin-manage-empty{text-align:center;padding:1.2rem .5rem;color:var(--text3);font-size:.82rem;}
+.admin-field-note{display:block;margin-top:.35rem;font-size:.74rem;color:var(--text3);line-height:1.45;}
+.admin-setpass-who{margin:0 0 .8rem;font-size:.84rem;color:var(--text2);overflow-wrap:anywhere;}
+.admin-setpass-who strong{color:var(--text);font-weight:600;}
 .sync-history-list{display:flex;flex-direction:column;max-height:min(56vh,420px);overflow-y:auto;}
 .sync-history-item{display:flex;align-items:flex-start;gap:.7rem;padding:.75rem .1rem;border-bottom:1px solid var(--rule);}
 .sync-history-item:last-child{border-bottom:0;}

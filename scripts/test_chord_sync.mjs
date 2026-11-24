@@ -52,8 +52,8 @@ async function mockApi(route) {
     try { return JSON.parse(req.postData() || '{}'); } catch (e) { return {}; }
   };
 
-  if (pathname === '/api/auth/sign-in/email') {
-    sessionEmail = String(body().email || '').toLowerCase();
+  if (pathname === '/api/login') {
+    sessionEmail = String(body().login || '').toLowerCase();
     return json({ user: { id: 'admin-1', email: sessionEmail } }, 200, {
       'set-cookie': 'better-auth.session_token=admin-token; Path=/; HttpOnly; Secure; SameSite=None',
     });
@@ -138,6 +138,8 @@ async function boot() {
   const page = await context.newPage();
   page.on('pageerror', e => pageErrors.push(e.message));
   await page.route('https://mock.labu.api/**', mockApi);
+  // HD solfa lives on R2; the reader upgrade is covered by e2e_full.
+  await page.route('https://dl.labu.lengkhawm.online/**', r => r.abort());
   await page.addInitScript(() => { window.LABU_CLOUD_API = 'https://mock.labu.api'; });
   await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof songsReady !== 'undefined' && songsReady === true, null, { timeout: 30000 });
@@ -229,7 +231,7 @@ try {
   await admin.page.evaluate(() => openAdminAccount());
   await admin.page.waitForFunction(() =>
     document.getElementById('adminAccountBody')?.textContent.includes('Admin sign in'), null, { timeout: 10000 });
-  await admin.page.fill('#adminAccountEmail', 'admin@example.com');
+  await admin.page.fill('#adminAccountLogin', 'admin@example.com');
   await admin.page.fill('#adminAccountPass', 'test-password');
   await admin.page.click('#adminAccountSignInBtn');
   await admin.page.waitForFunction(() =>

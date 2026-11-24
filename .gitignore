@@ -37,3 +37,6 @@ sources/zomi/
 # ─── local data backups ───
 backups/
 d1/
+
+# ─── HD solfa build output (uploaded to R2, never committed) ───
+solfa-hd/

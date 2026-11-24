@@ -7,7 +7,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.69'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.70'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 const LATEST_JSON = 'https://dl.labu.lengkhawm.online/latest.json';
 let latestUpdate = null;
@@ -769,7 +769,7 @@ async function cloudRestoreSession() {
   try {
     const me = await cloudReq('/api/admin/me');
     if (me && me.user && me.isAdmin) {
-      cloudSaveSession({ email: me.user.email || '', user: me.user });
+      cloudSaveSession({ email: me.user.email || me.user.login || '', user: me.user });
       cloudAdmin = true;
       return true;
     }
@@ -787,7 +787,8 @@ async function cloudCheckAdmin() {
       const current = cloudSession() || {};
       cloudSaveSession({
         ...current,
-        email: me.user.email || current.email || '',
+        email: me.user.email || me.user.login || current.email || '',
+        login: me.user.login || '',
         user: me.user,
       });
     }
@@ -805,7 +806,7 @@ async function cloudSendProposal(item) {
     kind: item.kind,
     payload: item.payload,
     summary: item.summary || cloudDescribe(item.kind, item.payload),
-    name: s ? (s.email || '') : '',
+    name: s ? (s.login || s.email || '') : '',
     baseVersion: DATA_VERSION,
   } });
 }
@@ -965,20 +966,22 @@ function cloudErrorText(error) {
   }
   return raw.replace(/^cloud \d+\s*/, '') || 'Request failed';
 }
-async function cloudSignInWith(email, pass, err, btn, passInput, onSuccess) {
+async function cloudSignInWith(login, pass, err, btn, passInput, onSuccess) {
   if (err) err.textContent = '';
-  if (!email || !pass) {
-    if (err) err.textContent = 'Email and password are required';
+  if (!login || !pass) {
+    if (err) err.textContent = 'Email or username and password are required';
     return false;
   }
-  if (btn) btn.disabled = true;
+  // The request takes a moment; the spinner is the only thing proving the tap
+  // registered, so it goes up before the network call.
+  setCloudButtonBusy(btn, true, 'Signing in…');
   try {
-    const d = await cloudReq('/api/auth/sign-in/email', {
-      body: { email: email, password: pass },
+    const d = await cloudReq('/api/login', {
+      body: { login: login, password: pass },
     });
     if (!d || !d.user) throw new Error('Sign in failed');
     // The Worker sets an HttpOnly cookie. Keep only display data in memory.
-    cloudSaveSession({ email: (d.user && d.user.email) || email, user: d.user || null });
+    cloudSaveSession({ email: (d.user && (d.user.email || d.user.login)) || login, user: d.user || null });
     _cloudCookieChecked = true;
     cloudAdmin = false;
     if (!(await cloudCheckAdmin())) {
@@ -992,7 +995,7 @@ async function cloudSignInWith(email, pass, err, btn, passInput, onSuccess) {
   } catch (e) {
     if (err) err.textContent = cloudErrorText(e);
     return false;
-  } finally { if (btn) btn.disabled = false; }
+  } finally { if (btn && btn.isConnected) setCloudButtonBusy(btn, false); }
 }
 async function cloudSignOut() {
   try {
@@ -1378,6 +1381,78 @@ function chordChartKey(song, tuneIdx) { return song.id + (tuneIdx ? '__t2' : '')
 function currentSolfaSheet(song) {
   return solfaSheets(song)[solfaTuneIndex(song)] || null;
 }
+// ─── HD solfa sheets (R2) ───
+// The bundled AVIFs are 240 DPI so the app stays small. Every sheet also exists
+// at 480 DPI in R2; the reader upgrades to it quietly and swaps only once the
+// sharper image is decoded, so offline/slow loads simply keep the bundled sheet
+// on screen — no blank frame, no layout shift, nothing to notice.
+const SOLFA_HD_BASE = 'https://dl.labu.lengkhawm.online/solfa-hd/';
+const _solfaHd = { ready: Object.create(null), loading: Object.create(null), missing: Object.create(null) };
+
+function solfaHdUrl(src) {
+  const local = safeSolfaSrc(src);
+  if (!local) return '';
+  return SOLFA_HD_BASE + local.slice(local.lastIndexOf('/') + 1);
+}
+function solfaHdReady(src) { return !!_solfaHd.ready[src]; }
+function solfaDisplaySrc(src) { return solfaHdReady(src) ? solfaHdUrl(src) : safeSolfaSrc(src); }
+// Only spend data on HD where it is cheap: skip Save-Data and 2G, where the
+// bundled 240 DPI sheet is already the better trade.
+function solfaHdAllowed() {
+  if (typeof navigator === 'undefined' || navigator.onLine === false) return false;
+  const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (!c) return true;
+  return !c.saveData && c.effectiveType !== 'slow-2g' && c.effectiveType !== '2g';
+}
+function loadSolfaHd(src) {
+  if (!solfaHdAllowed() || _solfaHd.missing[src] || !solfaHdUrl(src)) return Promise.resolve(null);
+  if (_solfaHd.loading[src]) return _solfaHd.loading[src];
+  const p = new Promise(resolve => {
+    const probe = new Image();
+    probe.decoding = 'async';
+    probe.onload = () => {
+      const settle = ok => { delete _solfaHd.loading[src]; if (ok) _solfaHd.ready[src] = true; resolve(ok ? probe : null); };
+      // decode() resolves when the bitmap is ready to paint, so the swap is instant.
+      if (probe.decode) probe.decode().then(() => settle(true), () => settle(false));
+      else settle(true);
+    };
+    // A network blip is not a missing sheet: drop the in-flight marker so the next
+    // open can retry. Only a real 404 is remembered (see fetchSolfaHdBlob).
+    probe.onerror = () => { delete _solfaHd.loading[src]; resolve(null); };
+    probe.src = solfaHdUrl(src);
+  });
+  _solfaHd.loading[src] = p;
+  return p;
+}
+// Swap only while this sheet is still the one on screen, and pin the old aspect
+// ratio first so a 1px difference in the sharper crop cannot reflow the reader.
+function applySolfaHd(src) {
+  const url = solfaHdUrl(src);
+  if (!url) return;
+  [document.getElementById('solfaSheetImg'), document.querySelector('#solfaZoom .solfa-zoom-stage img')].forEach(img => {
+    if (!img || img.dataset.sheetSrc !== src || img.getAttribute('src') === url) return;
+    if (img.complete && img.naturalWidth > 0) {
+      img.setAttribute('width', img.naturalWidth);
+      img.setAttribute('height', img.naturalHeight);
+    }
+    img.src = url;
+  });
+}
+function upgradeSolfaSheet(src) {
+  if (!src) return;
+  if (solfaHdReady(src)) { applySolfaHd(src); return; }
+  loadSolfaHd(src).then(img => { if (img) applySolfaHd(src); });
+}
+// Fetch the sheet the reader shows (or is about to show) once the UI settles.
+function warmSolfaHd(song) {
+  if (!song || !hasSolfa(song)) return;
+  const sheet = currentSolfaSheet(song);
+  if (!sheet) return;
+  const src = sheet.src;
+  const run = () => upgradeSolfaSheet(src);
+  if (window.requestIdleCallback) requestIdleCallback(run, { timeout: 2500 });
+  else setTimeout(run, 400);
+}
 // Place the band under the active label; measured in px so labels of different
 // lengths stay aligned. Re-rendered switches start at the previous tune and slide.
 function syncTuneSwitch(root, animate) {
@@ -1413,7 +1488,8 @@ function setSolfaTune(i) {
   chordTranspose = 0;
   closeChordPop();
   const img = document.getElementById('solfaSheetImg');
-  if (img) img.src = sheets[i].src;
+  if (img) { img.dataset.sheetSrc = sheets[i].src; img.src = solfaDisplaySrc(sheets[i].src); }
+  upgradeSolfaSheet(sheets[i].src);
   document.querySelectorAll('.solfa-tunes button').forEach((b, j) => {
     b.classList.toggle('active', j === i);
     b.setAttribute('aria-selected', j === i ? 'true' : 'false');
@@ -2637,6 +2713,7 @@ function openSong(song, dir) {
   // #songScroll instead.
   window.scrollTo(0, 0);
   renderSongDetail(song, dir);
+  warmSolfaHd(song);
   addRecent(song.id);
   recordOpen(song.id);
   // ponytail: only push history when entering detail from a list/search, NOT when
@@ -3821,7 +3898,8 @@ function songDetailParts(song) {
     const note = notes.length ? '<div class="solfa-note">'+notes.map(esc).join('<br>')+'</div>' : '';
     const sheets = solfaSheets(song);
     const tuneIdx = solfaTuneIndex(song);
-    const sheet = '<div class="solfa-sheet fade-in"><img id="solfaSheetImg" src="'+escAttr(sheets[tuneIdx].src)+'" alt="Tonic solfa — '+escAttr(sheets[tuneIdx].label)+'" loading="eager" decoding="async" data-action="openSolfaZoom"></div>';
+    const sv = sheets[tuneIdx].src;
+    const sheet = '<div class="solfa-sheet fade-in"><img id="solfaSheetImg" src="'+escAttr(solfaDisplaySrc(sv))+'" data-sheet-src="'+escAttr(sv)+'" alt="Tonic solfa — '+escAttr(sheets[tuneIdx].label)+'" loading="eager" decoding="async" data-action="openSolfaZoom"></div>';
     return { header, body: '<div class="song-body">' + note + tuneTabsForSong(song, tuneIdx, 'setSolfaTune') + '<div class="view-content">' + sheet + '</div></div>' };
   }
   const chartTune = chordTuneIndex(song);
@@ -4478,7 +4556,8 @@ function openSolfaZoom(src) {
   const sc = document.getElementById('songScroll');
   _solfaZoomReturn = sc ? sc.scrollTop : null;
   z.innerHTML = '<button type="button" class="solfa-zoom-close" aria-label="Close" data-action="closeSolfaZoom">&times;</button>'
-    + '<div class="solfa-zoom-stage"><img src="'+escAttr(src)+'" alt="Tonic solfa" draggable="false"></div>';
+    + '<div class="solfa-zoom-stage"><img src="'+escAttr(solfaDisplaySrc(src))+'" data-sheet-src="'+escAttr(src)+'" alt="Tonic solfa" draggable="false"></div>';
+  upgradeSolfaSheet(src);
   const stage = z.querySelector('.solfa-zoom-stage');
   const img = z.querySelector('img');
   const st = { scale: 1, x: 0, y: 0, pointers: new Map(), gesture: null, moved: false, downAt: 0, lastTap: 0, lastTapX: 0, lastTapY: 0 };
@@ -4664,6 +4743,7 @@ function setReaderMode(mode) {
   readerMode = nextMode;
   _songScroll[song.id] = 0; // each view starts at the top
   renderSongDetail(song, undefined, true);
+  if (nextMode === 'solfa') warmSolfaHd(song);
 }
 
 // Index of a reader mode inside the Lyrics / Solfa / Chords switch.
@@ -5297,10 +5377,12 @@ const ADMIN_LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 const ADMIN_USER_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>';
 const ADMIN_SIGNOUT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
 const ADMIN_SYNC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><polyline points="3 21 3 16 8 16"/><polyline points="21 3 21 8 16 8"/></svg>';
+const ADMIN_USERS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+const ADMIN_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
 function cloudCanCreateAdmin() {
   const session = cloudSession();
   const user = (session && session.user) || {};
-  if (user.canCreateAdmin === true) return true;
+  if (user.canCreateAdmin === true || user.isOwner === true) return true;
   const email = String((session && session.email) || user.email || '').toLowerCase();
   return email === ADMIN_OWNER_EMAIL;
 }
@@ -5312,12 +5394,20 @@ async function renderAdminAccount() {
     return;
   }
   let session = cloudSession();
-  if (!session) await cloudRestoreSession();
-  session = cloudSession();
+  if (!session) {
+    // Checking the session is a network round trip; paint feedback first so the
+    // page never looks frozen while the cookie is validated.
+    box.innerHTML = '<div class="glass-card settings-panel">'
+      + '<div class="sc-head"><span class="sc-ic">' + ADMIN_SHIELD + '</span><span>Admin account</span></div>'
+      + '<div class="admin-account-loading"><span class="btn-spinner" aria-hidden="true"></span><span>Checking sign-in…</span></div>'
+      + '</div>';
+    await cloudRestoreSession();
+    session = cloudSession();
+  }
   if (!session || !(await cloudCheckAdmin())) {
     box.innerHTML = '<div class="glass-card settings-panel">'
       + '<div class="sc-head"><span class="sc-ic">' + ADMIN_SHIELD + '</span><span>Admin sign in</span></div>'
-      + '<div class="form-group"><label for="adminAccountEmail">Email</label><input type="email" id="adminAccountEmail" autocomplete="username" placeholder="you@example.com"></div>'
+      + '<div class="form-group"><label for="adminAccountLogin">Email or username</label><input type="text" id="adminAccountLogin" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="you@example.com or @username"></div>'
       + '<div class="form-group"><label for="adminAccountPass">Password</label><input type="password" id="adminAccountPass" autocomplete="current-password" data-enter-action="adminAccountSignIn"></div>'
       + '<div id="adminAccountErr" class="cloud-err" role="alert"></div>'
       + '<button class="btn btn-primary btn-block" id="adminAccountSignInBtn" data-action="adminAccountSignIn">Sign in</button>'
@@ -5326,13 +5416,15 @@ async function renderAdminAccount() {
   }
 
   const user = session.user || {};
-  const email = session.email || user.email || '';
+  const login = user.login || session.login || user.email || session.email || '';
+  const owner = cloudCanCreateAdmin();
   box.innerHTML = '<div class="glass-card settings-panel admin-account-card">'
     + '<div class="admin-account-head">'
-    + '<div class="admin-account-identity"><span class="admin-account-email">' + esc(email) + '</span><span class="admin-account-badge">Admin</span></div>'
+    + '<div class="admin-account-identity"><span class="admin-account-email">' + esc(login) + '</span><span class="admin-account-badge">' + (owner ? 'Main admin' : 'Admin') + '</span></div>'
     + '<div class="admin-account-tools" role="group" aria-label="Admin account actions">'
-    + '<button class="admin-icon-btn" type="button" data-action="openAdminPasswordModal" aria-label="Change password" title="Change password">' + ADMIN_LOCK + '</button>'
-    + (cloudCanCreateAdmin() ? '<button class="admin-icon-btn" type="button" data-action="openAdminAddAdminModal" aria-label="Add another admin" title="Add another admin">' + ADMIN_USER_PLUS + '</button>' : '')
+    + '<button class="admin-icon-btn" type="button" data-action="openAdminPasswordModal" aria-label="Change your password" title="Change your password">' + ADMIN_LOCK + '</button>'
+    + (owner ? '<button class="admin-icon-btn" type="button" data-action="openAdminAddAdminModal" aria-label="Add another admin" title="Add another admin">' + ADMIN_USER_PLUS + '</button>' : '')
+    + (owner ? '<button class="admin-icon-btn" type="button" data-action="openAdminManageModal" aria-label="Manage admins" title="Manage admins">' + ADMIN_USERS + '</button>' : '')
     + '<button class="admin-icon-btn admin-icon-btn-out" type="button" data-action="adminAccountSignOut" aria-label="Sign out" title="Sign out">' + ADMIN_SIGNOUT + '</button>'
     + '</div></div></div>'
     + '<div id="adminAccountMsg" class="admin-account-ok" role="status"></div>'
@@ -5353,7 +5445,7 @@ function openAdminPasswordModal() {
   setTimeout(() => document.getElementById('adminCurrentPass')?.focus(), 80);
 }
 function openAdminAddAdminModal() {
-  ['adminAddName', 'adminAddEmail', 'adminAddPass', 'adminAddConfirm'].forEach(id => {
+  ['adminAddName', 'adminAddUsername', 'adminAddEmail', 'adminAddPass', 'adminAddConfirm'].forEach(id => {
     const input = document.getElementById(id);
     if (input) input.value = '';
   });
@@ -5404,16 +5496,22 @@ function openAdminAccount(push) {
   window.scrollTo(0, 0);
 }
 async function adminAccountSignIn() {
-  const email = document.getElementById('adminAccountEmail').value.trim();
+  const input = document.getElementById('adminAccountLogin');
   const passInput = document.getElementById('adminAccountPass');
   const err = document.getElementById('adminAccountErr');
   const btn = document.getElementById('adminAccountSignInBtn');
-  await cloudSignInWith(email, passInput.value, err, btn, passInput, async () => {
+  await cloudSignInWith(input ? input.value.trim() : '', passInput ? passInput.value : '', err, btn, passInput, async () => {
     await renderAdminAccount();
   });
 }
 async function adminAccountSignOut() {
-  await cloudSignOut();
+  const btn = document.querySelector('#adminAccountBody [data-action="adminAccountSignOut"]');
+  setAdminIconBusy(btn, true);
+  try {
+    await cloudSignOut();
+  } finally {
+    if (btn && btn.isConnected) setAdminIconBusy(btn, false);
+  }
 }
 async function adminChangePassword() {
   const current = document.getElementById('adminCurrentPass').value;
@@ -5443,29 +5541,162 @@ async function adminChangePassword() {
 }
 async function adminAddAdmin() {
   const name = document.getElementById('adminAddName').value.trim();
+  const username = document.getElementById('adminAddUsername').value.trim();
   const email = document.getElementById('adminAddEmail').value.trim().toLowerCase();
   const pass = document.getElementById('adminAddPass').value;
   const confirm = document.getElementById('adminAddConfirm').value;
   const err = document.getElementById('adminAddErr');
   const btn = document.getElementById('adminCreateAdminBtn');
   err.textContent = '';
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = 'Enter a valid email address'; return; }
+  if (!username && !email) { err.textContent = 'Enter a username or an email'; return; }
+  if (username && !/^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$/.test(username)) {
+    err.textContent = 'Username must be 3-32 characters: letters, numbers, dot, dash or underscore';
+    return;
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = 'Enter a valid email address'; return; }
   if (pass.length < 12 || pass.length > 128) { err.textContent = 'Password must be 12-128 characters'; return; }
   if (pass !== confirm) { err.textContent = 'Passwords do not match'; return; }
   setCloudButtonBusy(btn, true, 'Creating…');
   try {
-    await cloudReq('/api/admin/users', { body: { name: name || 'Admin', email: email, password: pass } });
+    const d = await cloudReq('/api/admin/users', { body: { name: name, username: username, email: email, password: pass } });
     document.getElementById('adminAddName').value = '';
+    document.getElementById('adminAddUsername').value = '';
     document.getElementById('adminAddEmail').value = '';
     document.getElementById('adminAddPass').value = '';
     document.getElementById('adminAddConfirm').value = '';
     setCloudButtonBusy(btn, false);
     closeModal('adminAddAdminModal');
-    showAdminAccountMsg('Admin account created for ' + email + '.');
+    showAdminAccountMsg('Admin account created for ' + ((d && d.login) || email || '@' + username) + '.');
   } catch (e) {
     setCloudButtonBusy(btn, false);
     err.textContent = cloudErrorText(e);
   }
+}
+
+// ─── Main admin: manage the other admin accounts ───
+let adminDirectory = null;
+let adminPassTarget = null;
+
+function setAdminIconBusy(btn, busy) {
+  if (!btn) return;
+  if (busy) {
+    if (btn.dataset.idleHtml === undefined) btn.dataset.idleHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.classList.add('is-busy');
+    btn.setAttribute('aria-busy', 'true');
+    btn.innerHTML = '<span class="btn-spinner" aria-hidden="true"></span>';
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('is-busy');
+    btn.removeAttribute('aria-busy');
+    if (btn.dataset.idleHtml !== undefined) btn.innerHTML = btn.dataset.idleHtml;
+  }
+}
+function adminRowHTML(a) {
+  const label = a.login || a.email || '';
+  const name = a.name || label;
+  const initial = esc(String(name).replace(/^@/, '').slice(0, 1).toUpperCase() || 'A');
+  const badge = a.isOwner
+    ? '<span class="admin-badge-owner">Main admin</span>'
+    : (a.isSelf ? '<span class="admin-badge-self">You</span>' : '');
+  return '<div class="admin-row">'
+    + '<span class="admin-row-avatar" aria-hidden="true">' + initial + '</span>'
+    + '<div class="admin-row-main"><div class="admin-row-name">' + esc(name) + badge + '</div>'
+    + '<div class="admin-row-login">' + esc(label) + '</div></div>'
+    + '<div class="admin-row-tools">'
+    + (a.isOwner ? '' : '<button class="admin-icon-btn" type="button" data-action="adminOpenSetPass" data-user-id="' + escAttr(a.id) + '" aria-label="Set password for ' + escAttr(label) + '" title="Set password">' + ADMIN_LOCK + '</button>')
+    + (a.isOwner ? '' : '<button class="admin-icon-btn admin-icon-btn-out" type="button" data-action="adminDeleteUser" data-user-id="' + escAttr(a.id) + '" aria-label="Remove ' + escAttr(label) + '" title="Remove admin">' + ADMIN_TRASH + '</button>')
+    + '</div></div>';
+}
+function renderAdminDirectory() {
+  const list = document.getElementById('adminManageList');
+  if (!list) return;
+  const admins = adminDirectory || [];
+  list.innerHTML = admins.length
+    ? admins.map(adminRowHTML).join('')
+    : '<div class="admin-manage-empty">No admin accounts found.</div>';
+}
+function openAdminManageModal() {
+  const list = document.getElementById('adminManageList');
+  const err = document.getElementById('adminManageErr');
+  if (err) err.textContent = '';
+  if (list) list.innerHTML = '<div class="admin-account-loading"><span class="btn-spinner" aria-hidden="true"></span><span>Loading admins…</span></div>';
+  openModal('adminManageModal');
+  loadAdminDirectory();
+}
+async function loadAdminDirectory() {
+  const list = document.getElementById('adminManageList');
+  const err = document.getElementById('adminManageErr');
+  try {
+    const d = await cloudReq('/api/admin/users');
+    adminDirectory = (d && d.admins) || [];
+    if (err) err.textContent = '';
+    renderAdminDirectory();
+  } catch (e) {
+    adminDirectory = null;
+    if (list) list.innerHTML = '';
+    if (err) err.textContent = cloudErrorText(e);
+  }
+}
+function openAdminSetPass(userId) {
+  const target = (adminDirectory || []).find(a => a.id === userId);
+  if (!target) return;
+  adminPassTarget = target;
+  const who = document.getElementById('adminSetPassWho');
+  if (who) who.textContent = target.login || target.email || '';
+  ['adminSetPassNew', 'adminSetPassConfirm'].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.value = '';
+  });
+  const err = document.getElementById('adminSetPassErr');
+  if (err) err.textContent = '';
+  openModal('adminSetPassModal');
+  setTimeout(() => document.getElementById('adminSetPassNew')?.focus(), 80);
+}
+async function adminSetOtherPassword() {
+  if (!adminPassTarget) return;
+  const passInput = document.getElementById('adminSetPassNew');
+  const confirmInput = document.getElementById('adminSetPassConfirm');
+  const next = passInput ? passInput.value : '';
+  const confirm = confirmInput ? confirmInput.value : '';
+  const err = document.getElementById('adminSetPassErr');
+  const btn = document.getElementById('adminSetPassBtn');
+  if (err) err.textContent = '';
+  if (next.length < 12 || next.length > 128) { if (err) err.textContent = 'Password must be 12-128 characters'; return; }
+  if (next !== confirm) { if (err) err.textContent = 'Passwords do not match'; return; }
+  const target = adminPassTarget;
+  setCloudButtonBusy(btn, true, 'Updating…');
+  try {
+    await cloudReq('/api/admin/users/' + encodeURIComponent(target.id) + '/password', { body: { newPassword: next } });
+    setCloudButtonBusy(btn, false);
+    closeModal('adminSetPassModal');
+    showAdminAccountMsg('Password updated for ' + (target.login || target.email) + '.');
+  } catch (e) {
+    setCloudButtonBusy(btn, false);
+    if (err) err.textContent = cloudErrorText(e);
+  }
+}
+function adminDeleteUser(userId) {
+  const target = (adminDirectory || []).find(a => a.id === userId);
+  if (!target) return;
+  const label = target.login || target.email || '';
+  document.getElementById('confirmTitle').textContent = 'Remove admin';
+  document.getElementById('confirmMsg').textContent = 'Remove ' + label + '? They are signed out immediately and lose admin access.';
+  const btn = document.getElementById('confirmBtn');
+  btn.textContent = 'Remove';
+  btn.onclick = async () => {
+    closeModal('confirmModal');
+    try {
+      await cloudReq('/api/admin/users/' + encodeURIComponent(target.id), { method: 'DELETE' });
+      showAdminAccountMsg('Admin removed: ' + label + '.');
+      await loadAdminDirectory();
+    } catch (e) {
+      await loadAdminDirectory();
+      const err = document.getElementById('adminManageErr');
+      if (err) err.textContent = cloudErrorText(e);
+    }
+  };
+  openModal('confirmModal');
 }
 
 // ponytail: no login gate — every user can add/edit/remove songs. "Manage Songs" panel is public.
@@ -5762,8 +5993,7 @@ function formatSongText(song, vt) {
   return txt;
 }
 
-function downloadFile(content, filename, type) {
-  const blob = new Blob([content], { type: type });
+function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = filename;
@@ -5771,6 +6001,9 @@ function downloadFile(content, filename, type) {
   document.body.removeChild(a);
   // ponytail: revoking synchronously can cancel the download before it starts — defer it.
   setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+function downloadFile(content, filename, type) {
+  downloadBlob(new Blob([content], { type: type }), filename);
 }
 
 // ─── FIND & REPLACE ───
@@ -6252,6 +6485,7 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 // every row of a 5k+ song corpus (admin list, search, lists).
 let _escDiv = null;
 function esc(s) { if (!s) return ''; if (!_escDiv) _escDiv = document.createElement('div'); _escDiv.textContent = s; return _escDiv.innerHTML; }
+function escAttr(s) { return esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 function escAttr(s) { return esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 function hl(text, q) {
   if (!text) return '';
@@ -7206,13 +7440,35 @@ async function solfaToPng(url) {
   g.drawImage(img, 0, 0);
   return await new Promise(res => c.toBlob(res, 'image/png'));
 }
-function downloadSolfa() {
+// Ask R2 for the 480 DPI sheet; null on offline, Save-Data, 404 or a timeout so
+// the caller can always fall back to the bundled 240 DPI file.
+async function fetchSolfaHdBlob(src) {
+  const url = solfaHdUrl(src);
+  if (!url || !solfaHdAllowed()) return null;
+  const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), 12000) : null;
+  try {
+    const res = await fetch(url, { mode: 'cors', signal: ctl ? ctl.signal : undefined });
+    if (!res.ok) { if (res.status === 404) _solfaHd.missing[src] = true; return null; }
+    return await res.blob();
+  } catch (e) { return null; }
+  finally { if (timer) clearTimeout(timer); }
+}
+async function downloadSolfa() {
   const song = currentList[currentSongIdx];
   const sheet = currentSolfaSheet(song);
   if (!sheet) {  return; }
+  const name = sheet.src.split('/').pop();
+  const hd = await fetchSolfaHdBlob(sheet.src);
+  if (hd) {
+    downloadBlob(hd, name);
+    _solfaHd.ready[sheet.src] = true;
+    upgradeSolfaSheet(sheet.src);
+    return;
+  }
   const a = document.createElement('a');
   a.href = sheet.src;
-  a.download = sheet.src.split('/').pop();
+  a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
 }
 async function shareSolfaImage() {
@@ -7252,6 +7508,9 @@ const CLICK_ACTIONS = {
   closeSolfaZoom, clearSearchHistory, clearOpenHistory, openSettings, cloudSignOut,
   openAdminAccount, adminAccountSignIn, adminChangePassword, adminAddAdmin,
   openAdminPasswordModal, openAdminAddAdminModal, openSyncHistory,
+  openAdminManageModal, adminSetOtherPassword,
+  adminOpenSetPass: el => openAdminSetPass(el.dataset.userId),
+  adminDeleteUser: el => adminDeleteUser(el.dataset.userId),
   adminAccountSignOut: () => adminAccountSignOut(),
   openAdminAccountFromSettings: () => { closeSidebar(); openAdminAccount(); },
   openFavsThenClose: () => { openFavs(); closeSidebar(); },
@@ -7280,7 +7539,7 @@ const CLICK_ACTIONS = {
     const idx = currentSongIdx + (el.dataset.dir === 'next' ? 1 : -1);
     if (currentList[idx]) openSong(currentList[idx], el.dataset.dir);
   },
-  openSolfaZoom: el => openSolfaZoom(el.getAttribute('src') || el.dataset.src || ''),
+  openSolfaZoom: el => openSolfaZoom(el.dataset.sheetSrc || el.getAttribute('src') || ''),
   playKeyTone: el => playKeyTone(el),
   setReaderMode: el => setReaderMode(el.dataset.mode),
   setAccent: el => setAccent(el.dataset.accent),
@@ -7313,6 +7572,7 @@ const ENTER_ACTIONS = {
   adminAccountSignIn: () => adminAccountSignIn(),
   adminChangePassword: () => adminChangePassword(),
   adminAddAdmin: () => adminAddAdmin(),
+  adminSetOtherPassword: () => adminSetOtherPassword(),
   createPlaylistFromSettings: () => createPlaylistFromSettings(),
 };
 function delegatedTarget(event, attr) {

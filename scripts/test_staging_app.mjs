@@ -65,7 +65,7 @@ try {
   await page.evaluate(() => openAdminAccount());
   await page.waitForFunction(() =>
     document.getElementById('adminAccountBody')?.textContent.includes('Admin sign in'), null, { timeout: 10000 });
-  await page.fill('#adminAccountEmail', email);
+  await page.fill('#adminAccountLogin', email);
   await page.fill('#adminAccountPass', password);
   await page.click('#adminAccountSignInBtn');
   await page.waitForFunction(() => {

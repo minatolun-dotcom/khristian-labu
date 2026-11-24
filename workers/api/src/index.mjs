@@ -4,6 +4,12 @@ import { auth } from './auth.mjs';
 
 const KINDS = new Set(['song', 'struct', 'chord']);
 const OWNER_EMAIL = 'minatolun@gmail.com';
+// Username-only admins still need an address row for Better Auth. This private
+// domain is never shown or accepted as a login address.
+const USERNAME_EMAIL_DOMAIN = 'admins.labu.local';
+const USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$/;
+const USER_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+const LOGIN_ATTEMPTS_PER_MINUTE = 10;
 const MAX_PAYLOAD_BYTES = 200_000;
 const MAX_JSON_BYTES = 250_000;
 const MAX_PENDING = 1_000;
@@ -72,7 +78,7 @@ function json(body, status = 200, extra = {}) {
 
 function preflight(request) {
   const headers = corsHeaders(request);
-  headers.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  headers.set('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
   headers.set('Access-Control-Allow-Headers', 'Content-Type, X-Setup-Token');
   headers.set('Access-Control-Max-Age', '600');
   return new Response(null, { status: 204, headers });
@@ -268,6 +274,45 @@ function isOwner(user) {
   return !!user && String(user.email || '').toLowerCase() === OWNER_EMAIL;
 }
 
+function parseUsername(value) {
+  const username = String(value || '').trim();
+  if (!username) return '';
+  if (!USERNAME_PATTERN.test(username)) {
+    throw new HttpError(400, 'username must be 3-32 characters using letters, numbers, dot, dash or underscore');
+  }
+  return username;
+}
+
+function usernameEmail(username) {
+  return username.toLowerCase() + '@' + USERNAME_EMAIL_DOMAIN;
+}
+
+function isPrivateEmail(email) {
+  return String(email || '').toLowerCase().endsWith('@' + USERNAME_EMAIL_DOMAIN);
+}
+
+// The UI shows @username when an admin has one, otherwise the real email.
+function displayLogin(user) {
+  const username = String(user?.username || '').trim();
+  if (username) return '@' + username;
+  const email = String(user?.email || '');
+  return isPrivateEmail(email) ? '@' + email.split('@')[0] : email;
+}
+
+function publicAdmin(user, viewerId) {
+  const email = isPrivateEmail(user?.email) ? '' : String(user?.email || '');
+  return {
+    id: user?.id || '',
+    name: user?.name || '',
+    role: user?.role || 'user',
+    username: user?.username || '',
+    email: email,
+    login: displayLogin(user),
+    isOwner: isOwner(user),
+    isSelf: !!viewerId && user?.id === viewerId,
+  };
+}
+
 async function optionalSession(request) {
   try {
     return await auth.api.getSession({ headers: request.headers });
@@ -307,7 +352,7 @@ function clientIp(request) {
   return request.headers.get('cf-connecting-ip') || 'unknown';
 }
 
-async function consumeRateLimit(key) {
+async function consumeRateLimit(key, max = PROPOSALS_PER_MINUTE, message = 'too many submissions; try again in a minute') {
   const now = nowMs();
   const windowStart = Math.floor(now / 60_000) * 60_000;
   if (now - lastRateCleanup > 60 * 60 * 1000) {
@@ -323,8 +368,8 @@ async function consumeRateLimit(key) {
       window_start = excluded.window_start
     RETURNING count
   `).bind(key, windowStart).first();
-  if (!row || Number(row.count) > PROPOSALS_PER_MINUTE) {
-    throw new HttpError(429, 'too many submissions; try again in a minute');
+  if (!row || Number(row.count) > max) {
+    throw new HttpError(429, message);
   }
 }
 
@@ -427,38 +472,133 @@ async function handleAdminProposals(request) {
 async function handleAdminMe(request) {
   const session = await requireAdmin(request);
   const user = session.user;
+  // Read the row so username (not part of Better Auth's session payload) and the
+  // primary-admin flag travel with the session.
+  const row = await env.DB.prepare(
+    'SELECT id, name, email, role, username FROM user WHERE id = ?',
+  ).bind(user.id).first();
+  const admin = publicAdmin(row || user, user.id);
   return json({
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role || 'user',
-    },
+    user: admin,
     isAdmin: true,
-    canCreateAdmin: isOwner(user),
+    canCreateAdmin: admin.isOwner,
   });
 }
 
-async function handleCreateAdmin(request) {
+// Sign in with an email address or a username. The client posts one field so a
+// username-only admin never has to know the private address behind the account.
+async function handleSignIn(request) {
+  await consumeRateLimit('login:' + clientIp(request), LOGIN_ATTEMPTS_PER_MINUTE,
+    'too many sign-in attempts; try again in a minute');
+  const body = await readJson(request);
+  const login = String(body.login || body.email || '').trim();
+  const password = String(body.password || '');
+  if (!login || !password) throw new HttpError(400, 'email or username and password are required');
+
+  let email = login.toLowerCase();
+  if (!login.includes('@')) {
+    const row = await env.DB.prepare(
+      'SELECT email FROM user WHERE lower(username) = ? OR lower(email) = ? LIMIT 1',
+    ).bind(login.toLowerCase(), usernameEmail(login)).first();
+    email = row ? String(row.email) : usernameEmail(login);
+  }
+
+  // Hand the resolved address to Better Auth so it owns password checks, the
+  // HttpOnly cookie and its own rate limiter. Unknown accounts fail the same way
+  // as a wrong password, so this endpoint cannot be used to enumerate admins.
+  const headers = new Headers(request.headers);
+  headers.delete('content-length');
+  headers.set('content-type', 'application/json');
+  const target = new URL(request.url);
+  target.pathname = '/api/auth/sign-in/email';
+  target.search = '';
+  return auth.handler(new Request(target.toString(), {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify({ email: email, password: password }),
+  }));
+}
+
+async function listAdmins(viewerId) {
+  const owners = [...adminEmails()];
+  const sql = "SELECT id, name, email, role, username FROM user WHERE role = 'admin'"
+    + (owners.length ? ` OR lower(email) IN (${owners.map(() => '?').join(',')})` : '')
+    + ' ORDER BY createdAt ASC';
+  const rows = await env.DB.prepare(sql).bind(...owners).all();
+  return (rows.results || []).map(row => publicAdmin(row, viewerId));
+}
+
+async function requireOwner(request) {
   const session = await requireAdmin(request);
-  if (!isOwner(session.user)) {
-    throw new HttpError(403, 'only the owner can create admin accounts');
+  if (!isOwner(session.user)) throw new HttpError(403, 'only the main admin can manage admins');
+  return session;
+}
+
+async function handleAdminUsers(request) {
+  const session = await requireOwner(request);
+  return json({ admins: await listAdmins(session.user.id) });
+}
+
+async function adminTarget(request, userId) {
+  const session = await requireOwner(request);
+  const id = String(userId || '');
+  if (!USER_ID_PATTERN.test(id)) throw new HttpError(400, 'invalid admin id');
+  const target = await env.DB.prepare(
+    'SELECT id, name, email, role, username FROM user WHERE id = ?',
+  ).bind(id).first();
+  if (!target) throw new HttpError(404, 'admin not found');
+  return { session, target };
+}
+
+async function handleRemoveAdmin(request, userId) {
+  const { session, target } = await adminTarget(request, userId);
+  if (target.id === session.user.id) throw new HttpError(400, 'you cannot remove your own account');
+  if (isOwner(target)) throw new HttpError(400, 'the main admin cannot be removed');
+  await auth.api.removeUser({ body: { userId: target.id }, headers: request.headers });
+  return json({ removed: true, id: target.id, login: displayLogin(target) });
+}
+
+async function handleSetAdminPassword(request, userId) {
+  const { session, target } = await adminTarget(request, userId);
+  if (target.id === session.user.id) {
+    throw new HttpError(400, 'use change password for your own account');
   }
   const body = await readJson(request);
-  const email = String(body.email || '').trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+  const newPassword = String(body.newPassword || body.password || '');
+  if (newPassword.length < 12 || newPassword.length > 128) {
+    throw new HttpError(400, 'password must be 12-128 characters');
+  }
+  await auth.api.setUserPassword({
+    body: { userId: target.id, newPassword: newPassword },
+    headers: request.headers,
+  });
+  // Anyone holding the old password loses their session with it.
+  await env.DB.prepare('DELETE FROM session WHERE userId = ?').bind(target.id).run();
+  return json({ updated: true, id: target.id, login: displayLogin(target) });
+}
+
+async function handleCreateAdmin(request) {
+  await requireOwner(request);
+  const body = await readJson(request);
+  const username = parseUsername(body.username);
+  const emailInput = String(body.email || '').trim().toLowerCase();
+  if (emailInput && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput) || emailInput.length > 254)) {
     throw new HttpError(400, 'a valid email is required');
   }
+  if (!username && !emailInput) throw new HttpError(400, 'a username or email is required');
   const password = String(body.password || '');
   if (password.length < 12 || password.length > 128) {
     throw new HttpError(400, 'password must be 12-128 characters');
   }
-  const name = truncate(body.name || 'Admin', 120) || 'Admin';
+  const email = emailInput || usernameEmail(username);
+  const name = truncate(body.name || username || email.split('@')[0] || 'Admin', 120) || 'Admin';
 
   const existing = await env.DB.prepare(
-    'SELECT id FROM user WHERE lower(email) = ? LIMIT 1',
-  ).bind(email).first();
-  if (existing) throw new HttpError(409, 'an account with that email already exists');
+    "SELECT id FROM user WHERE lower(email) = ? OR (? <> '' AND lower(username) = ?) LIMIT 1",
+  ).bind(email, username, username.toLowerCase()).first();
+  if (existing) {
+    throw new HttpError(409, username ? 'that username or email is already taken' : 'an account with that email already exists');
+  }
 
   await auth.api.signUpEmail({ body: { email, password, name } });
   const user = await env.DB.prepare(
@@ -467,10 +607,10 @@ async function handleCreateAdmin(request) {
   if (!user) throw new HttpError(500, 'admin user could not be created');
 
   await env.DB.prepare(
-    "UPDATE user SET role = 'admin', emailVerified = 1, updatedAt = ? WHERE id = ?",
-  ).bind(nowMs(), user.id).run();
+    "UPDATE user SET role = 'admin', emailVerified = 1, username = ?, updatedAt = ? WHERE id = ?",
+  ).bind(username || null, nowMs(), user.id).run();
 
-  return json({ created: true, email, id: user.id }, 201);
+  return json({ created: true, id: user.id, login: username ? '@' + username : email }, 201);
 }
 
 async function handlePublish(request) {
@@ -643,8 +783,14 @@ async function route(request) {
   if (path === '/api/published-edits' && request.method === 'GET') return handlePublishedEdits(request);
   if (path === '/api/proposals' && request.method === 'POST') return handleProposal(request);
 
+  if (path === '/api/login' && request.method === 'POST') return handleSignIn(request);
+
   if (path === '/api/admin/me' && request.method === 'GET') return handleAdminMe(request);
+  if (path === '/api/admin/users' && request.method === 'GET') return handleAdminUsers(request);
   if (path === '/api/admin/users' && request.method === 'POST') return handleCreateAdmin(request);
+  const adminUser = path.match(/^\/api\/admin\/users\/([^/]+)(\/password)?$/);
+  if (adminUser && !adminUser[2] && request.method === 'DELETE') return handleRemoveAdmin(request, adminUser[1]);
+  if (adminUser && adminUser[2] && request.method === 'POST') return handleSetAdminPassword(request, adminUser[1]);
   if (path === '/api/admin/proposals' && request.method === 'GET') return handleAdminProposals(request);
   if (path === '/api/admin/publish' && request.method === 'POST') return handlePublish(request);
   if (path === '/api/admin/approve' && request.method === 'POST') return handleApprove(request);

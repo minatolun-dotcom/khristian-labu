@@ -679,7 +679,8 @@ Second verse line 2"></textarea>
     </div>
     <div class="modal-body">
       <div class="form-group"><label for="adminAddName">Name (optional)</label><input type="text" id="adminAddName" autocomplete="name" maxlength="120" placeholder="Admin"></div>
-      <div class="form-group"><label for="adminAddEmail">Email</label><input type="email" id="adminAddEmail" autocomplete="off" placeholder="new-admin@example.com"></div>
+      <div class="form-group"><label for="adminAddUsername">Username</label><input type="text" id="adminAddUsername" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="32" placeholder="e.g. mary_hymn"></div>
+      <div class="form-group"><label for="adminAddEmail">Email (optional)</label><input type="email" id="adminAddEmail" autocomplete="off" placeholder="new-admin@example.com"><span class="admin-field-note">Give a username, an email, or both. Sign-in accepts either.</span></div>
       <div class="form-group"><label for="adminAddPass">Password</label><input type="password" id="adminAddPass" autocomplete="new-password" minlength="12" maxlength="128"></div>
       <div class="form-group"><label for="adminAddConfirm">Confirm password</label><input type="password" id="adminAddConfirm" autocomplete="new-password" minlength="12" maxlength="128" data-enter-action="adminAddAdmin"></div>
       <div id="adminAddErr" class="cloud-err" role="alert"></div>
@@ -687,6 +688,43 @@ Second verse line 2"></textarea>
     <div class="modal-footer">
       <button class="btn btn-ghost" type="button" data-action="closeModal" data-modal="adminAddAdminModal">Cancel</button>
       <button class="btn btn-primary" id="adminCreateAdminBtn" type="button" data-action="adminAddAdmin">Create admin</button>
+    </div>
+  </div>
+</div>
+
+<!-- MANAGE ADMINS MODAL -->
+<div class="modal-overlay" id="adminManageModal" data-action="closeModal" data-modal="adminManageModal" data-backdrop>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="adminManageModalTitle">
+    <div class="modal-header">
+      <h2 id="adminManageModalTitle">Manage admins</h2>
+      <button class="modal-close" type="button" data-action="closeModal" data-modal="adminManageModal" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="adminManageErr" class="cloud-err" role="alert"></div>
+      <div id="adminManageList" class="admin-manage-list"></div>
+    </div>
+    <div class="modal-footer modal-footer-center">
+      <button class="btn btn-ghost" type="button" data-action="closeModal" data-modal="adminManageModal">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- SET ANOTHER ADMIN'S PASSWORD -->
+<div class="modal-overlay" id="adminSetPassModal" data-action="closeModal" data-modal="adminSetPassModal" data-backdrop>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="adminSetPassModalTitle">
+    <div class="modal-header">
+      <h2 id="adminSetPassModalTitle">Set new password</h2>
+      <button class="modal-close" type="button" data-action="closeModal" data-modal="adminSetPassModal" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="admin-setpass-who">Password for <strong id="adminSetPassWho"></strong></p>
+      <div class="form-group"><label for="adminSetPassNew">New password</label><input type="password" id="adminSetPassNew" autocomplete="new-password" minlength="12" maxlength="128"></div>
+      <div class="form-group"><label for="adminSetPassConfirm">Confirm new password</label><input type="password" id="adminSetPassConfirm" autocomplete="new-password" minlength="12" maxlength="128" data-enter-action="adminSetOtherPassword"></div>
+      <div id="adminSetPassErr" class="cloud-err" role="alert"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" type="button" data-action="closeModal" data-modal="adminSetPassModal">Cancel</button>
+      <button class="btn btn-primary" id="adminSetPassBtn" type="button" data-action="adminSetOtherPassword">Update password</button>
     </div>
   </div>
 </div>

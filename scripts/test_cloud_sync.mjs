@@ -62,6 +62,8 @@ check('Pages CSP disallows inline styles', !/style-src\s+[^;]*'unsafe-inline'/.t
 
 try {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  // HD solfa lives on R2; keep this suite off the network.
+  await page.route('https://dl.labu.lengkhawm.online/**', route => route.abort());
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(e.message));
 
@@ -73,6 +75,13 @@ try {
   const authCalls = [];
   const passwordChanges = [];
   const newAdmins = [];
+  const adminPasswordSets = [];
+  const adminDeletes = [];
+  let adminDirectory = [
+    { id: 'u1', name: 'Owner', login: 'minatolun@gmail.com', email: 'minatolun@gmail.com', username: '', isOwner: true, isSelf: false },
+    { id: 'u2', name: 'Second Admin', login: '@secondadmin', email: '', username: 'secondadmin', isOwner: false, isSelf: false },
+    { id: 'u3', name: 'Old Admin', login: 'old@example.com', email: 'old@example.com', username: '', isOwner: false, isSelf: false },
+  ];
   let sessionEmail = 'minatolun@gmail.com';
 
   await page.route('https://mock.labu.api/**', async route => {
@@ -86,29 +95,59 @@ try {
     const json = (body, status = 200, headers = {}) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body), headers });
     const body = () => { try { return JSON.parse(req.postData() || '{}'); } catch (e) { return {}; } };
 
-    if (path === '/api/auth/sign-in/email') {
-      sessionEmail = String(body().email || '').toLowerCase();
-      return json({ user: { id: 'u1', email: sessionEmail } }, 200, {
+    if (path === '/api/login') {
+      // Mirrors the Worker: a username resolves to the account behind it.
+      const login = String(body().login || '').toLowerCase();
+      await new Promise(r => setTimeout(r, 120));
+      if (login === 'secondadmin' || login === '@secondadmin') sessionEmail = 'second@example.com';
+      else if (login === 'minatolun@gmail.com') sessionEmail = login;
+      else return json({ error: 'Invalid email or password' }, 401);
+      return json({ user: { id: 'u1', email: sessionEmail, login: login } }, 200, {
         'set-cookie': 'better-auth.session_token=admin-token; Path=/; HttpOnly; Secure; SameSite=None',
       });
     }
-    if (path === '/api/auth/sign-out') return json({ success: true }, 200, {
-      'set-cookie': 'better-auth.session_token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None',
-    });
+    if (path === '/api/auth/sign-out') {
+      await new Promise(r => setTimeout(r, 120));
+      return json({ success: true }, 200, {
+        'set-cookie': 'better-auth.session_token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None',
+      });
+    }
     if (path === '/api/auth/change-password') {
       passwordChanges.push(body());
       return json({ status: true });
     }
+    if (path === '/api/admin/users' && req.method() === 'GET') {
+      if (sessionEmail !== 'minatolun@gmail.com') return json({ error: 'only the main admin can manage admins' }, 403);
+      return json({ admins: adminDirectory.map(a => ({ ...a, isSelf: a.login === sessionEmail })) });
+    }
+    if (path.startsWith('/api/admin/users/') && req.method() === 'DELETE') {
+      if (sessionEmail !== 'minatolun@gmail.com') return json({ error: 'only the main admin can manage admins' }, 403);
+      const id = path.split('/').pop();
+      adminDeletes.push(id);
+      adminDirectory = adminDirectory.filter(a => a.id !== id);
+      return json({ removed: true, id });
+    }
+    if (/\/api\/admin\/users\/[^/]+\/password$/.test(path)) {
+      if (sessionEmail !== 'minatolun@gmail.com') return json({ error: 'only the main admin can manage admins' }, 403);
+      adminPasswordSets.push({ id: path.split('/').at(-2), password: body().newPassword });
+      return json({ updated: true });
+    }
     if (path === '/api/admin/users') {
-      if (sessionEmail !== 'minatolun@gmail.com') return json({ error: 'only the owner can create admin accounts' }, 403);
+      if (sessionEmail !== 'minatolun@gmail.com') return json({ error: 'only the main admin can manage admins' }, 403);
       newAdmins.push(body());
-      return json({ created: true, email: body().email }, 201);
+      return json({ created: true, id: 'u4', login: body().username ? '@' + body().username : body().email }, 201);
     }
     if (path === '/api/admin/me') return isAdmin
       ? json({
         isAdmin: true,
         canCreateAdmin: sessionEmail === 'minatolun@gmail.com',
-        user: { id: 'u1', email: sessionEmail, canCreateAdmin: sessionEmail === 'minatolun@gmail.com' },
+        user: {
+          id: 'u1',
+          email: sessionEmail === 'minatolun@gmail.com' ? sessionEmail : '',
+          login: sessionEmail === 'minatolun@gmail.com' ? sessionEmail : '@secondadmin',
+          isOwner: sessionEmail === 'minatolun@gmail.com',
+          canCreateAdmin: sessionEmail === 'minatolun@gmail.com',
+        },
       })
       : json({ error: 'authentication required' }, 401);
     if (path === '/api/state') return json({ version });
@@ -169,6 +208,8 @@ try {
     const unsafeSheet = { id: 'unsafe_sheet', solfa: 'javascript:alert(1)' };
     return {
       rejected,
+      hqSafe: solfaHdUrl('javascript:alert(1)') === '' && solfaHdUrl('https://evil.test/x.avif') === ''
+        && solfaHdUrl('assets/solfa/BL_1.avif') === SOLFA_HD_BASE + 'BL_1.avif',
       menuSafe,
       keySafe: !key.querySelector('[onmouseover]'),
       solfaSafe: !hasSolfa(unsafeSheet) && solfaSheets(unsafeSheet).length === 0
@@ -179,6 +220,7 @@ try {
   check('reader menu no longer builds inline song handlers', guard.menuSafe);
   check('key metadata escapes injected attributes', guard.keySafe);
   check('solfa paths are limited to local sheet assets', guard.solfaSafe);
+  check('HD solfa URLs are built only from bundled sheets', guard.hqSafe);
   check('published layer version was cached', await page.evaluate(() => {
     const c = JSON.parse(localStorage.getItem('labu_pub_cache') || 'null');
     return !!c && c.version === 1 && c.edits.length === 1;
@@ -214,9 +256,14 @@ try {
   await page.evaluate(() => openAdminAccount());
   await page.waitForFunction(() =>
     document.getElementById('adminAccountBody')?.textContent.includes('Admin sign in'), null, { timeout: 10000 });
-  await page.fill('#adminAccountEmail', 'minatolun@gmail.com');
+  await page.fill('#adminAccountLogin', 'minatolun@gmail.com');
   await page.fill('#adminAccountPass', 'secret');
   await page.click('#adminAccountSignInBtn');
+  check('sign-in button shows a spinner while the session starts',
+    await page.waitForFunction(() => {
+      const btn = document.getElementById('adminAccountSignInBtn');
+      return !!btn && btn.classList.contains('is-busy') && !!btn.querySelector('.btn-spinner');
+    }, null, { timeout: 2000 }).then(() => true).catch(() => false));
   await page.waitForFunction(() => {
     const el = document.getElementById('cloudPanel');
     return el && el.textContent.includes('Review queue');
@@ -258,16 +305,54 @@ try {
   await page.click('[data-action="openAdminAddAdminModal"]');
   await page.waitForSelector('#adminAddAdminModal.open');
   await page.fill('#adminAddName', 'Second Admin');
-  await page.fill('#adminAddEmail', 'second@example.com');
+  await page.fill('#adminAddUsername', 'secondadmin');
   await page.fill('#adminAddPass', 'another-secret-789');
   await page.fill('#adminAddConfirm', 'another-secret-789');
   await page.click('#adminCreateAdminBtn');
   await page.waitForFunction(() =>
-    document.getElementById('adminAccountMsg')?.textContent.includes('second@example.com'), null, { timeout: 10000 });
-  check('owner can create another admin account in a popup',
-    newAdmins.length === 1 && newAdmins[0].email === 'second@example.com'
-      && newAdmins[0].name === 'Second Admin');
+    document.getElementById('adminAccountMsg')?.textContent.includes('secondadmin'), null, { timeout: 10000 });
+  check('owner can create an admin from a username alone',
+    newAdmins.length === 1 && newAdmins[0].username === 'secondadmin'
+      && newAdmins[0].email === '' && newAdmins[0].name === 'Second Admin', JSON.stringify(newAdmins));
   check('add admin popup closes after creating', !(await page.locator('#adminAddAdminModal').evaluate(el => el.classList.contains('open'))));
+
+  // Owner can see every admin, reset a password and remove an account.
+  check('owner sees the Manage admins control',
+    await page.locator('#adminAccountBody [data-action="openAdminManageModal"]').isVisible());
+  await page.click('[data-action="openAdminManageModal"]');
+  await page.waitForSelector('#adminManageModal.open');
+  await page.waitForFunction(() =>
+    document.querySelectorAll('#adminManageList .admin-row').length === 3, null, { timeout: 10000 });
+  check('manage admins lists the owner, the new admin and the old admin',
+    (await page.textContent('#adminManageList')).includes('@secondadmin'));
+  const ownerRowButtons = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('#adminManageList .admin-row')]
+      .find(r => r.textContent.includes('Minatolun') || r.textContent.includes('minatolun@gmail.com'));
+    return row ? row.querySelectorAll('[data-action="adminDeleteUser"]').length : -1;
+  });
+  check('the main admin cannot delete itself from the list', ownerRowButtons === 0, String(ownerRowButtons));
+
+  await page.locator('#adminManageList [data-action="adminOpenSetPass"][data-user-id="u3"]').click();
+  await page.waitForSelector('#adminSetPassModal.open');
+  await page.fill('#adminSetPassNew', 'third-secret-456');
+  await page.fill('#adminSetPassConfirm', 'third-secret-456');
+  await page.click('#adminSetPassBtn');
+  await page.waitForFunction(() =>
+    document.getElementById('adminAccountMsg')?.textContent.includes('old@example.com'), null, { timeout: 10000 });
+  check('main admin can set another admin password',
+    adminPasswordSets.length === 1 && adminPasswordSets[0].id === 'u3'
+      && adminPasswordSets[0].password === 'third-secret-456', JSON.stringify(adminPasswordSets));
+  check('set password popup closes after saving',
+    !(await page.locator('#adminSetPassModal').evaluate(el => el.classList.contains('open'))));
+
+  await page.locator('#adminManageList [data-action="adminDeleteUser"][data-user-id="u3"]').click();
+  await page.waitForSelector('#confirmModal.open');
+  await page.click('#confirmBtn');
+  await page.waitForFunction(() =>
+    document.querySelectorAll('#adminManageList .admin-row').length === 2, null, { timeout: 10000 });
+  check('main admin can delete another admin', adminDeletes.length === 1 && adminDeletes[0] === 'u3', JSON.stringify(adminDeletes));
+  await page.locator('#adminManageModal [data-action="closeModal"]').last().click();
+  await page.waitForFunction(() => !document.getElementById('adminManageModal').classList.contains('open'));
 
   await page.locator('.cloud-item .btn-primary').first().click();
   await page.waitForFunction(() =>
@@ -288,19 +373,28 @@ try {
   await page.locator('#syncHistoryModal [data-action="closeModal"]').last().click();
 
   await page.locator('#adminAccountBody [data-action="adminAccountSignOut"]').click();
+  check('sign-out shows a spinner while it revokes the session',
+    await page.waitForFunction(() => {
+      const btn = document.querySelector('#adminAccountBody [data-action="adminAccountSignOut"]');
+      return !!btn && btn.classList.contains('is-busy') && !!btn.querySelector('.btn-spinner');
+    }, null, { timeout: 2000 }).then(() => true).catch(() => false));
   await page.waitForFunction(() =>
     document.getElementById('adminAccountBody')?.textContent.includes('Admin sign in'), null, { timeout: 10000 });
   check('sign-out sends the session cookie to the API', authCalls.some(call => call.startsWith('/api/auth/sign-out:') && call.includes('better-auth.session_token=admin-token')), authCalls.slice(-4).join(' | '));
 
-  await page.fill('#adminAccountEmail', 'second@example.com');
+  await page.fill('#adminAccountLogin', 'secondadmin');
   await page.fill('#adminAccountPass', 'another-secret-789');
   await page.click('#adminAccountSignInBtn');
   await page.waitForFunction(() => {
     const el = document.getElementById('cloudPanel');
     return el && el.textContent.includes('Review queue');
   }, null, { timeout: 10000 });
+  check('an admin can sign in with a username instead of an email',
+    (await page.textContent('#adminAccountBody')).includes('@secondadmin'));
   check('other admins cannot see the Add another admin control',
     (await page.locator('#adminAccountBody [data-action="openAdminAddAdminModal"]').count()) === 0);
+  check('other admins cannot see the Manage admins control',
+    (await page.locator('#adminAccountBody [data-action="openAdminManageModal"]').count()) === 0);
 
   const legacyGoogle = await page.evaluate(async () => {
     localStorage.setItem('labu_google_token', JSON.stringify('legacy-google-token'));

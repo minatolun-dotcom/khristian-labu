@@ -26,7 +26,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="", help="comma-separated song ids, e.g. BL_1,BL_21")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--hd", action="store_true", help="write the 480 DPI copies into solfa-hd/")
     args = ap.parse_args()
+    if args.hd:
+        B.set_hd()
     only = {x.strip() for x in args.only.split(",") if x.strip()}
 
     rows = B.load_rows()
@@ -56,7 +59,7 @@ def main():
             if sheet is None:
                 print(f"EMPTY {dest.name}")
                 continue
-            sheet.save(dest, "AVIF", quality=B.QUALITY, speed=6)
+            sheet.save(dest, "AVIF", quality=B.QUALITY, speed=B.SPEED)
             written += 1
             print(f"{dest.name:18} {sheet.width}x{sheet.height} {dest.stat().st_size / 1024:5.1f} KB")
         print(f"{song['id']} -> {len(row_list)} tunes ({song['title']})")

@@ -27,6 +27,8 @@ const errors = [];
 
 async function newPage(vp, scale = 1) {
   const page = await browser.newPage({ viewport: vp, deviceScaleFactor: scale });
+  // Keep captures deterministic and offline: the HD sheet is an online upgrade.
+  await page.route('https://dl.labu.lengkhawm.online/**', route => route.abort());
   page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console: ' + m.text().slice(0, 200)); });
   page.on('pageerror', e => errors.push('pageerror: ' + e.message.slice(0, 200)));
   return page;

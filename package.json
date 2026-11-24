@@ -23,7 +23,9 @@
     "test:api": "node scripts/test_staging_api.mjs",
     "test:data": "python3 scripts/validate_data.py",
     "test:share": "node scripts/test_share_image.mjs",
-    "test:persistence": "node scripts/test_persistence.mjs"
+    "test:persistence": "node scripts/test_persistence.mjs",
+    "solfa:hd": ".venv-solfa/bin/python scripts/build_solfa.py --hd --force && .venv-solfa/bin/python scripts/split_solfa_tunes.py --hd --force",
+    "solfa:hd:upload": "bash scripts/upload_solfa_hd.sh"
   },
   "keywords": [],
   "author": "",

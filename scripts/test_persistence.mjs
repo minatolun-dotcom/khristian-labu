@@ -37,6 +37,8 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   // Keep test edits local: the shipped config points at the live Supabase project.
   await page.addInitScript(() => { window.LABU_CLOUD_API = ''; });
+  // HD solfa is fetched from R2 in the reader; keep tests offline.
+  await page.route('https://dl.labu.lengkhawm.online/**', r => r.abort());
   const pageErrors = [];
   page.on('pageerror', e => pageErrors.push(e.message));
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
