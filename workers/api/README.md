@@ -20,7 +20,7 @@ Staging:
 - D1: `labu-staging` (`75c4dc65-e770-42d6-8e29-b643907f99f6`, APAC)
 - Config: `workers/api/wrangler.jsonc`
 
-Both use Better Auth on native D1 with the `admin` + `bearer` plugins.
+Both use Better Auth on native D1 with the `admin` plugin and an HttpOnly session cookie.
 
 ## Local
 
@@ -78,15 +78,16 @@ workers/api/wrangler.prod.jsonc` for every `secret put`.
 | GET | `/api/state` | public; `{version, updated_at}` |
 | GET | `/api/published-edits[?since=seq]` | public; array ordered by `seq` |
 | POST | `/api/proposals` | public, D1 rate-limited (20/min/IP), deduplicated |
-| GET | `/api/admin/me` | admin bearer/cookie |
+| GET | `/api/admin/me` | admin cookie |
 | GET | `/api/admin/proposals` | admin; pending queue |
 | POST | `/api/admin/publish` | admin; `{kind, payload, expectedVersion?}` |
 | POST | `/api/admin/approve` | admin; `{ids, expectedVersion?}` |
 | POST | `/api/admin/reject` | admin; `{ids, note?}` |
 | * | `/api/auth/*` | Better Auth |
 
-Admin sessions use `Authorization: Bearer <set-auth-token>` (Capacitor) or the
-Better Auth session cookie (web). Production CORS is exact-origin for
+Admin sessions use the HttpOnly Better Auth session cookie. The client never
+receives or stores a bearer token; after a reload the cookie restores the session.
+Production CORS is exact-origin for
 `https://labu.lengkhawm.online`, `https://localhost`, and `capacitor://localhost`;
 staging adds local dev origins. The debug APK uses `https://localhost` inside Capacitor.
 

@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { betterAuth } from 'better-auth';
-import { admin, bearer } from 'better-auth/plugins';
+import { admin } from 'better-auth/plugins';
 
 const trustedOrigins = String(env.CORS_ORIGINS || '')
   .split(',')
@@ -49,6 +49,15 @@ export const auth = betterAuth({
     ipAddress: {
       ipAddressHeaders: ['cf-connecting-ip'],
     },
+    // The web app and the Capacitor WebView (https://localhost) talk to the API
+    // cross-origin, so the session cookie must be sent on those requests. The
+    // cookie stays HttpOnly; page script never receives an auth token.
+    defaultCookieAttributes: {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      path: '/',
+    },
   },
-  plugins: [admin(), bearer()],
+  plugins: [admin()],
 });

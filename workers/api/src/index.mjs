@@ -8,6 +8,12 @@ const MAX_JSON_BYTES = 250_000;
 const MAX_PENDING = 1_000;
 const MAX_BATCH_IDS = 100;
 const PROPOSALS_PER_MINUTE = 20;
+const SAFE_ID = /^[A-Za-z0-9&_.-]{1,160}$/;
+const SOLFA_SRC = /^assets\/solfa\/[A-Za-z0-9._-]+\.(?:avif|png|jpe?g|webp)$/;
+const STRUCT_OPS = new Set(['addGroup', 'addBook', 'renameGroup', 'renameBook', 'deleteBook', 'deleteGroup']);
+const SONG_OPS = new Set(['update', 'delete']);
+const VERSE_TYPES = new Set(['v', 'c', 'b', 'p', 'pc']);
+let lastRateCleanup = 0;
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -31,7 +37,6 @@ function corsHeaders(request) {
   if (origin && allowedOrigins().has(origin)) {
     headers.set('Access-Control-Allow-Origin', origin);
     headers.set('Access-Control-Allow-Credentials', 'true');
-    headers.set('Access-Control-Expose-Headers', 'set-auth-token');
     headers.set('Vary', 'Origin');
   }
   return headers;
@@ -45,6 +50,7 @@ function withCors(response, request) {
   }
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('Referrer-Policy', 'no-referrer');
+  headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -66,14 +72,35 @@ function json(body, status = 200, extra = {}) {
 function preflight(request) {
   const headers = corsHeaders(request);
   headers.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Setup-Token');
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, X-Setup-Token');
   headers.set('Access-Control-Max-Age', '600');
   return new Response(null, { status: 204, headers });
 }
 
 async function readJson(request) {
-  const raw = await request.text();
-  if (raw.length > MAX_JSON_BYTES) throw new HttpError(413, 'request body is too large');
+  const declared = Number(request.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_JSON_BYTES) {
+    throw new HttpError(413, 'request body is too large');
+  }
+
+  let raw = '';
+  if (request.body) {
+    const reader = request.body.getReader();
+    const decoder = new TextDecoder();
+    let bytes = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_JSON_BYTES) {
+        try { await reader.cancel(); } catch {}
+        throw new HttpError(413, 'request body is too large');
+      }
+      raw += decoder.decode(value, { stream: true });
+    }
+    raw += decoder.decode();
+  }
+
   if (!raw) return {};
   try {
     const value = JSON.parse(raw);
@@ -82,6 +109,102 @@ async function readJson(request) {
   } catch {
     throw new HttpError(400, 'invalid JSON body');
   }
+}
+
+function isSafeId(value) {
+  return typeof value === 'string' && SAFE_ID.test(value)
+    && value !== '__proto__' && value !== 'constructor' && value !== 'prototype';
+}
+
+function requireObject(value, field) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new HttpError(400, field + ' must be an object');
+  }
+  return value;
+}
+
+function requireId(value, field) {
+  if (!isSafeId(value)) throw new HttpError(400, field + ' must be a safe ID');
+  return value;
+}
+
+function validateSong(song, op) {
+  requireObject(song, 'payload.song');
+  requireId(song.id, 'payload.song.id');
+  if (op === 'delete') return;
+
+  if (typeof song.title !== 'string' || !song.title.trim() || song.title.length > 500) {
+    throw new HttpError(400, 'payload.song.title must be a non-empty string');
+  }
+  for (const field of ['author', 'number', 'key', 'solfa', 'solfa2']) {
+    if (song[field] != null && typeof song[field] !== 'string'
+      && !(field === 'number' && typeof song[field] === 'number')) {
+      throw new HttpError(400, 'payload.song.' + field + ' must be a string');
+    }
+  }
+  for (const field of ['solfa', 'solfa2']) {
+    if (song[field] && !SOLFA_SRC.test(song[field])) {
+      throw new HttpError(400, 'payload.song.' + field + ' must be a local solfa asset');
+    }
+  }
+  if (!Array.isArray(song.verses) || song.verses.length > 200) {
+    throw new HttpError(400, 'payload.song.verses must be an array');
+  }
+  for (const verse of song.verses) {
+    requireObject(verse, 'payload.song.verses[]');
+    if (verse.type != null && !VERSE_TYPES.has(verse.type)) {
+      throw new HttpError(400, 'payload.song.verses[].type is not supported');
+    }
+    if (!Array.isArray(verse.lines) || verse.lines.length > 100
+      || !verse.lines.every(line => typeof line === 'string' && line.length <= 5000)) {
+      throw new HttpError(400, 'payload.song.verses[].lines must be an array of strings');
+    }
+  }
+}
+
+function validateEditPayload(kind, payload) {
+  requireObject(payload, 'payload');
+  if (kind === 'chord') {
+    requireId(payload.id, 'payload.id');
+    requireObject(payload.chart, 'payload.chart');
+    return payload;
+  }
+
+  const op = payload.op;
+  requireId(payload.id, 'payload.id');
+  if (payload.from != null) requireId(payload.from, 'payload.from');
+
+  if (kind === 'struct') {
+    if (payload.cat !== null || !STRUCT_OPS.has(op)) {
+      throw new HttpError(400, 'payload must be a supported structural edit');
+    }
+    requireObject(payload.song, 'payload.song');
+    if (op === 'addGroup') {
+      requireId(payload.song.id, 'payload.song.id');
+      if (!Array.isArray(payload.song.books) || !payload.song.books.every(isSafeId)) {
+        throw new HttpError(400, 'payload.song.books must contain safe IDs');
+      }
+      if (payload.song.bookDefs != null) {
+        if (!Array.isArray(payload.song.bookDefs)
+          || !payload.song.bookDefs.every(book => book && isSafeId(book.code))) {
+          throw new HttpError(400, 'payload.song.bookDefs must contain safe codes');
+        }
+      }
+    } else if (op === 'addBook') {
+      requireId(payload.song.code, 'payload.song.code');
+      requireId(payload.song.group, 'payload.song.group');
+    }
+    return payload;
+  }
+
+  if (!isSafeId(payload.cat) || !SONG_OPS.has(op)) {
+    throw new HttpError(400, 'payload must be a supported song edit');
+  }
+  validateSong(payload.song, op);
+  if (payload.song.id !== payload.id) {
+    throw new HttpError(400, 'payload.song.id must match payload.id');
+  }
+  return payload;
 }
 
 function assertKind(kind) {
@@ -177,7 +300,13 @@ function clientIp(request) {
 }
 
 async function consumeRateLimit(key) {
-  const windowStart = Math.floor(nowMs() / 60_000) * 60_000;
+  const now = nowMs();
+  const windowStart = Math.floor(now / 60_000) * 60_000;
+  if (now - lastRateCleanup > 60 * 60 * 1000) {
+    lastRateCleanup = now;
+    await env.DB.prepare('DELETE FROM rate_limits WHERE window_start < ?')
+      .bind(now - 24 * 60 * 60 * 1000).run();
+  }
   const row = await env.DB.prepare(`
     INSERT INTO rate_limits (key, window_start, count)
     VALUES (?, ?, 1)
@@ -223,7 +352,7 @@ async function handleProposal(request) {
   await consumeRateLimit(`proposal:${clientIp(request)}`);
   const body = await readJson(request);
   const kind = assertKind(body.kind);
-  const payload = body.payload;
+  const payload = validateEditPayload(kind, body.payload);
   const text = payloadText(payload);
   const hash = await sha256(kind + '\n' + canonical(payload));
 
@@ -305,7 +434,8 @@ async function handlePublish(request) {
   const session = await requireAdmin(request);
   const body = await readJson(request);
   const kind = assertKind(body.kind);
-  const text = payloadText(body.payload);
+  const payload = validateEditPayload(kind, body.payload);
+  const text = payloadText(payload);
 
   const current = await getState();
   if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== current.version) {
@@ -353,6 +483,14 @@ async function handleApprove(request) {
   const pending = rows.results || [];
   if (pending.length !== ids.length) {
     throw new HttpError(409, 'one or more proposals are missing or already reviewed');
+  }
+  for (const row of pending) {
+    try {
+      validateEditPayload(row.kind, JSON.parse(row.payload));
+    } catch (error) {
+      if (error instanceof HttpError) throw new HttpError(400, 'proposal ' + row.id + ' has an invalid payload');
+      throw error;
+    }
   }
 
   const current = await getState();

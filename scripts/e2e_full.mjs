@@ -17,7 +17,7 @@ const server = http.createServer((req, res) => {
   const file = path.join(ROOT, p);
   if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
   res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
-  if (p.endsWith('index.html') && TEST_GOOGLE_ID) {
+  if (p.endsWith('app.js') && TEST_GOOGLE_ID) {
     res.end(fs.readFileSync(file, 'utf8').replace("const GOOGLE_CLIENT_ID = '';", "const GOOGLE_CLIENT_ID = '" + TEST_GOOGLE_ID + "';"));
     return;
   }
@@ -449,17 +449,17 @@ await section('search', async () => {
   const n1 = await page.locator('#searchResults .song-item').count();
   ok('search "toupa" returns results (' + n1 + ')', n1 > 0);
   // title filter narrows
-  await page.locator('.si-chip[onclick*="title"]').click();
+  await page.locator('.si-chip[data-filter="title"]').click();
   await page.waitForTimeout(400);
   const nTitle = await page.locator('#searchResults .song-item').count();
   ok('Title filter narrows results', nTitle <= n1, nTitle + ' vs ' + n1);
   // number filter (search a number so the filter has something to match)
-  await page.locator('.si-chip[onclick*="number"]').click();
+  await page.locator('.si-chip[data-filter="number"]').click();
   await inp.fill('1');
   await page.waitForTimeout(700);
   ok('Number filter works', (await page.locator('#searchResults .song-item').count()) > 0);
   // reset to All for the remaining checks
-  await page.locator('.si-chip[onclick*="all"]').first().click();
+  await page.locator('.si-chip[data-filter="all"]').first().click();
   await page.waitForTimeout(400);
   // sort
   await page.selectOption('.si-sort', 'alpha');

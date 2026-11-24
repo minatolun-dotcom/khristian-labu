@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "sync": "mkdir -p www www/assets && cp index.html logo.png songs.json songs.json.gzip groups.json chords.json manifest.webmanifest sw.js icon-192.png icon-512.png www/ && cp -r assets/. www/assets/ && npx cap sync && python3 scripts/sync_android_splash.py",
+    "sync": "mkdir -p www www/assets && cp index.html app.js styles.css logo.png songs.json songs.json.gzip groups.json chords.json manifest.webmanifest sw.js icon-192.png icon-512.png www/ && cp -r assets/. www/assets/ && node scripts/inject_android_csp.mjs && npx cap sync && python3 scripts/sync_android_splash.py",
     "sync:splash": "python3 scripts/sync_android_splash.py",
     "build:pages": "node scripts/build-pages.mjs",
     "deploy:pages": "npm run build:pages && npx wrangler pages deploy dist --project-name khristian-labu --branch main",
@@ -30,21 +30,19 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@capacitor/android": "^8.4.1",
+    "@capacitor/android": "^8.4.3",
     "@capacitor/app": "^8.1.0",
     "@capacitor/app-launcher": "^8.0.1",
-    "@capacitor/cli": "^8.4.1",
-    "@capacitor/core": "^8.4.1",
+    "@capacitor/cli": "^8.4.3",
+    "@capacitor/core": "^8.4.3",
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/share": "^8.0.1",
     "@capacitor/status-bar": "^8.0.3",
     "@capawesome/capacitor-google-sign-in": "^0.1.2",
-    "@supabase/server": "^1.9.2",
-    "better-auth": "^1.7.27",
-    "hono": "^4.13.21"
+    "better-auth": "^1.7.27"
   },
   "devDependencies": {
-    "@capacitor/assets": "^3.0.5",
+    "@capacitor/assets": "^4.0.0",
     "@types/node": "^26.1.1",
     "playwright": "^1.62.1",
     "typescript": "^7.0.2",

@@ -88,7 +88,7 @@ migration from the debug-signed builds; later signed releases install over each 
 
 ## Development
 
-The app is `index.html` and `sw.js` — there is no web build step. The approved-change
+The app is `index.html`, `app.js`, `styles.css`, and `sw.js` — there is no web build step. The approved-change
 API lives in `workers/api` on Cloudflare Worker + D1 (see `workers/api/README.md`).
 
 ```bash
@@ -108,7 +108,7 @@ The padded launch-screen icons remain in `resources/android-splash/` and are ins
 
 Release builds are produced by `.github/workflows/android-release.yml` on a `v*` tag or manual dispatch. The workflow signs with the repository's `KEYSTORE_*` secrets, publishes the APK to `https://dl.labu.lengkhawm.online/apk/<versionCode>/khristian-labu.apk`, and creates the GitHub Release fallback.
 
-To release, bump `APP_VERSION` in `index.html`, `version.json`, `CACHE` in `sw.js`, and `versionCode`/`versionName` in `android/app/build.gradle`, then:
+To release, bump `APP_VERSION` in `app.js`, `version.json`, `CACHE` in `sw.js`, and `versionCode`/`versionName` in `android/app/build.gradle`, then:
 
 ```bash
 git tag vX.Y.Z && git push origin main --tags

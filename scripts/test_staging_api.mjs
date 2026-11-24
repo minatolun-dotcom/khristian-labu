@@ -48,7 +48,7 @@ async function req(pathname, options = {}) {
 }
 
 const unique = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-const firstPayload = { id: `api_test_${unique}`, cat: 'B&P', op: 'update', song: { id: `api_test_${unique}`, title: 'API Test Hymn' } };
+const firstPayload = { id: `api_test_${unique}`, cat: 'B&P', op: 'update', song: { id: `api_test_${unique}`, title: 'API Test Hymn', verses: [] } };
 
 const health = await req('/api/health');
 check('health endpoint responds', health.status === 200 && health.body?.ok === true, JSON.stringify(health.body));
@@ -89,6 +89,22 @@ const badSetup = await req('/api/setup/migrate', {
 });
 check('setup endpoint rejects a bad token', badSetup.status === 404, String(badSetup.status));
 
+const unsafeProposal = await req('/api/proposals', {
+  method: 'POST',
+  body: JSON.stringify({
+    kind: 'song',
+    payload: {
+      id: `api_bad_${unique}`,
+      cat: 'B&P',
+      op: 'update',
+      song: { id: `api_bad_${unique}' onmouseover='alert(1)`, title: 'Unsafe', verses: [] },
+    },
+    summary: 'unsafe ID must be rejected',
+    name: 'contract-test',
+  }),
+});
+check('unsafe proposal ID is rejected', unsafeProposal.status === 400, JSON.stringify(unsafeProposal.body));
+
 const proposal = await req('/api/proposals', {
   method: 'POST',
   body: JSON.stringify({ kind: 'song', payload: firstPayload, summary: 'Staging API contract test', name: 'contract-test' }),
@@ -107,14 +123,20 @@ const signIn = await req('/api/auth/sign-in/email', {
   headers: { Origin: 'https://labu.lengkhawm.online' },
   body: JSON.stringify({ email, password }),
 });
-const bearer = signIn.headers.get('set-auth-token');
-check('admin email/password sign-in succeeds', signIn.status === 200 && !!bearer, String(signIn.status));
-check('bearer token header is exposed to CORS clients', signIn.headers.get('access-control-expose-headers')?.includes('set-auth-token') === true);
-if (!bearer) process.exit(1);
+check('admin email/password sign-in succeeds', signIn.status === 200, String(signIn.status));
+check('sign-in does not expose a bearer token', !signIn.headers.get('set-auth-token'));
 
-const authHeaders = { Authorization: `Bearer ${bearer}` };
+const setCookies = signIn.headers.getSetCookie ? signIn.headers.getSetCookie() : [signIn.headers.get('set-cookie')].filter(Boolean);
+const sessionCookie = setCookies.find(cookie => /session/i.test(cookie));
+check('sign-in sets an HttpOnly secure session cookie',
+  !!sessionCookie && /HttpOnly/i.test(sessionCookie) && /Secure/i.test(sessionCookie) && /SameSite=None/i.test(sessionCookie),
+  sessionCookie || 'no session cookie');
+const cookieHeader = setCookies.map(cookie => cookie.split(';')[0]).join('; ');
+if (!cookieHeader) process.exit(1);
+
+const authHeaders = { Cookie: cookieHeader };
 const me = await req('/api/admin/me', { headers: authHeaders });
-check('admin session is authorized', me.status === 200 && me.body?.isAdmin === true, JSON.stringify(me.body));
+check('admin session cookie is authorized', me.status === 200 && me.body?.isAdmin === true, JSON.stringify(me.body));
 
 const queue = await req('/api/admin/proposals', { headers: authHeaders });
 check('admin can read the pending queue', queue.status === 200 && queue.body?.some(row => row.id === proposalId), JSON.stringify(queue.body).slice(0, 200));
@@ -138,7 +160,7 @@ const afterApprove = await req('/api/published-edits');
 const publishedRow = afterApprove.body?.find(row => row.payload?.id === firstPayload.id);
 check('approved payload is present in the public overlay', !!publishedRow, JSON.stringify(afterApprove.body?.slice(-2)));
 
-const rejectPayload = { id: `api_reject_${unique}`, cat: 'B&P', op: 'update', song: { id: `api_reject_${unique}`, title: 'Rejected Test Hymn' } };
+const rejectPayload = { id: `api_reject_${unique}`, cat: 'B&P', op: 'update', song: { id: `api_reject_${unique}`, title: 'Rejected Test Hymn', verses: [] } };
 const rejectProposal = await req('/api/proposals', {
   method: 'POST',
   body: JSON.stringify({ kind: 'song', payload: rejectPayload, summary: 'reject me', name: 'contract-test' }),
@@ -157,7 +179,10 @@ check('rejection does not publish or bump the version', afterRejectVersion === b
 // overwrites cf-connecting-ip at the edge (and blocks spoofing), so only the
 // local Wrangler server can use a dedicated test IP.
 const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(BASE);
-const rateHeaders = isLocal ? { 'cf-connecting-ip': '203.0.113.250' } : {};
+// Local D1 keeps rate_limits between runs; a fresh test IP keeps this probe isolated
+// from an earlier invocation in the same minute.
+const rateIp = '203.0.113.' + (1 + Math.floor(Math.random() * 250));
+const rateHeaders = isLocal ? { 'cf-connecting-ip': rateIp } : {};
 const rateIds = [];
 for (let i = 0; i < 21; i++) {
   const response = await req('/api/proposals', {
@@ -165,7 +190,7 @@ for (let i = 0; i < 21; i++) {
     headers: rateHeaders,
     body: JSON.stringify({
       kind: 'song',
-      payload: { id: `rate_${unique}_${i}`, cat: 'B&P', op: 'update', song: { id: `rate_${unique}_${i}`, title: 'Rate Test' } },
+      payload: { id: `rate_${unique}_${i}`, cat: 'B&P', op: 'update', song: { id: `rate_${unique}_${i}`, title: 'Rate Test', verses: [] } },
       summary: 'rate limit test',
     }),
   });
@@ -184,6 +209,15 @@ if (rateIds.length) {
 const corsResponse = await fetch(BASE + '/api/state', { headers: { Origin: 'https://labu.lengkhawm.online' } });
 check('actual API responses carry the CORS origin', corsResponse.headers.get('access-control-allow-origin') === 'https://labu.lengkhawm.online');
 check('actual API responses disable caching', corsResponse.headers.get('cache-control') === 'no-store');
+
+const signOut = await req('/api/auth/sign-out', {
+  method: 'POST',
+  headers: { ...authHeaders, Origin: 'https://labu.lengkhawm.online' },
+  body: '{}',
+});
+check('admin sign-out succeeds', signOut.status === 200, JSON.stringify(signOut.body));
+const afterSignOut = await req('/api/admin/me', { headers: authHeaders });
+check('old session cookie is rejected after sign-out', afterSignOut.status === 401, String(afterSignOut.status));
 
 console.log(failed ? `\n${failed} API TEST(S) FAILED` : '\nAPI TESTS PASSED');
 process.exit(failed ? 1 : 0);

@@ -2,7 +2,7 @@
 """Local dev server: static files, never cached by the browser.
 
 Unlike `python -m http.server`, every response carries `Cache-Control: no-store`,
-so edits to index.html / songs.json / sw.js show up on a plain reload.
+so edits to index.html / app.js / styles.css / songs.json / sw.js show up on a plain reload.
 
     python3 scripts/serve_dev.py [port]   # default 8080
 """

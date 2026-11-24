@@ -11,6 +11,8 @@ const OUT = path.join(ROOT, 'dist');
 
 const FILES = [
   'index.html',
+  'app.js',
+  'styles.css',
   'logo.png',
   'icon-192.png',
   'icon-512.png',

@@ -14,7 +14,7 @@
 - Published signed **1.5.62 (1562)** to R2 and GitHub Releases in [run 45211032332](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45211032332). Both downloads are byte-identical: **37,392,250 bytes**, SHA-256 `e2a1f41e2c19cee44a829bf4ccf95b51f1c9ad8d36dccfbe3ef4257abea4a564`.
 - **2026-11-23 — rollback drill passed.** Moving the proxied CNAME to `minatolun-dotcom.github.io` reached GitHub Pages in about 20 seconds (`x-github-request-id`, `max-age=600`). Restoring DNS alone left the Pages custom domain `deactivated` and returned a temporary 522; deleting and re-adding `labu.lengkhawm.online` under Pages restored `active` and 200. This is now the required return path.
 - GitHub Pages remains enabled as rollback. Do not disable it before **2026-11-30**.
-- **2026-11-23 — Phase 3 API staging complete.** Created `labu-staging` D1 in APAC, added the Worker at `https://api-staging.labu.lengkhawm.online`, and implemented Better Auth on native D1 with `admin` and `bearer` plugins. Exported and imported **772 published edits**, **2 proposals**, publish version **772**; all 772 payload checksums match the Supabase export. The full API contract suite passed locally and remotely (25 checks). Test data was removed afterward, leaving the imported baseline.
+- **2026-11-23 — Phase 3 API staging complete.** Created `labu-staging` D1 in APAC, added the Worker at `https://api-staging.labu.lengkhawm.online`, and implemented Better Auth on native D1 with the `admin` plugin (cookie sessions; the initial bearer plugin was later removed). Exported and imported **772 published edits**, **2 proposals**, publish version **772**; all 772 payload checksums match the Supabase export. The full API contract suite passed locally and remotely (25 checks). Test data was removed afterward, leaving the imported baseline.
 - Staging admin auth uses the allowlisted email/password break-glass path (`minatolun@gmail.com`). Google OAuth is coded but disabled until web/Android client credentials are supplied. At that point the app and APK still used Supabase; Phase 4 later migrated the web client and the 1.5.63 debug build to the Worker.
 - The Worker custom-domain certificate is an advanced certificate pack and took a few minutes to become active; it is now serving TLS normally.
 - **2026-11-23 — 1.5.62 on-device install passed (debug key).** Built a local debug-signed 1.5.62 with Java 21, then installed it in place over 1.5.61 on the connected SM-S921B. The signature matched, so app data was preserved; `versionCode`/`versionName` are now 1562/1.5.62, cold launch took 3.2 s, and there were no fatal Android or renderer errors. The release-signed APK still uses a different certificate and still requires a one-time uninstall/reinstall.
@@ -269,7 +269,7 @@ Do not mark non-fingerprinted assets `immutable`; the filenames do not contain c
 
 **Production cache rule:** the zone-level Browser Cache TTL is 4 hours and was overriding the Pages `no-cache` header on `/sw.js`. A scoped Cache Rule now matches `http.host eq "labu.lengkhawm.online" and http.request.uri.path eq "/sw.js"`, bypasses edge cache, and respects origin headers. Keep this rule; without it a stale service worker can survive for four hours.
 
-The current app has inline scripts, Google Identity, and a vendor script. Do not add a strict CSP until those dependencies are inventoried; a broken CSP would take down the reader. Add `X-Content-Type-Options` and a conservative referrer policy first.
+The app now loads its code from `app.js`, has no inline event handlers, and sends a strict `script-src` CSP without `'unsafe-inline'`. Google Identity and the vendor screenshot script remain explicit sources. Keep the CSP in sync with any new script or API origin.
 
 ### A5. Service worker and version cutover
 
@@ -316,8 +316,8 @@ Recommended configuration:
 - `admin` plugin for the admin role
 - Google sign-in for the admin
 - Email/password only as a break-glass fallback, or disabled entirely
-- `bearer` plugin for the Capacitor app
-- Same-origin cookies for the website if desired, bearer tokens for the APK
+- HttpOnly session cookies for both the website and the Capacitor app
+- `SameSite=None; Secure` for the cross-origin WebView, with exact trusted origins
 - `ADMIN_EMAILS` allowlist so a random Google account cannot become an admin
 - No public sign-up UI; the admin account is provisioned deliberately
 - `BETTER_AUTH_SECRET` stored with `wrangler secret put`, never in Git
@@ -410,7 +410,7 @@ Implementation notes:
 
 - Return only the fields the client uses; do not expose internal auth rows.
 - Use exact CORS origins: the Pages domain, `https://localhost`, and `capacitor://localhost`.
-- If using cookies, set `credentials: include` and correct `SameSite`/`Secure` settings; if using bearer, do not enable credentialed CORS unnecessarily.
+- Use cookies with `credentials: include` and `SameSite=None; Secure` for the cross-origin WebView; do not issue bearer tokens to page script.
 - Use `cf-connecting-ip` for rate limiting, not a client-supplied header.
 - Set `Cache-Control: no-store` on admin endpoints and auth responses.
 - Public state/overlay responses can use a short edge cache, but publish must invalidate or version the URL. Start with `no-store` for correctness, then optimize.
@@ -651,8 +651,8 @@ The shipped path is intentionally the least-privileged one that works on a side-
 - Use Cloudflare secrets for Worker secrets; GitHub Actions secrets for CI.
 - Rotate the Supabase secret and Cloudflare token after migration.
 - Keep `.env` ignored; update `.env.example` with placeholders only.
-- Add `X-Content-Type-Options: nosniff` and a conservative referrer policy on Pages.
-- Defer a strict CSP until inline scripts, Google Identity, and vendor scripts are inventoried.
+- Keep `X-Content-Type-Options: nosniff` and the conservative referrer policy on Pages.
+- Keep the strict script CSP (`script-src-attr 'none'`) in sync with new script/API origins.
 - Keep the scoped `/sw.js` Cache Rule in place; it prevents the zone's 4-hour Browser Cache TTL from overriding the service worker's `no-cache` header.
 - Enable Cloudflare Access on preview deployments if they should not be public.
 - Do not put Turnstile on the app's JSON API; the Capacitor app cannot reliably solve a browser challenge. Turnstile is for a web download/proposal page if one is added.
@@ -729,7 +729,7 @@ Published artifacts:
 - [x] Implement public state/overlay/proposal endpoints.
 - [x] Implement admin approval/publish endpoints.
 - [ ] Configure Google OAuth client IDs and `ADMIN_EMAILS` — allowlist is set; Google credentials are still missing.
-- [x] Add bearer sessions for the APK.
+- [x] Add HttpOnly cookie sessions for the APK (bearer plugin removed).
 - [x] Add rate limiting and CORS.
 - [x] Import a copy of Supabase data into staging.
 - [x] Add `scripts/test_staging_api.mjs` and run the 25-check contract suite locally and remotely.
@@ -740,7 +740,7 @@ Staging details:
 - Worker: `https://api-staging.labu.lengkhawm.online` (fallback `https://labu-api-staging.minatolun.workers.dev`)
 - D1: `labu-staging` (`75c4dc65-e770-42d6-8e29-b643907f99f6`, APAC)
 - Data: 772 published edits (seq 13–784), 2 approved proposals, version 772
-- Auth: Better Auth on native D1, `admin` + `bearer`; email/password break-glass active
+- Auth: Better Auth on native D1, `admin` + HttpOnly cookie; email/password break-glass active
 - Secrets: `BETTER_AUTH_SECRET` and `SETUP_TOKEN` set on the Worker; local copies live only in gitignored `workers/api/.dev.vars`
 - Backup: full payload export and D1 SQL export in private R2 `labu-backups/supabase/2026-11-23/` and `labu-backups/d1/2026-11-23/`
 - Test: `npm run test:api` against local Wrangler; `LABU_API_URL=https://api-staging.labu.lengkhawm.online npm run test:api` against staging
@@ -858,7 +858,6 @@ The main cost is engineering time, especially the D1/Better Auth rewrite and the
 - Better Auth Cloudflare guide: https://better-auth.com/docs/guides/cloudflare
 - Better Auth database/D1: https://better-auth.com/docs/concepts/database
 - Better Auth Google: https://better-auth.com/docs/authentication/google
-- Better Auth bearer plugin: https://better-auth.com/docs/plugins/bearer
 - Better Auth admin plugin: https://better-auth.com/docs/plugins/admin
 
 **Android/update context**
