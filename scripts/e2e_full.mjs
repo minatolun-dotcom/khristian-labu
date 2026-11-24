@@ -242,7 +242,7 @@ await section('solfa tune tabs', async () => {
   await page.waitForSelector('#categoryGrid .cat-card');
   await page.locator('#categoryGrid .cat-card').filter({ hasText: 'Biakna Late' }).first().click();
   await page.waitForSelector('#songGrid .song-item');
-  await page.locator('#songGrid .song-item').filter({ hasText: 'Jesu Min Lian' }).first().click();
+  await page.locator('#songGrid .song-item').filter({ hasText: 'Jesu Minlian' }).first().click();
   await page.waitForSelector('#songDetail .verse');
   await page.evaluate(() => setReaderMode('solfa'));
   await page.waitForSelector('.solfa-tunes');
@@ -1367,7 +1367,7 @@ await section('chord studio', async () => {
     await page.evaluate(() => setReaderMode('chords'));
     await page.waitForSelector('.chord-sheet');
   };
-  await openSong('Jesu Min Lian');
+  await openSong('Jesu Minlian');
   await page.locator('.chord-tool-edit').click();
   await page.waitForSelector('#chordModal.open #ceCanvas .ce-line');
   await sleep(250);
@@ -1668,7 +1668,7 @@ await section('chord studio', async () => {
   // published fractional charts still work
   await page.goBack();
   await page.waitForSelector('#songGrid .song-item');
-  await page.locator('#songGrid .song-item').filter({ hasText: 'Pathian Hon Phat' }).first().click();
+  await page.locator('#songGrid .song-item').filter({ hasText: 'Hon Halhsak Nawn In' }).first().click();
   await page.waitForSelector('#songDetail .verse');
   await page.evaluate(() => setReaderMode('chords'));
   await page.waitForSelector('.chord-sheet');
@@ -1692,7 +1692,7 @@ await section('chord studio', async () => {
   await mp.waitForSelector('#categoryGrid .cat-card');
   await mp.locator('#categoryGrid .cat-card').filter({ hasText: 'Biakna Late' }).first().click();
   await mp.waitForSelector('#songGrid .song-item');
-  await mp.locator('#songGrid .song-item').filter({ hasText: 'Jesu Min Lian' }).first().click();
+  await mp.locator('#songGrid .song-item').filter({ hasText: 'Jesu Minlian' }).first().click();
   await mp.waitForSelector('#songDetail .verse');
   await mp.evaluate(() => setReaderMode('chords'));
   await mp.waitForSelector('.chord-sheet');
