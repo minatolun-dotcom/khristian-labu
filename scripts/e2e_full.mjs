@@ -1368,6 +1368,29 @@ await section('chord studio', async () => {
   ok('key wheel suggests the G family', JSON.stringify(family) === JSON.stringify(['G', 'Am', 'Bm', 'C', 'D', 'Em', 'F#dim']), JSON.stringify(family));
   const minorFamily = await page.evaluate(() => ceDiatonic('Am'));
   ok('minor keys get their own chord family', JSON.stringify(minorFamily) === JSON.stringify(['Am', 'Bdim', 'C', 'Dm', 'Em', 'F', 'G']), JSON.stringify(minorFamily));
+
+  // Dismissals: the picker must close from its x, from a tap outside, and from
+  // Escape — and dismissing must never chart a chord underneath.
+  await page.locator('#ceWheel .ce-wheel-close').click();
+  await sleep(120);
+  ok('the picker closes from its x button', await page.evaluate(() => document.getElementById('ceWheel').hidden && CE.wheel === null));
+  const chordsBeforeDismiss = await page.evaluate(() => CE.blocks[0].lines[0].chords.length);
+  await page.locator(l0 + ' .ce-ch[data-i="8"]').click();
+  await page.waitForSelector('#ceWheel:not([hidden])');
+  const headerBox = await page.locator('#chordModal .modal-header').boundingBox();
+  await page.mouse.click(headerBox.x + 12, headerBox.y + headerBox.height / 2);
+  await sleep(150);
+  ok('tapping outside the picker dismisses it', await page.evaluate(() => document.getElementById('ceWheel').hidden && CE.wheel === null));
+  ok('dismissing the picker leaves the chart untouched',
+    (await page.evaluate(() => CE.blocks[0].lines[0].chords.length)) === chordsBeforeDismiss);
+  await page.locator(l0 + ' .ce-ch[data-i="8"]').click();
+  await page.waitForSelector('#ceWheel:not([hidden])');
+  await page.keyboard.press('Escape');
+  await sleep(120);
+  ok('Escape closes the picker but keeps the studio open',
+    await page.evaluate(() => document.getElementById('ceWheel').hidden && document.getElementById('chordModal').classList.contains('open')));
+  await page.locator(l0 + ' .ce-ch[data-i="5"]').click();
+  await page.waitForSelector('#ceWheel:not([hidden])');
   await page.locator('#ceWheelStage .ce-wheel-chip[data-chord="C"]').click();
   await sleep(150);
   ok('tap a lyric + pick a chord inserts it at that character', await page.evaluate(() => CE.blocks[0].lines[0].chords.some(c => c.pos === 5 && c.ch === 'C')));
@@ -1626,7 +1649,7 @@ await section('chord studio', async () => {
   await page.close();
 
   // phone: compact wheel, grid fallback, wrapped lines
-  const mp = await newPage({ width: 390, height: 844 });
+  const mp = await newPage({ width: 390, height: 844 }, { hasTouch: true });
   await waitLoaded(mp);
   await mp.evaluate(() => {
     // setReaderFont applies an inline custom property, so an injected stylesheet loses
@@ -1643,6 +1666,21 @@ await section('chord studio', async () => {
   await mp.waitForSelector('.chord-sheet');
   await mp.locator('.chord-tool-edit').click();
   await mp.waitForSelector('#chordModal.open #ceCanvas .ce-line');
+  // One touch tap on a lyric must open the picker (no long press), and the
+  // picker must dismiss from its x or from a tap outside it.
+  const tapGlyph = await mp.locator('.ce-line[data-b="0"][data-l="0"] .ce-ch[data-i="3"]').boundingBox();
+  await mp.touchscreen.tap(tapGlyph.x + tapGlyph.width / 2, tapGlyph.y + tapGlyph.height / 2);
+  await mp.waitForSelector('#ceWheel:not([hidden])', { timeout: 3000 });
+  ok('one touch tap on a lyric opens the chord picker', true);
+  await mp.locator('#ceWheel .ce-wheel-close').tap();
+  await sleep(150);
+  ok('a touch tap on the picker x closes it', await mp.evaluate(() => document.getElementById('ceWheel').hidden));
+  await mp.touchscreen.tap(tapGlyph.x + tapGlyph.width / 2, tapGlyph.y + tapGlyph.height / 2);
+  await mp.waitForSelector('#ceWheel:not([hidden])');
+  const mpHead = await mp.locator('#chordModal .modal-header').boundingBox();
+  await mp.touchscreen.tap(mpHead.x + 8, mpHead.y + mpHead.height / 2);
+  await sleep(150);
+  ok('a touch tap outside the picker dismisses it', await mp.evaluate(() => document.getElementById('ceWheel').hidden));
   await mp.locator('.ce-line[data-b="0"][data-l="0"] .ce-ch[data-i="12"]').click();
   await mp.waitForSelector('#ceWheel:not([hidden])');
   const wheelBox = await mp.locator('#ceWheel').evaluate(el => {

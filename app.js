@@ -7,7 +7,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.73'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.74'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 const LATEST_JSON = 'https://dl.labu.lengkhawm.online/latest.json';
 let latestUpdate = null;
@@ -3454,7 +3454,7 @@ function ceNearestChar(lineEl, x, y) {
   });
   return best;
 }
-function cePointerDown(e) {
+function  cePointerDown(e) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   const chordEl = e.target.closest('.ce-chord');
   const lineEl = e.target.closest('.ce-line');
@@ -3463,19 +3463,14 @@ function cePointerDown(e) {
   const block = CE.blocks[b];
   const line = block && block.lines[l];
   if (!line) return;
-  if (chordEl) {
-    const pos = Number(chordEl.dataset.pos);
-    const idx = line.chords.findIndex(c => c.pos === pos);
-    if (idx < 0) return;
-    CE.press = { pointerId: e.pointerId, chordEl, lineEl, b, l, pos, idx, x0: e.clientX, y0: e.clientY, started: false };
-    e.preventDefault();
-  } else {
-    // Any point on the line — a glyph, a gap between words, or the empty chord
-    // lane above a word — maps to the nearest syllable, so one tap is enough.
-    const chEl = ceNearestChar(lineEl, e.clientX, e.clientY);
-    if (!chEl || chEl.dataset.i == null) return;
-    CE.press = { pointerId: e.pointerId, chEl, lineEl, b, l, x0: e.clientX, y0: e.clientY, started: false };
-  }
+  // Only chord chips need pointer tracking (drag to move, swipe up to delete).
+  // Taps are handled from the click event so a quick tap never gets swallowed
+  // when the browser reads a finger's tiny drift as the start of a scroll.
+  if (!chordEl) return;
+  const pos = Number(chordEl.dataset.pos);
+  const idx = line.chords.findIndex(c => c.pos === pos);
+  if (idx < 0) return;
+  CE.press = { pointerId: e.pointerId, chordEl, lineEl, b, l, pos, idx, x0: e.clientX, y0: e.clientY, started: false };
 }
 function cePointerMove(e) {
   const p = CE.press;
@@ -3488,6 +3483,7 @@ function cePointerMove(e) {
     const line = block && block.lines[p.l];
     if (!line || !line.chords[p.idx]) return;
     CE.drag = true;
+    CE.suppressTapUntil = Date.now() + 400;
     p.started = true;
     p.originLeft = parseFloat(p.chordEl.style.left) || p.chordEl.offsetLeft;
     p.chordEl.classList.add('dragging');
@@ -3531,23 +3527,10 @@ function cePointerUp(e) {
   const p = CE.press;
   if (!p || e.pointerId !== p.pointerId) return;
   CE.press = null;
-  if (!p.started) {
-    const block = CE.blocks[p.b];
-    const line = block && block.lines[p.l];
-    if (!line) return;
-    if (p.chordEl) {
-      const spec = line.chords[p.idx];
-      if (!spec) return;
-      ceSelect(p.b, p.l, spec.pos);
-      ceWheelOpen({ b: p.b, l: p.l, pos: spec.pos, existing: p.idx, anchor: ceRectAnchor(p.chordEl) });
-    } else if (p.chEl && p.chEl.dataset.i != null) {
-      const pos = Number(p.chEl.dataset.i);
-      const existing = line.chords.findIndex(c => c.pos === pos);
-      if (existing >= 0) ceSelect(p.b, p.l, pos); else ceSelect(null);
-      ceWheelOpen({ b: p.b, l: p.l, pos, existing, anchor: ceRectAnchor(p.chEl) });
-    }
-    return;
-  }
+  // A tap that never became a drag is opened from its click event instead.
+  if (!p.started) return;
+  // The click that follows this release must not re-open the wheel.
+  CE.suppressTapUntil = Date.now() + 400;
   if (p.guide) p.guide.remove();
   if (p.hint) p.hint.hidden = true;
   if (p.target) p.target.classList.remove('ce-drop');
@@ -3572,6 +3555,35 @@ function cePointerUp(e) {
     }
   }
   ceLayoutLine(p.lineEl);
+}
+// One tap anywhere inside a lyric line — a letter, the space between words or
+// the empty chord lane above a word — opens the wheel for the nearest syllable.
+// Chips open it in replace mode. Using click (not pointerup) means a tap lands
+// even if the finger drifts a pixel or two; scrolling still wins because a
+// scroll gesture produces no click.
+function ceTapClick(e) {
+  if (CE.suppressTapUntil && Date.now() < CE.suppressTapUntil) return;
+  const lineEl = e.target.closest('#ceCanvas .ce-line');
+  if (!lineEl) return;
+  const b = Number(lineEl.dataset.b), l = Number(lineEl.dataset.l);
+  const block = CE.blocks[b];
+  const line = block && block.lines[l];
+  if (!line) return;
+  const chordEl = e.target.closest('.ce-chord');
+  if (chordEl) {
+    const idx = line.chords.findIndex(c => c.pos === Number(chordEl.dataset.pos));
+    const spec = idx >= 0 ? line.chords[idx] : null;
+    if (!spec) return;
+    ceSelect(b, l, spec.pos);
+    ceWheelOpen({ b, l, pos: spec.pos, existing: idx, anchor: ceRectAnchor(chordEl) });
+    return;
+  }
+  const chEl = ceNearestChar(lineEl, e.clientX, e.clientY);
+  if (!chEl || chEl.dataset.i == null) return;
+  const pos = Number(chEl.dataset.i);
+  const existing = line.chords.findIndex(c => c.pos === pos);
+  if (existing >= 0) ceSelect(b, l, pos); else ceSelect(null);
+  ceWheelOpen({ b, l, pos, existing, anchor: ceRectAnchor(chEl) });
 }
 function cePointerCancel() {
   const p = CE.press;
@@ -3620,6 +3632,7 @@ function ceKeyDown(e) {
   const canvas = document.getElementById('ceCanvas');
   if (canvas) {
     canvas.addEventListener('pointerdown', cePointerDown);
+    canvas.addEventListener('click', ceTapClick);
     // Track moves/releases on the window: a drag leaves the canvas (and the chord
     // node may be re-laid-out), where pointer capture is brittle and can drop the
     // release entirely.
@@ -3627,6 +3640,15 @@ function ceKeyDown(e) {
     window.addEventListener('pointerup', cePointerUp);
     window.addEventListener('pointercancel', cePointerCancel);
   }
+  // Tapping anywhere outside the picker dismisses it (backdrop taps included),
+  // and the capture phase stops that tap from charting a chord underneath.
+  document.addEventListener('click', e => {
+    if (!CE.wheel) return;
+    if (e.target.closest('#ceWheel')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    ceCloseWheel();
+  }, true);
   const stage = document.getElementById('ceWheelStage');
   if (stage) {
     stage.addEventListener('click', e => {
@@ -6563,6 +6585,8 @@ function atRoot() {
   return currentView === 'home' && !currentGroup && currentHomeGrid !== 'categoryGrid';
 }
 function onHardwareBack() {
+  // Android's back gesture dismisses the chord picker first, like any popup.
+  if (CE.wheel) { ceCloseWheel(); return; }
   const sz = document.getElementById('solfaZoom');
   if (sz && sz.classList.contains('open')) { closeSolfaZoom(); return; }
   const overlays = ['confirmModal', 'exportModal', 'playlistModal', 'songModal', 'songbookModal', 'bookModal', 'findReplaceModal', 'sidebarModal', 'galleryModal', 'imagePreviewModal'];

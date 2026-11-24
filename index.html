@@ -362,11 +362,12 @@ Second verse line 2"></textarea>
       <button class="btn btn-primary" id="ceSaveBtn" data-action="saveChordEditor">Save Chords</button>
     </div>
   </div>
-  <div class="ce-wheel-backdrop" id="ceWheelBackdrop" hidden data-action="ceCloseWheel"></div>
+  <div class="ce-wheel-backdrop" id="ceWheelBackdrop" hidden></div>
   <div class="ce-wheel" id="ceWheel" hidden role="dialog" aria-label="Choose a chord">
     <div class="ce-wheel-head">
       <span class="ce-wheel-title" id="ceWheelTitle">Add a chord</span>
       <span class="ce-wheel-family" id="ceWheelFamily"></span>
+      <button type="button" class="ce-wheel-close" aria-label="Close chord picker" data-action="ceCloseWheel">&times;</button>
     </div>
     <div class="ce-wheel-root" id="ceWheelRootRow" hidden>
       <label>Root <select id="ceWheelRoot" aria-label="Extended chord root"></select></label>

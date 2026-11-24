@@ -507,7 +507,7 @@ body[data-view="list"] #listFastScroll.on{display:block;pointer-events:auto;}
 .ce-verse{margin:0 0 14px;}
 .ce-verse-label{font-size:.66rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin:0 0 6px;}
 .ce-line{margin:0 0 26px;border-radius:8px;}
-.ce-words{white-space:pre-wrap;overflow-wrap:break-word;font-size:var(--reader-font,1.05rem);line-height:var(--reader-lh,1.6);font-family:var(--reader-family,inherit);color:var(--text);-webkit-user-select:none;user-select:none;}
+.ce-words{white-space:pre-wrap;overflow-wrap:break-word;font-size:var(--reader-font,1.05rem);line-height:var(--reader-lh,1.6);font-family:var(--reader-family,inherit);color:var(--text);-webkit-user-select:none;user-select:none;touch-action:manipulation;}
 .ce-word{display:inline-block;position:relative;padding-top:0;vertical-align:top;}
 /* Only lines that carry chords reserve the chord lane; uncharted lines keep tight
    spacing, with the breathing room added below the lyric instead of above it. */
@@ -538,6 +538,8 @@ body[data-view="list"] #listFastScroll.on{display:block;pointer-events:auto;}
 .ce-wheel[hidden]{display:none;}
 .ce-wheel.in{animation:ceWheelIn .22s cubic-bezier(.2,.9,.25,1) both;}
 .ce-wheel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px 4px;}
+.ce-wheel-close{width:28px;height:28px;flex:0 0 auto;margin-left:2px;border:none;border-radius:50%;background:none;color:var(--text2);font-family:inherit;font-size:1.25rem;line-height:1;cursor:pointer;}
+.ce-wheel-close:hover{background:var(--select-soft);color:var(--select);}
 .ce-wheel-title{font-size:.78rem;font-weight:700;color:var(--text);}
 .ce-wheel-root{display:flex;align-items:center;gap:8px;padding:0 4px 6px;flex-wrap:wrap;}
 .ce-wheel-root[hidden]{display:none;}
