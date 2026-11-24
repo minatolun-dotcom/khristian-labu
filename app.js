@@ -7,7 +7,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.72'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.73'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 const LATEST_JSON = 'https://dl.labu.lengkhawm.online/latest.json';
 let latestUpdate = null;
@@ -1329,7 +1329,38 @@ function chordChartFor(song, tuneIdx) {
   if (!song) return null;
   const key = chordChartKey(song, tuneIdx == null ? chordTuneIndex(song) : tuneIdx);
   if (USER_CHORD_IDS.has(key) && CHORD_CHARTS[key]) return CHORD_CHARTS[key];
-  return PUB_CHORDS[key] || CHORD_CHARTS[key] || null;
+  const bundled = CHORD_CHARTS[key];
+  if (PUB_CHORDS[key]) return mergeChartVerseLines(PUB_CHORDS[key], bundled);
+  return bundled || null;
+}
+function chartVerseChordCount(lines) {
+  if (!Array.isArray(lines)) return 0;
+  return lines.reduce((n, specs) => {
+    if (Array.isArray(specs)) return n + specs.filter(s => s && s.ch).length;
+    return n + (specs && specs.ch ? 1 : 0);
+  }, 0);
+}
+// A published chart can come from a device that only had verse 1 charted (the
+// legacy seed), which would erase verses 2+ for everyone once it is approved.
+// Keep the published verse where it has chords and borrow the bundled verse
+// lines for the verses it left empty.
+function mergeChartVerseLines(primary, fallback) {
+  const published = Array.isArray(primary.verseLines) ? primary.verseLines : [];
+  const bundled = fallback && Array.isArray(fallback.verseLines) ? fallback.verseLines : [];
+  const total = Math.max(published.length, bundled.length);
+  if (!total) return primary;
+  const verseLines = [];
+  for (let vi = 0; vi < total; vi++) {
+    const pub = published[vi];
+    const base = bundled[vi];
+    if (chartVerseChordCount(pub)) verseLines.push(pub);
+    else if (chartVerseChordCount(base)) verseLines.push(base);
+    else verseLines.push(pub || []);
+  }
+  return Object.assign({}, primary, {
+    verseLines: verseLines,
+    verses: Math.max(Number(primary.verses) || 0, verseLines.length)
+  });
 }
 async function loadChordCharts() {
   try {
@@ -3064,6 +3095,10 @@ function ceLayoutLine(lineEl) {
   const block = CE.blocks[b];
   const line = block && block.lines[l];
   if (!line) return;
+  // The chord lane is padding on the words, so it has to be switched on as soon
+  // as a line gains its first chord (otherwise the chip lands on the lyric) and
+  // released again when the last chord leaves.
+  lineEl.classList.toggle('has-chords', line.chords.length > 0);
   lineEl.querySelectorAll('.ce-chord,.ce-guide').forEach(el => el.remove());
   if (!line.chords.length || !line.lyric.length) return;
   const placed = [];
@@ -3422,8 +3457,7 @@ function ceNearestChar(lineEl, x, y) {
 function cePointerDown(e) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   const chordEl = e.target.closest('.ce-chord');
-  const chEl = e.target.closest('.ce-ch');
-  const lineEl = (chordEl || chEl) ? (chordEl || chEl).closest('.ce-line') : null;
+  const lineEl = e.target.closest('.ce-line');
   if (!lineEl) { ceCloseWheel(); return; }
   const b = Number(lineEl.dataset.b), l = Number(lineEl.dataset.l);
   const block = CE.blocks[b];
@@ -3435,10 +3469,12 @@ function cePointerDown(e) {
     if (idx < 0) return;
     CE.press = { pointerId: e.pointerId, chordEl, lineEl, b, l, pos, idx, x0: e.clientX, y0: e.clientY, started: false };
     e.preventDefault();
-  } else if (chEl && chEl.dataset.i != null) {
-    CE.press = { pointerId: e.pointerId, chEl, lineEl, b, l, x0: e.clientX, y0: e.clientY, started: false };
   } else {
-    return;
+    // Any point on the line — a glyph, a gap between words, or the empty chord
+    // lane above a word — maps to the nearest syllable, so one tap is enough.
+    const chEl = ceNearestChar(lineEl, e.clientX, e.clientY);
+    if (!chEl || chEl.dataset.i == null) return;
+    CE.press = { pointerId: e.pointerId, chEl, lineEl, b, l, x0: e.clientX, y0: e.clientY, started: false };
   }
 }
 function cePointerMove(e) {

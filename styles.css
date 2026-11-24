@@ -513,7 +513,7 @@ body[data-view="list"] #listFastScroll.on{display:block;pointer-events:auto;}
    spacing, with the breathing room added below the lyric instead of above it. */
 .ce-line.has-chords .ce-word{padding-top:1.2em;}
 .ce-txt{display:inline-block;}
-.ce-ch{display:inline;border-radius:3px;transition:background-color .1s,color .1s;cursor:text;}
+.ce-ch{display:inline;border-radius:3px;transition:background-color .1s,color .1s;cursor:text;touch-action:manipulation;}
 .ce-ch:hover{background:var(--select-soft);}
 .ce-space{white-space:pre;}
 .ce-empty{color:var(--text3);font-style:italic;font-size:.85rem;}

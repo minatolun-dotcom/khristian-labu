@@ -1571,6 +1571,43 @@ await section('chord studio', async () => {
   await page.waitForSelector('#chordModal.open #ceCanvas .ce-line');
   await sleep(200);
   ok('reopening restores the edited positions', await page.evaluate(() => CE.blocks[0].lines[0].chords.some(c => c.ch === 'G#m7/D#')));
+
+  // Clearing a line must drop its chord lane; then a single tap in that empty
+  // lane above the lyric has to chart the nearest syllable and lift the chip
+  // back above the text instead of sitting on it.
+  const laneBackup = await page.evaluate(() => CE.blocks[0].lines[1].chords.slice());
+  await page.evaluate(() => {
+    CE.blocks[0].lines[1].chords = [];
+    ceLayoutLine(document.querySelector('.ce-line[data-b="0"][data-l="1"]'));
+  });
+  const laneSel = '.ce-line[data-b="0"][data-l="1"]';
+  ok('a line without chords releases the reserved lane',
+    !(await page.locator(laneSel).evaluate(el => el.classList.contains('has-chords'))));
+  const laneBox = await page.locator(laneSel + ' .ce-word').first().boundingBox();
+  await page.mouse.click(laneBox.x + 4, laneBox.y + 4);
+  await page.waitForSelector('#ceWheel:not([hidden])');
+  await page.locator('#ceWheelStage .ce-wheel-chip[data-chord="D"]').click();
+  await sleep(200);
+  const lanePlaced = await page.evaluate(sel => {
+    const line = document.querySelector(sel);
+    const chip = line.querySelector('.ce-chord');
+    const text = line.querySelector('.ce-txt');
+    return {
+      has: line.classList.contains('has-chords'),
+      chords: CE.blocks[0].lines[1].chords.length,
+      chipBottom: chip.getBoundingClientRect().bottom,
+      textTop: text.getBoundingClientRect().top
+    };
+  }, laneSel);
+  ok('one tap in the empty chord lane charts the nearest syllable', lanePlaced.chords === 1, JSON.stringify(lanePlaced));
+  ok('a newly charted line lifts the chord above the lyric',
+    lanePlaced.has && lanePlaced.chipBottom <= lanePlaced.textTop + 0.5, JSON.stringify(lanePlaced));
+  // Put the line back so closing the studio doesn't raise the discard prompt.
+  await page.evaluate(chords => {
+    CE.blocks[0].lines[1].chords = chords;
+    ceLayoutLine(document.querySelector('.ce-line[data-b="0"][data-l="1"]'));
+    ceMarkDirty();
+  }, laneBackup);
   await page.locator('#chordModal .modal-close').click();
 
   // published fractional charts still work

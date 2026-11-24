@@ -298,6 +298,39 @@ try {
     freshShown.key === 'A' && freshShown.pills.includes('A')
       && freshShown.chords.includes('A'), JSON.stringify(freshShown));
 
+  // A chart approved from an old first-verse-only device must not erase the
+  // bundled charts for verses 2+ (the BL_1 regression).
+  state.published.push({
+    seq: 3,
+    kind: 'chord',
+    published_at: Date.now(),
+    payload: {
+      id: 'BL_1',
+      title: 'Jesu Min Lian Phat Chiat Ni E',
+      chart: {
+        key: 'A', verses: 6, free: true, chords: ['A'],
+        lines: [[{ pos: 0, ch: 'A' }]],
+        verseLines: [[[{ pos: 0, ch: 'A' }]], [], [], [], [], []],
+      },
+    },
+  });
+  state.version += 1;
+  const partial = await boot();
+  await partial.page.waitForFunction(() =>
+    PUB_CHORDS.BL_1 && PUB_CHORDS.BL_1.verseLines?.[1]?.length === 0, null, { timeout: 15000 });
+  const partialCoverage = await partial.page.evaluate(() => {
+    const song = SONGS.BL.songs.find(s => s.id === 'BL_1');
+    const chart = chordChartFor(song, 0);
+    return {
+      key: chart.key,
+      counts: chart.verseLines.map(lines => lines.reduce((n, specs) => n + specs.length, 0)),
+    };
+  });
+  check('a partial published chart keeps the bundled chords for verses 2+',
+    partialCoverage.key === 'A' && partialCoverage.counts[0] === 1 && partialCoverage.counts.slice(1).every(n => n > 0),
+    JSON.stringify(partialCoverage));
+  await partial.context.close();
+
   check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
   check('no failed checks', !failed);
   await user.context.close();
