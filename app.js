@@ -1317,13 +1317,16 @@ function saveUserChordCharts() {
     return true;
   } catch (e) { return false; }
 }
-// A chart edited on this device wins; otherwise an approved chart from the cloud
-// layer applies (PUB_CHORDS is filled by applyPublished()).
+// A chart edited on this device wins; otherwise an approved cloud chart must
+// override the bundled chords.json copy. CHORD_CHARTS contains both local and
+// bundled charts, so checking only USER_CHORD_IDS before falling back to PUB is
+// what keeps an approved edit from being shadowed by the shipped chart.
 // Tune 2 charts live under "<song id>__t2" so both tunes keep independent edits.
 function chordChartFor(song, tuneIdx) {
   if (!song) return null;
   const key = chordChartKey(song, tuneIdx == null ? chordTuneIndex(song) : tuneIdx);
-  return CHORD_CHARTS[key] || PUB_CHORDS[key] || null;
+  if (USER_CHORD_IDS.has(key) && CHORD_CHARTS[key]) return CHORD_CHARTS[key];
+  return PUB_CHORDS[key] || CHORD_CHARTS[key] || null;
 }
 async function loadChordCharts() {
   try {
@@ -3389,9 +3392,11 @@ function cePointerMove(e) {
   }
   const rect = p.chordEl.getBoundingClientRect();
   const target = ceNearestChar(p.lineEl, rect.left + rect.width / 2, e.clientY);
+  const changedChar = target && target !== p.target;
   if (p.target && p.target !== target) p.target.classList.remove('ce-drop');
   p.target = target;
   if (target) {
+    if (changedChar && !remove) haptic(5);
     target.classList.add('ce-drop');
     const lr = p.lineEl.getBoundingClientRect(), tr = target.getBoundingClientRect();
     p.guide.hidden = false;

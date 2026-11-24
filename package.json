@@ -17,7 +17,7 @@
     "api:export": "node scripts/export_supabase.mjs",
     "api:import": "node scripts/import_d1.mjs",
     "build": "npm run sync && npx cap build android",
-    "test": "python3 scripts/validate_data.py && node scripts/test_chord_audit_structure.mjs && node scripts/test_share_image.mjs && node scripts/test_persistence.mjs && node scripts/test_cloud_sync.mjs && node scripts/e2e_full.mjs",
+    "test": "python3 scripts/validate_data.py && node scripts/test_chord_audit_structure.mjs && node scripts/test_share_image.mjs && node scripts/test_persistence.mjs && node scripts/test_cloud_sync.mjs && node scripts/test_chord_sync.mjs && node scripts/e2e_full.mjs",
     "test:audit": "node scripts/test_chord_audit_structure.mjs",
     "test:cloud": "node scripts/test_cloud_sync.mjs",
     "test:api": "node scripts/test_staging_api.mjs",

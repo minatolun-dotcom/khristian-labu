@@ -1292,6 +1292,17 @@ await section('chord studio', async () => {
   }));
 
   // drag
+  await page.evaluate(() => {
+    window.__haptics = [];
+    _hapticsOn = true;
+    _lastHapticAt = 0;
+    try {
+      Object.defineProperty(navigator, 'vibrate', {
+        configurable: true,
+        value: ms => { window.__haptics.push(ms); return true; },
+      });
+    } catch (e) {}
+  });
   const box = await page.locator(l0 + ' .ce-chord[data-pos="5"]').boundingBox();
   const target = await page.locator(l0 + ' .ce-ch[data-i="12"]').boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -1300,9 +1311,11 @@ await section('chord studio', async () => {
   const dragging = await page.evaluate(() => ({
     cls: !!document.querySelector('.ce-line[data-b="0"][data-l="0"] .ce-chord.dragging'),
     guide: !!document.querySelector('#ceCanvas .ce-guide'),
-    drop: !!document.querySelector('#ceCanvas .ce-drop')
+    drop: !!document.querySelector('#ceCanvas .ce-drop'),
+    haptics: (window.__haptics || []).length,
   }));
   ok('dragging shows a guide and highlights the character underneath', dragging.cls && dragging.guide && dragging.drop, JSON.stringify(dragging));
+  ok('dragging across characters gives haptic feedback', dragging.haptics > 0, JSON.stringify(dragging));
   await page.mouse.up();
   await sleep(150);
   ok('released chord snaps to the nearest character', await page.evaluate(() => CE.blocks[0].lines[0].chords.some(c => c.pos === 12 && c.ch === 'Am')));
