@@ -1303,6 +1303,10 @@ const CHORD_CHARTS = {
 // Local chord charts are per-device, like the user's song edits. They survive
 // corpus updates because they are keyed by song id, not stored in songs.json.
 const USER_CHORD_IDS = new Set();
+// The shipped chords.json charts, kept separately from CHORD_CHARTS because a
+// local chart replaces the shipped one in CHORD_CHARTS. A stale local chart
+// borrows missing verses from here instead of hiding them.
+const BUNDLED_CHORD_CHARTS = {};
 (function loadUserChordCharts() {
   try {
     const saved = JSON.parse(localStorage.getItem('labu_chord_charts_v1') || '{}');
@@ -1328,10 +1332,21 @@ function saveUserChordCharts() {
 function chordChartFor(song, tuneIdx) {
   if (!song) return null;
   const key = chordChartKey(song, tuneIdx == null ? chordTuneIndex(song) : tuneIdx);
-  if (USER_CHORD_IDS.has(key) && CHORD_CHARTS[key]) return CHORD_CHARTS[key];
-  const bundled = CHORD_CHARTS[key];
-  if (PUB_CHORDS[key]) return mergeChartVerseLines(PUB_CHORDS[key], bundled);
-  return bundled || null;
+  const bundled = BUNDLED_CHORD_CHARTS[key] || null;
+  const local = USER_CHORD_IDS.has(key) ? CHORD_CHARTS[key] : null;
+  if (local) {
+    // A chart saved in this editor records every verse, so an empty verse there
+    // is a real choice and is left alone. Charts saved before that marker
+    // existed may only cover verse 1, so fill their missing verses from the
+    // published chart first, then the shipped one. This keeps a stale device
+    // copy from hiding verses 2+ the way a partial published chart used to.
+    if (local.allVerses) return local;
+    const filled = PUB_CHORDS[key] ? mergeChartVerseLines(local, PUB_CHORDS[key]) : local;
+    return bundled ? mergeChartVerseLines(filled, bundled) : filled;
+  }
+  const shipped = CHORD_CHARTS[key];
+  if (PUB_CHORDS[key]) return mergeChartVerseLines(PUB_CHORDS[key], shipped);
+  return shipped || null;
 }
 function chartVerseChordCount(lines) {
   if (!Array.isArray(lines)) return 0;
@@ -1339,6 +1354,17 @@ function chartVerseChordCount(lines) {
     if (Array.isArray(specs)) return n + specs.filter(s => s && s.ch).length;
     return n + (specs && specs.ch ? 1 : 0);
   }, 0);
+}
+// A borrowed verse can come from a chart written in another key, so its chord
+// names are shifted into the key of the chart that keeps it.
+function transposeChartSpecs(lines, semis, preferFlat) {
+  if (!semis) return lines;
+  return (lines || []).map(line => {
+    if (Array.isArray(line)) return line.map(spec => (spec && spec.ch)
+      ? Object.assign({}, spec, { ch: transposeChordName(spec.ch, semis, preferFlat) }) : spec);
+    if (line && line.ch) return Object.assign({}, line, { ch: transposeChordName(line.ch, semis, preferFlat) });
+    return line;
+  });
 }
 // A published chart can come from a device that only had verse 1 charted (the
 // legacy seed), which would erase verses 2+ for everyone once it is approved.
@@ -1349,12 +1375,16 @@ function mergeChartVerseLines(primary, fallback) {
   const bundled = fallback && Array.isArray(fallback.verseLines) ? fallback.verseLines : [];
   const total = Math.max(published.length, bundled.length);
   if (!total) return primary;
+  const toPc = chordRootPc(normalizeSongKey(primary.key));
+  const fromPc = chordRootPc(normalizeSongKey(fallback && fallback.key));
+  const semis = (toPc != null && fromPc != null) ? ((toPc - fromPc) % 12 + 12) % 12 : 0;
+  const preferFlat = toPc != null && keyPrefersFlat(toPc);
   const verseLines = [];
   for (let vi = 0; vi < total; vi++) {
     const pub = published[vi];
     const base = bundled[vi];
     if (chartVerseChordCount(pub)) verseLines.push(pub);
-    else if (chartVerseChordCount(base)) verseLines.push(base);
+    else if (chartVerseChordCount(base)) verseLines.push(transposeChartSpecs(base, semis, preferFlat));
     else verseLines.push(pub || []);
   }
   return Object.assign({}, primary, {
@@ -1370,7 +1400,11 @@ async function loadChordCharts() {
     // Bundled charts replace the small legacy seed, but a chart saved on this
     // device still wins. This keeps BL_1's full six-verse chart from being
     // blocked by the old first-verse-only seed.
-    Object.keys(data).forEach(id => { if (!USER_CHORD_IDS.has(id) && data[id]) CHORD_CHARTS[id] = data[id]; });
+    Object.keys(data).forEach(id => {
+      if (!data[id]) return;
+      BUNDLED_CHORD_CHARTS[id] = data[id];
+      if (!USER_CHORD_IDS.has(id)) CHORD_CHARTS[id] = data[id];
+    });
   } catch (e) { /* chord charts are optional offline data */ }
 }
 // Solfa sheets are local assets, never arbitrary URLs from a cloud/backup row.
@@ -3768,11 +3802,16 @@ function saveChordEditor() {
     if (s.ch && !chords.includes(s.ch)) chords.push(s.ch);
   })));
   if (!chords.length) { ceFlashStatus('Add at least one chord before saving', true); return; }
-  const chart = CHORD_CHARTS[CE.songId] || { verses: verseLines.length };
+  // Copy first: the existing entry may be the shared bundled chart, and saving
+  // here must not rewrite the fallback other charts borrow from.
+  const chart = Object.assign({}, CHORD_CHARTS[CE.songId] || { verses: verseLines.length });
   chart.key = key;
   chart.lines = verseLines[0] || [];
   chart.verseLines = verseLines;
   chart.verses = verseLines.length;
+  // Marks a chart that covers every verse, so an emptied verse below is read as
+  // deliberate and is never re-filled from the shipped chart.
+  chart.allVerses = true;
   chart.chords = chords;
   chart.free = true;
   CHORD_CHARTS[CE.songId] = chart;

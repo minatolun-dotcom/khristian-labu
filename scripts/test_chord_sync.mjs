@@ -331,6 +331,49 @@ try {
     JSON.stringify(partialCoverage));
   await partial.context.close();
 
+  // A chart saved on the device by an older build could cover verse 1 only.
+  // It must borrow the verses it never covered instead of hiding them.
+  const stale = await boot();
+  await stale.page.evaluate(() => {
+    localStorage.setItem('labu_chord_charts_v1', JSON.stringify({
+      BL_1: {
+        key: 'D', verses: 6, free: true, chords: ['D'],
+        lines: [[{ pos: 0, ch: 'D' }]],
+        verseLines: [[[{ pos: 0, ch: 'D' }]], [], [], [], [], []],
+      },
+      // Saved by this build: it records every verse, so verse 2 is deliberately
+      // empty and must stay that way.
+      BL_0: {
+        key: 'E', verses: 5, free: true, allVerses: true, chords: ['E'],
+        lines: [[{ pos: 0, ch: 'E' }]],
+        verseLines: [[[{ pos: 0, ch: 'E' }]], [], [], [], []],
+      },
+    }));
+  });
+  await stale.page.reload({ waitUntil: 'domcontentloaded' });
+  await stale.page.waitForFunction(() => typeof songsReady !== 'undefined' && songsReady === true, null, { timeout: 30000 });
+  await stale.page.waitForFunction(() => CHORD_CHARTS.BL_0 && CHORD_CHARTS.BL_1, null, { timeout: 15000 });
+  const staleCoverage = await stale.page.evaluate(() => {
+    const chart = id => chordChartFor(SONGS.BL.songs.find(s => s.id === id), 0);
+    const counts = c => c.verseLines.map(lines => lines.reduce((n, specs) => n + specs.length, 0));
+    const b1 = chart('BL_1'), b0 = chart('BL_0');
+    return {
+      b1Key: b1.key, b1: counts(b1), b0: counts(b0), b0Verses: b0.verses,
+      // Borrowed from the shipped G chart into this device's D chart.
+      b1Verse2: (b1.verseLines[1][0] || []).map(s => s.ch),
+    };
+  });
+  check('a stale local chart borrows the verses it never covered',
+    staleCoverage.b1Key === 'D' && staleCoverage.b1[0] === 1 && staleCoverage.b1.length === 6
+      && staleCoverage.b1.slice(1).every(n => n > 0),
+    JSON.stringify(staleCoverage));
+  check('borrowed verses are transposed into the device chart key',
+    staleCoverage.b1Verse2.join(',') === 'D,A,D', JSON.stringify(staleCoverage.b1Verse2));
+  check('a chart saved with every verse keeps deliberately empty verses empty',
+    staleCoverage.b0[0] === 1 && staleCoverage.b0[1] === 0 && staleCoverage.b0Verses === 5,
+    JSON.stringify(staleCoverage));
+  await stale.context.close();
+
   check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
   check('no failed checks', !failed);
   await user.context.close();
