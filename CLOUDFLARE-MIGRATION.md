@@ -1,6 +1,6 @@
 # Cloudflare-first migration plan — Khristian Labu
 
-**Status:** Phase 1 complete; Phase 2 pipeline and in-app updater complete (1.5.68 published; the 1.5.67 → 1.5.68 update was interrupted and resumed on the SM-S921B); Phase 3 API complete (Google sign-in pending); Phase 4 production cutover complete, with the 30–60 day compatibility soak in progress; Phase 5 pending.
+**Status:** Phase 1 complete; Phase 2 pipeline and in-app updater complete (1.5.71 published, now carrying admin username management and HD solfa sheets served from R2); Phase 3 API complete (Google sign-in pending); Phase 4 production cutover complete, with the 30–60 day compatibility soak in progress; Phase 5 pending.
 **Last audited:** 2026-11-24
 **Scope:** website hosting, database/auth, APK build/distribution, and the supporting Cloudflare configuration.
 
@@ -24,6 +24,8 @@
 - **2026-11-23 — signed 1.5.63 published.** Pushed tag `v1.5.63`; [run 45228490708](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45228490708) built and published the release in 3m34s. APK: **37,391,762 bytes**, SHA-256 `df8e184f3164ee50a7095445f26dfbe95a0aa15d0d4814d7ad8ac6917ed94dc4`. The signer certificate digest matches 1.5.62 (`1f4f4bb4dcfdbfd34b769b1fdb29a588a3cb82529e9b58a1504e410a89000afb`), so existing release installs update in place. R2 `latest.json` and GitHub Release `v1.5.63` both point at it.
 - **2026-11-23 — production web cutover complete.** Pushed `main`; [run 45229428623](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45229428623) deployed Pages. The live site serves 1.5.63, `sw.js` cache `labu-v134`, and a browser check loaded state version 772 with 772 edits, no page errors, and 200s from `/api/state` and `/api/published-edits`.
 - **2026-11-23/24 — native updater released and tested.** `v1.5.64` [run 45238150902](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45238150902) and `v1.5.65` [run 45239082836](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45239082836) both signed and published; 1.5.65 is **37,395,678 bytes**, SHA-256 `bea6c925bcf3aaab9f6bd399fb055c6356cfbf2559fcae15e91549b69222757d`. R2 CORS now allows `GET`/`HEAD` for the public artifacts. On the SM-S921B, 1.5.64 installed over 1.5.63 with data intact; **Settings → Check for update** fetched 1.5.65, downloaded it in-app, verified size/SHA-256, and installed it. The phone reports 1565/1.5.65 and the saved favourite is still present. Browser suite: 201/201. Android auto-allowed `REQUEST_INSTALL_PACKAGES` for the self-update, so the denied uninstall-sources handoff was not exercised on this device; its JS state and native settings intent are covered by the E2E simulation and code path.
+- **2026-11-24 — signed 1.5.70 published.** [run 45394992396](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45394992396) built the APK (**37,411,562 bytes**, SHA-256 `5547624c66de2aa2cd377aa58aef7c84b570b423f27bfa474e9071b994211da8`) and [run 45394985715](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45394985715) deployed Pages. This release adds email-or-username admin sign-in, owner-only admin management, and the 480 DPI solfa sheets in R2.
+- **2026-11-24 — 1.5.71 fixes the HD solfa layout shift.** A production Chromium check showed the reader moving 12 px when the sharper sheet replaced the bundled one: the 480 DPI crops are not exact 2x of the 240 DPI files, so width/height attributes did not hold the layout. The reader now pins the on-screen `aspect-ratio` before swapping, and the E2E mock serves a deliberately different-aspect sheet. Signed 1.5.71 [run 45396667821](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45396667821): **37,411,670 bytes**, SHA-256 `10c5143d0e32df80981c7cc0b9d0186bde4989fb1812e03b5412509e6ae1f11c`; Pages [run 45396661957](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45396661957). Verified live: 1077×1352 bundled swaps to 2152×2626 HD with the rendered height unchanged at 422 px, HD download 187,739 bytes, no page errors; the shipped APK carries the new `img-src`, 496 bundled sheets, and no HD files. Browser suite: **226/226**.
 - **2026-11-24 — updater UX, detection, and resume verified.** Published signed 1.5.66/1566 ([run 45245733265](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45245733265), SHA-256 `02fde3e3c2ce70d53a7f39d9d9c5195b509dea12369354c624555826ac4f6d4d`), 1.5.67/1567 ([run 45246546732](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45246546732), SHA-256 `0787a46ff7c645477ef50bba9e5c370043b3b110a35b61188e6ed32204846ee4`), and 1.5.68/1568 ([run 45247374617](https://github.com/minatolun-dotcom/khristian-labu/actions/runs/45247374617), SHA-256 `db00f3d20727ff67ee448dddae9cf1510351f9da5bd6a9dcee49fca06351bd27`), all **37,397,862 bytes**. The checker now takes the higher of `version.json` and `latest.json`, so R2 can publish before Pages/raw GitHub catches up. The website hides **Check for update**; native startup shows a centered dialog and minimizes to a floating progress pill when the backdrop is tapped. Toasts are removed. On the SM-S921B, the 1.5.67 → 1.5.68 download was killed after `HTTP 200`; relaunch logged `partial resume=true bytes=285683` and `HTTP 206 append=true`, the UI showed “Resuming update…”, and 1.5.68 installed with the saved favourite intact. Browser suite: **203/203**.
 
 ---
@@ -37,6 +39,7 @@
 | Database | **Cloudflare D1** | The app stores only a small diff/queue layer; SQLite is enough. |
 | Auth | **Better Auth on D1**, Google sign-in plus a break-glass admin path | Replaces Supabase Auth without inventing a password/session system. |
 | APK/artifacts | **Cloudflare R2**, custom domain `dl.labu.lengkhawm.online` | The 37.4 MB APK does not fit Cloudflare Pages' 25 MiB per-file limit. |
+| Solfa sheets (HD) | **Cloudflare R2** at `labu-artifacts/solfa-hd/`, same custom domain | The app bundles 240 DPI sheets for offline use; 480 DPI copies are fetched only for viewing/downloading, so the APK stays small. |
 | APK build | **GitHub Actions**, publishing artifacts to R2 | Cloudflare cannot build an Android APK with Gradle/Android SDK. |
 | DNS/WAF/cache/analytics | **Cloudflare** | Already proxying the domain today. |
 | Supabase | **Retire after a compatibility window** | Old APKs have the Supabase URL baked in and cannot be switched remotely. |
@@ -587,6 +590,7 @@ labu-artifacts/
   apk/1564/khristian-labu.apk
   apk/1565/khristian-labu.apk
   latest.json
+  solfa-hd/BL_1-t1.avif      # 480 DPI display/download copies
 
 labu-backups/
   supabase/2026-11-23/*.json
@@ -631,6 +635,40 @@ The shipped path is intentionally the least-privileged one that works on a side-
 - GitHub Release fallback still works.
 
 ---
+
+### C8. HD solfa sheets (implemented in 1.5.70/1.5.71)
+
+The app bundles one 240 DPI AVIF per printed tune (496 files, ~26 MB) so
+`assets/solfa/*` works fully offline. A 480 DPI copy of every sheet lives in R2
+(~96 MB) and is fetched only when a sheet is viewed or downloaded.
+
+```text
+labu-artifacts/solfa-hd/BL_1-t1.avif    # 480 DPI, AVIF quality 70
+```
+
+- Served at `https://dl.labu.lengkhawm.online/solfa-hd/<same filename as assets/solfa>`.
+- Objects are immutable: upload with `--content-type image/avif --cache-control
+  "public, max-age=31536000, immutable"`. The bucket CORS rule (`r2-cors.json`)
+  allows `GET`/`HEAD`, which the browser needs for the HD download fetch.
+- One HD file exists per bundled sheet; `npm run solfa:hd:upload` fails if any is
+  missing and uploads only the 496 bundled names.
+- Rebuild: `npm run solfa:hd` (re-renders from `Tonic Solfa/Biakna Late.pdf` at
+  480 DPI into gitignored `solfa-hd/`), then `npm run solfa:hd:upload`.
+  `wrangler r2 object put` **must** pass `--remote`; without it the upload lands in
+  Wrangler's local simulated bucket and the public URL 404s.
+- Reader behaviour: the bundled sheet paints first, HD is fetched once the view
+  settles, and the swap happens only after `HTMLImageElement.decode()`. The ratio
+  already on screen is pinned with `aspect-ratio` before the swap, because the
+  480 DPI crops are not exact 2x of the bundled files and would otherwise reflow
+  the page by ~12 px.
+- Skipped offline, under `Save-Data`, and on `2g`/`slow-2g`. A failed fetch keeps
+  the bundled sheet and allows a retry on the next open; only a real 404 is
+  remembered as missing.
+- **Download tonic solfa** saves the HD file via `fetch`; on any failure it falls
+  back to the bundled sheet, so the action always produces a file.
+- CSP: `img-src` must include `https://dl.labu.lengkhawm.online` in both
+  `pages/_headers` and the injected Android CSP (`scripts/inject_android_csp.mjs`).
+  `connect-src` already allowed it for the APK updater.
 
 ## 7. Workstream D — Cloudflare operations
 
