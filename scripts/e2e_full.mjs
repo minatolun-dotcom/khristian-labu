@@ -111,7 +111,9 @@ await section('load & home', async () => {
 // ═══════════════ 1z. HD SOLFA UPGRADE (R2) ═══════════════
 await section('hd solfa upgrade', async () => {
   const HD_BASE = 'https://dl.labu.lengkhawm.online/solfa-hd/';
-  const hdBytes = fs.readFileSync('assets/solfa/BL_1-t1.avif');
+  // Serve Tune 2's bytes for Tune 1's request: the real 480 DPI crops are not
+  // exact 2x of the bundled ones, so a different aspect ratio is the honest case.
+  const hdBytes = fs.readFileSync('assets/solfa/BL_1-t2.avif');
   const openFirstSolfa = async page => {
     await waitLoaded(page);
     return page.evaluate(async () => {
@@ -125,7 +127,7 @@ await section('hd solfa upgrade', async () => {
         tick();
       });
       const img = document.getElementById('solfaSheetImg');
-      return { src: img.getAttribute('src'), local: img.dataset.sheetSrc, h: img.getBoundingClientRect().height };
+      return { src: img.getAttribute('src'), local: img.dataset.sheetSrc, h: img.getBoundingClientRect().height, nw: img.naturalWidth, nh: img.naturalHeight };
     });
   };
 
@@ -161,14 +163,15 @@ await section('hd solfa upgrade', async () => {
     const img = document.getElementById('solfaSheetImg');
     return {
       src: img.getAttribute('src'), local: img.dataset.sheetSrc,
-      w: img.getAttribute('width'), h: img.getAttribute('height'),
+      ratio: img.style.aspectRatio,
       box: Math.round(img.getBoundingClientRect().height)
     };
   });
   ok('HD sheet replaces the bundled one', hd.src === HD_BASE + 'BL_1-t1.avif' && hdHits > 0, JSON.stringify({ hd, hdHits }));
   ok('the local sheet stays the identity of the image', hd.local === 'assets/solfa/BL_1-t1.avif');
   ok('swap pins the aspect ratio and keeps the layout still',
-    !!hd.w && !!hd.h && Math.abs(hd.box - Math.round(first.h)) <= 1, JSON.stringify({ first, hd }));
+    hd.ratio === first.nw + ' / ' + first.nh && Math.abs(hd.box - Math.round(first.h)) <= 1,
+    JSON.stringify({ first, hd }));
 
   // Download: HD when R2 answers, bundled file when it does not.
   const hdDownload = await page.evaluate(async () => {

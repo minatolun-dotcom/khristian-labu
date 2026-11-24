@@ -7,7 +7,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.70'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.71'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 const LATEST_JSON = 'https://dl.labu.lengkhawm.online/latest.json';
 let latestUpdate = null;
@@ -1429,11 +1429,18 @@ function loadSolfaHd(src) {
 function applySolfaHd(src) {
   const url = solfaHdUrl(src);
   if (!url) return;
-  [document.getElementById('solfaSheetImg'), document.querySelector('#solfaZoom .solfa-zoom-stage img')].forEach(img => {
+  const zoom = document.querySelector('#solfaZoom .solfa-zoom-stage img');
+  [document.getElementById('solfaSheetImg'), zoom].forEach(img => {
     if (!img || img.dataset.sheetSrc !== src || img.getAttribute('src') === url) return;
     if (img.complete && img.naturalWidth > 0) {
-      img.setAttribute('width', img.naturalWidth);
-      img.setAttribute('height', img.naturalHeight);
+      // The 480 DPI crop is not a guaranteed exact 2x of the bundled one, so pin
+      // the ratio already on screen: a sharper sheet must never reflow the page.
+      if (img === zoom) {
+        img.setAttribute('width', img.naturalWidth);
+        img.setAttribute('height', img.naturalHeight);
+      } else {
+        img.style.aspectRatio = img.naturalWidth + ' / ' + img.naturalHeight;
+      }
     }
     img.src = url;
   });
