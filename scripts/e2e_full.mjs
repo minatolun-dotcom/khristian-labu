@@ -304,7 +304,9 @@ await section('reader features', async () => {
   const page = await newPage();
   await waitLoaded(page);
   // open the longest song in the corpus (15 verses) via search from home (unscoped)
-  await page.locator('#searchInput').fill('pakai vannoi');
+  await page.locator('#searchOpenBtn').click();
+  await page.waitForSelector('#searchModal.open');
+  await page.locator('#searchModalInput').fill('pakai vannoi');
   await page.waitForTimeout(900);
   // the phrase also matches a shorter song's lyrics — click the title match (15 verses)
   const idx = await page.evaluate(() => {
@@ -327,6 +329,9 @@ await section('reader features', async () => {
   await page.evaluate(() => { document.getElementById('songScroll').scrollTop = 403; });
   await page.waitForTimeout(200);
   await page.goBack();
+  await page.waitForSelector('#homeView.active');
+  await page.locator('#searchOpenBtn').click();
+  await page.waitForSelector('#searchModal.open');
   await page.waitForSelector('#searchResults .song-item');
   await page.locator('#searchResults .song-item').nth(idx).click();
   await page.waitForSelector('#songDetail .verse');
@@ -335,6 +340,8 @@ await section('reader features', async () => {
   ok('reader opens at the top instead of restoring old scroll', reopenedAt < 2, 'got ' + reopenedAt);
   // WhatsApp FAB + menu (check the .wa-fab button — the wrapper div has zero size)
   ok('wa fab visible in detail', await page.locator('#waFabWrap .wa-fab').isVisible());
+  ok('floating menu button has no shadow',
+    await page.locator('#waFabWrap .wa-fab').evaluate(el => getComputedStyle(el).boxShadow === 'none'));
   await page.locator('#waFabWrap .wa-fab').click();
   await page.waitForSelector('#waMenu.open');
   const menuTxt = await page.locator('#waMenu').textContent();
@@ -357,13 +364,16 @@ await section('reader features', async () => {
     // force-close any lingering modal/menu so subsequent tests aren't blocked
     await page.evaluate(() => { document.getElementById('imagePreviewModal')?.classList.remove('open'); document.getElementById('waMenu')?.classList.remove('open'); });
   }
-  // close menu, go back to search view → FAB hidden
+  // close menu, go back home → search modal covers the chrome and hides the FAB
   await page.keyboard.press('Escape').catch(() => {});
   await page.goBack();
+  await page.waitForSelector('#homeView.active');
+  await page.locator('#searchOpenBtn').click();
+  await page.waitForSelector('#searchModal.open');
   await page.waitForSelector('#searchResults .song-item');
-  ok('wa fab hidden in search view', !(await page.locator('#waFabWrap .wa-fab').isVisible()));
+  ok('wa fab hidden while search modal is open', !(await page.locator('#waFabWrap .wa-fab').isVisible()));
   // reader bottom bar: visible on a long song, lyrics stop above it, hides when nothing scrolls
-  await page.locator('#searchInput').fill('pakai vannoi');
+  await page.locator('#searchModalInput').fill('pakai vannoi');
   await page.waitForTimeout(600);
   const idx2 = await page.evaluate(() => {
     const items = [...document.querySelectorAll('#searchResults .song-item')];
@@ -438,34 +448,52 @@ await section('reader features', async () => {
   await page.close();
 });
 
-// ═══════════════ 3. SEARCH (filters, sort, normalization, history) ═══════════════
+// ═══════════════ 3. SEARCH (modal, songbook filter, sort, normalization, history) ═══════════════
 await section('search', async () => {
   const page = await newPage();
   await waitLoaded(page);
-  const inp = page.locator('#searchInput');
   // scope: start from home so search covers everything
+  await page.locator('#searchOpenBtn').click();
+  await page.waitForSelector('#searchModal.open');
+  ok('desktop search opens a modal', await page.locator('#searchModal .search-modal').isVisible());
+  await page.locator('#searchBookFilterWrap').click();
+  await page.waitForSelector('#searchBookMenu:not([hidden])');
+  const bookOpts = await page.locator('#searchBookMenu .search-menu-item').count();
+  ok('songbook filter lists enabled books (' + bookOpts + ')', bookOpts > 5);
+  ok('songbook filter is a themed menu, not a native select', (await page.locator('#searchBookMenu select').count()) === 0);
+  await page.locator('#searchBookFilterWrap').click();
+  ok('old field-filter chips are gone', (await page.locator('.si-chip').count()) === 0);
+  const inp = page.locator('#searchModalInput');
   await inp.fill('toupa');
   await page.waitForTimeout(900);
   const n1 = await page.locator('#searchResults .song-item').count();
   ok('search "toupa" returns results (' + n1 + ')', n1 > 0);
-  // title filter narrows
-  await page.locator('.si-chip[data-filter="title"]').click();
-  await page.waitForTimeout(400);
-  const nTitle = await page.locator('#searchResults .song-item').count();
-  ok('Title filter narrows results', nTitle <= n1, nTitle + ' vs ' + n1);
-  // number filter (search a number so the filter has something to match)
-  await page.locator('.si-chip[data-filter="number"]').click();
-  await inp.fill('1');
-  await page.waitForTimeout(700);
-  ok('Number filter works', (await page.locator('#searchResults .song-item').count()) > 0);
-  // reset to All for the remaining checks
-  await page.locator('.si-chip[data-filter="all"]').first().click();
+  // one songbook filter narrows the same query
+  const scopeKey = await page.evaluate(() => {
+    const q = normText('toupa');
+    return enabledBookKeys().find(k => SONGS[k] && SONGS[k].songs &&
+      SONGS[k].songs.some(song => matchSong(song, k, SONGS[k].info.name, q)));
+  });
+  await page.locator('#searchBookFilterWrap').click();
+  await page.locator('#searchBookMenu [data-book="' + scopeKey + '"]').click();
+  await page.waitForTimeout(500);
+  const nScoped = await page.locator('#searchResults .song-item').count();
+  const outOfBook = await page.evaluate(key => {
+    const name = SONGS[key].info.name;
+    return [...document.querySelectorAll('#searchResults .song-item')].filter(it =>
+      ![...it.querySelectorAll('.si-badge')].some(b => b.textContent === name)).length;
+  }, scopeKey);
+  ok('songbook filter narrows results (' + nScoped + ' in ' + scopeKey + ')', nScoped > 0 && nScoped <= n1 && outOfBook === 0, 'outside=' + outOfBook);
+  await page.locator('#searchBookFilterWrap').click();
+  await page.locator('#searchBookMenu [data-book="all"]').click();
   await page.waitForTimeout(400);
   // sort
-  await page.selectOption('.si-sort', 'alpha');
+  await page.locator('#searchSortBtn').click();
+  await page.locator('#searchSortMenu [data-sort="alpha"]').click();
   await page.waitForTimeout(400);
   const firstTitle = (await page.locator('#searchResults .song-item .si-title').first().textContent()).trim();
-  await page.selectOption('.si-sort', 'relevance');
+  await page.locator('#searchSortBtn').click();
+  await page.locator('#searchSortMenu [data-sort="relevance"]').click();
   await page.waitForTimeout(400);
   ok('sort works', (await page.locator('#searchResults .song-item').count()) > 0, 'first after A-Z: ' + firstTitle);
   // normalization (apostrophe/diacritics)
@@ -480,14 +508,49 @@ await section('search', async () => {
   ok('empty query shows recent searches (' + chips.length + ' chips)', chips.length > 0, chips.join(' | '));
   await page.locator('.si-rec').first().click();
   await page.waitForTimeout(700);
-  const header = await page.locator('#searchResults .song-list-header').textContent().catch(() => '');
   const rerun = await page.locator('#searchResults .song-item').count();
-  ok('clicking recent search re-runs it (' + rerun + ' results)', rerun > 0, 'chip=' + JSON.stringify(chips[0]) + ' header=' + header.trim().slice(0, 80));
+  ok('clicking recent search re-runs it (' + rerun + ' results)', rerun > 0, 'chip=' + JSON.stringify(chips[0]));
   // clear history
   await inp.fill('');
   await page.waitForTimeout(500);
   await page.locator('.si-clear-hist').click();
   ok('clear history works', (await page.locator('.si-rec').count()) === 0);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#searchModal:not(.open)', { state: 'attached' });
+  ok('Escape closes the search modal', !(await page.locator('#searchModal').evaluate(el => el.classList.contains('open'))));
+
+  // inside a songbook the filter is a fixed scope pill, not a picker
+  await page.locator('#groupGrid .cat-card').first().click();
+  await page.waitForSelector('#categoryGrid .cat-card');
+  await page.locator('#categoryGrid .cat-card').first().click();
+  await page.waitForSelector('#songGrid .song-item');
+  const bookKey = await page.evaluate(() => currentCat);
+  const bookLabel = await page.evaluate(key => SONGS[key].info.name, bookKey);
+  await page.locator('#searchOpenBtn').click();
+  await page.waitForSelector('#searchModal.open');
+  ok('in-book search hides the songbook picker', !(await page.locator('#searchBookFilterWrap').isVisible()));
+  const pillText = (await page.locator('#searchScopePill').textContent() || '').trim();
+  ok('in-book search shows a scoped book pill', pillText === bookLabel, pillText + ' vs ' + bookLabel);
+  await inp.fill('a');
+  await page.waitForTimeout(800);
+  const insideCount = await page.locator('#searchResults .song-item').count();
+  const outsideScoped = await page.evaluate(key => {
+    const name = SONGS[key].info.name;
+    return [...document.querySelectorAll('#searchResults .song-item')].filter(it =>
+      ![...it.querySelectorAll('.si-badge')].some(b => b.textContent === name)).length;
+  }, bookKey);
+  ok('in-book search only returns that book (' + insideCount + ' results)', insideCount > 0 && outsideScoped === 0, 'outside=' + outsideScoped);
+  // opening a result closes the popup and keeps the reader scoped to the book
+  await page.locator('#searchResults .song-item').first().click();
+  await page.waitForSelector('#songDetail .verse');
+  ok('result click closes search modal', !(await page.locator('#searchModal').evaluate(el => el.classList.contains('open'))));
+  await page.locator('#searchOpenBtn').click();
+  await page.waitForSelector('#searchModal.open');
+  const detailPill = (await page.locator('#searchScopePill').textContent() || '').trim();
+  ok('search from a scoped reader stays in that book', detailPill === bookLabel && !(await page.locator('#searchBookFilterWrap').isVisible()), detailPill);
+  await page.locator('#searchModal .search-modal-cancel').click();
+  await page.waitForSelector('#searchModal:not(.open)', { state: 'attached' });
+  ok('Cancel closes the search modal', !(await page.locator('#searchModal').evaluate(el => el.classList.contains('open'))));
   await page.close();
 });
 
@@ -561,17 +624,19 @@ await section('playlists', async () => {
   await page.locator('#songGrid .song-item').first().click();
   await page.waitForSelector('#songGrid .song-item');
   ok('playlist opens with 1 song', (await page.textContent('#songGrid')).includes(songTitle));
-  // search is global now: the playlist song is found from anywhere, with no scope header
-  await page.fill('#searchInput', songTitle.slice(0, 6));
+  // search is global now: the playlist song is found from anywhere, with no scope pill
+  await page.locator('#searchOpenBtn').click();
+  await page.waitForSelector('#searchModal.open');
+  await page.fill('#searchModalInput', songTitle.slice(0, 6));
   await page.waitForTimeout(900);
-  const globalHeader = await page.textContent('#searchResults .song-list-header').catch(() => '');
   const globalCount = await page.locator('#searchResults .song-item').count();
-  ok('search runs across all songbooks from a playlist', globalCount >= 1 && !globalHeader.includes(' in '), (globalHeader || '').trim().slice(0, 110) + ' | results=' + globalCount);
-  // back to the playlist, then rename
-  await page.fill('#searchInput', '');
-  await page.waitForTimeout(400);
-  await page.goBack();
-  await page.waitForSelector('#songGrid .song-item');
+  const allScope = (await page.locator('#searchBookFilterLabel').textContent() || '').trim();
+  ok('search runs across all songbooks from a playlist', globalCount >= 1 && allScope === 'All songbooks' && !(await page.locator('#searchScopePill').isVisible()), 'scope=' + allScope + ' results=' + globalCount);
+  // close the popup, then return to the playlist itself and rename
+  await page.locator('#searchModal .search-modal-cancel').click();
+  await page.waitForSelector('#searchModal:not(.open)', { state: 'attached' });
+  await page.evaluate(() => openPlaylist(currentPlaylistId));
+  await page.waitForSelector('#listHeader a:has-text("Rename")');
   // rename via prompt
   page.once('dialog', d => d.accept('E2E Renamed'));
   await page.locator('#listHeader').locator('a:has-text("Rename")').click();
@@ -1002,6 +1067,31 @@ await section('update check', async () => {
   ok('up-to-date check shows inline status', (await current.textContent('#updateStatus')).includes('latest version'));
   ok('up-to-date check leaves the dialog hidden', await current.locator('#updateOverlay').isHidden());
   ok('up-to-date check creates no toast', (await current.locator('.toast').count()) === 0);
+  const checkBusy = await current.evaluate(() => {
+    setCheckUpdateBusy(true);
+    const row = document.getElementById('checkUpdateRow');
+    return {
+      disabled: row.disabled,
+      busy: row.getAttribute('aria-busy'),
+      label: row.querySelector('.sr-label').textContent,
+      spinner: !!row.querySelector('.row-spinner'),
+    };
+  });
+  ok('check for update shows a spinner while checking',
+    checkBusy.disabled && checkBusy.busy === 'true' && checkBusy.label === 'Checking…' && checkBusy.spinner,
+    JSON.stringify(checkBusy));
+  const checkIdle = await current.evaluate(() => {
+    setCheckUpdateBusy(false);
+    const row = document.getElementById('checkUpdateRow');
+    return {
+      disabled: row.disabled,
+      label: row.querySelector('.sr-label').textContent,
+      spinner: !!row.querySelector('.row-spinner'),
+    };
+  });
+  ok('check for update restores its label and row',
+    !checkIdle.disabled && checkIdle.label === 'Check for update' && !checkIdle.spinner,
+    JSON.stringify(checkIdle));
   await current.close();
 
   // Manual check must also notice a newer latest.json when version.json is stale.
@@ -1066,10 +1156,17 @@ await section('mobile', async () => {
   ok('mobile tab bar visible with 5 tabs', (await page.locator('#tabBar .tab').count()) === 5 && await page.locator('#tabBar').isVisible());
   ok('mobile tab bar active = home', (await page.locator('#tabBar .tab.active').getAttribute('data-tab')) === 'home');
   ok('mobile header hides hamburger + search toggle', await page.locator('#menuBtn').isHidden() && await page.locator('#searchToggle').isHidden());
-  // search tab opens the in-page search field
+  // search tab opens the shared search modal
   await page.locator('#tabBar .tab[data-tab="search"]').click();
-  await page.waitForTimeout(600);
-  ok('search tab opens in-page search', await page.locator('#searchInputMobile').isVisible());
+  await page.waitForSelector('#searchModal.open');
+  await page.waitForTimeout(300);
+  ok('search tab opens the search modal', await page.locator('#searchModalInput').isVisible());
+  ok('search modal covers the phone screen', await page.evaluate(() => {
+    const r = document.querySelector('#searchModal .search-modal').getBoundingClientRect();
+    return r.width >= window.innerWidth - 1 && r.height >= window.innerHeight - 1;
+  }));
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#searchModal:not(.open)', { state: 'attached' });
   await page.locator('#tabBar .tab[data-tab="fav"]').click();
   await page.waitForTimeout(700);
   ok('favourites tab opens favourites list', (await page.textContent('#listHeader h2')).trim() === 'Favourites');
@@ -1130,6 +1227,12 @@ await section('chord studio', async () => {
   ok('chord editor is a lyric canvas, not text boxes',
     (await page.locator('#chordEditorRows, #chordModal input.chord-editor-input').count()) === 0 &&
     (await page.locator('#ceCanvas .ce-ch').count()) > 20);
+  const coverage = await page.evaluate(() => ({
+    verses: CE.blocks.length,
+    counts: CE.blocks.map(b => b.lines.reduce((n, line) => n + line.chords.length, 0)),
+  }));
+  ok('bundled BL_1 chart loads chords on all six verses',
+    coverage.verses === 6 && coverage.counts.every(n => n > 0), JSON.stringify(coverage));
   const state0 = await page.evaluate(() => ({ key: CE.key, chords: CE.blocks[0].lines[0].chords.slice() }));
   ok('existing chart opens on character positions', state0.key === 'G' && state0.chords.length === 3 && state0.chords.every(c => Number.isInteger(c.pos)), JSON.stringify(state0));
   const aligned = await page.evaluate(() => {
@@ -1443,6 +1546,15 @@ await section('pwa offline', async () => {
   // fetch goes through the SW (the first load races SW activation), then check.
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => document.getElementById('statSongs')?.textContent.includes('5,7'), null, { timeout: 30000 });
+  // cache.put runs after the fetch resolves, so poll briefly instead of racing it.
+  await page.waitForFunction(async () => {
+    for (const k of await caches.keys()) {
+      const c = await caches.open(k);
+      const hit = (await c.keys()).find(r => new URL(r.url).pathname.endsWith('/songs.json.gzip'));
+      if (hit && await c.match(hit)) return true;
+    }
+    return false;
+  }, null, { timeout: 5000 }).catch(() => {});
   const dataLen = await page.evaluate(async () => {
     const keys = await caches.keys();
     for (const k of keys) {

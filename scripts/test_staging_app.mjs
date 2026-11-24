@@ -62,15 +62,12 @@ try {
   }, unique);
   await page.waitForTimeout(2000);
 
-  await page.evaluate(() => openAdmin());
-  await page.waitForFunction(() => {
-    const el = document.getElementById('cloudPanel');
-    return el && !el.hidden && el.textContent.includes('Admin sign in');
-  }, null, { timeout: 10000 });
-  await page.locator('#cloudPanel button', { hasText: 'Admin sign in' }).click();
-  await page.fill('#cloudEmail', email);
-  await page.fill('#cloudPass', password);
-  await page.click('#cloudSignInBtn');
+  await page.evaluate(() => openAdminAccount());
+  await page.waitForFunction(() =>
+    document.getElementById('adminAccountBody')?.textContent.includes('Admin sign in'), null, { timeout: 10000 });
+  await page.fill('#adminAccountEmail', email);
+  await page.fill('#adminAccountPass', password);
+  await page.click('#adminAccountSignInBtn');
   await page.waitForFunction(() => {
     const el = document.getElementById('cloudPanel');
     return el && el.textContent.includes('Review queue');

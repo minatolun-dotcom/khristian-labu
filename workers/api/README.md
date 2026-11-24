@@ -54,8 +54,10 @@ curl -X POST -H "x-setup-token: $SETUP_TOKEN" -H 'Content-Type: application/json
 
 `/api/setup/admin` only accepts an email in `ADMIN_EMAILS`, creates the account
 through Better Auth (password hashed there), and sets `role = 'admin'`.
-Public `/api/auth/sign-up/*` is closed; the setup endpoint is the provisioning
-path.
+Public `/api/auth/sign-up/*` is closed; the setup endpoint bootstraps the first
+admin. Only `minatolun@gmail.com` can create more through `/api/admin/users`;
+those accounts are also stored with `role = 'admin'`, so no redeploy is needed.
+Other admins receive `403` from that endpoint.
 
 Deploy and secrets:
 
@@ -79,6 +81,7 @@ workers/api/wrangler.prod.jsonc` for every `secret put`.
 | GET | `/api/published-edits[?since=seq]` | public; array ordered by `seq` |
 | POST | `/api/proposals` | public, D1 rate-limited (20/min/IP), deduplicated |
 | GET | `/api/admin/me` | admin cookie |
+| POST | `/api/admin/users` | owner only; create another admin `{name?, email, password}` |
 | GET | `/api/admin/proposals` | admin; pending queue |
 | POST | `/api/admin/publish` | admin; `{kind, payload, expectedVersion?}` |
 | POST | `/api/admin/approve` | admin; `{ids, expectedVersion?}` |

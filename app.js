@@ -476,16 +476,43 @@ async function fetchUpdateInfo() {
   }
   return best;
 }
+function setCheckUpdateBusy(busy) {
+  const row = document.getElementById('checkUpdateRow');
+  if (!row) return;
+  const label = row.querySelector('.sr-label');
+  const chev = row.querySelector('.sr-chev');
+  if (!label) return;
+  if (!row.dataset.idleLabel) row.dataset.idleLabel = label.textContent;
+  row.disabled = busy;
+  row.classList.toggle('is-checking', busy);
+  if (busy) row.setAttribute('aria-busy', 'true'); else row.removeAttribute('aria-busy');
+  label.textContent = busy ? 'Checking…' : row.dataset.idleLabel;
+  if (chev) chev.classList.toggle('is-hidden', busy);
+  let spinner = row.querySelector('.row-spinner');
+  if (busy && !spinner) {
+    spinner = document.createElement('span');
+    spinner.className = 'btn-spinner row-spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+    row.append(spinner);
+  } else if (!busy && spinner) {
+    spinner.remove();
+  }
+}
 async function manualCheckUpdate() {
   if (!isNativeUpdater()) return;
+  setCheckUpdateBusy(true);
   setUpdateStatus('Checking for updates…');
-  const info = await fetchUpdateInfo();
-  if (!info) { setUpdateStatus('Could not check for updates. Try again.'); return; }
-  if (compareVer(info.version, APP_VERSION) > 0) {
-    showUpdateBanner(info.version, info.meta);
-    startInAppUpdate(info);
-  } else {
-    setUpdateStatus('You are on the latest version (' + APP_VERSION + ').');
+  try {
+    const info = await fetchUpdateInfo();
+    if (!info) { setUpdateStatus('Could not check for updates. Try again.'); return; }
+    if (compareVer(info.version, APP_VERSION) > 0) {
+      showUpdateBanner(info.version, info.meta);
+      startInAppUpdate(info);
+    } else {
+      setUpdateStatus('You are on the latest version (' + APP_VERSION + ').');
+    }
+  } finally {
+    setCheckUpdateBusy(false);
   }
 }
 // ponytail: native-only startup check. The website always serves the newest build.
@@ -756,6 +783,14 @@ async function cloudCheckAdmin() {
   try {
     const me = await cloudReq('/api/admin/me');
     cloudAdmin = !!(me && me.isAdmin);
+    if (cloudAdmin && me.user) {
+      const current = cloudSession() || {};
+      cloudSaveSession({
+        ...current,
+        email: me.user.email || current.email || '',
+        user: me.user,
+      });
+    }
   } catch (e) { cloudAdmin = false; }
   return cloudAdmin;
 }
@@ -812,9 +847,11 @@ async function cloudFlushOutbox() {
 }
 
 // ── background check ──
-async function cloudCheckForUpdates(force) {
+async function cloudCheckForUpdates(force, btn) {
   if (!CLOUD_ON || _cloudSyncing) return false;
   _cloudSyncing = true;
+  setCloudButtonBusy(btn, true, 'Syncing…');
+  let ok = false;
   try {
     let st;
     try { st = await cloudReq('/api/state'); }
@@ -823,9 +860,15 @@ async function cloudCheckForUpdates(force) {
     if (!force && version === PUB.version) return false;
     await cloudLoadLayer(force);
     if (!songsReady) return false;
-    const ok = await cloudApplyLayerToCorpus();
+    ok = await cloudApplyLayerToCorpus();
     return ok;
-  } finally { _cloudSyncing = false; }
+  } finally {
+    _cloudSyncing = false;
+    if (btn) {
+      if (ok) flashCloudButton(btn, 'Synced');
+      else setCloudButtonBusy(btn, false);
+    }
+  }
 }
 // Rebuild the in-memory corpus from the pristine IndexedDB base copy, then replay
 // the approved layer + this device's edits. IDB returns a structured clone, so the
@@ -856,7 +899,7 @@ function cloudStart() {
   setTimeout(tick, 4000);
 }
 
-// ─── REVIEW UI (Manage Songs) ───
+// ─── REVIEW / SYNC UI (Admin account) ───
 function cloudAgo(value) {
   const t = typeof value === 'number' ? value : Date.parse(value || '');
   if (!t) return '';
@@ -874,12 +917,12 @@ async function renderCloudPanel() {
   box.hidden = false;
   let s = cloudSession();
   if (!s && !(await cloudRestoreSession())) {
-    box.innerHTML = '<div class="cloud-bar"><span class="cloud-state">Cloud review · sign in to approve submitted changes</span><button class="btn btn-ghost" data-action="openModal" data-modal="cloudModal">Admin sign in</button></div>';
+    box.innerHTML = '<div class="cloud-bar"><span class="cloud-state">Cloud review · admin sign-in required</span><button class="btn btn-ghost" data-action="openAdminAccount">Admin account</button></div>';
     return;
   }
   s = cloudSession();
   if (!(await cloudCheckAdmin())) {
-    box.innerHTML = '<div class="cloud-bar"><span class="cloud-state">Signed in as ' + esc(s.email || '') + ' · this account is not an admin</span><button class="btn btn-ghost" data-action="cloudSignOut">Sign out</button></div>';
+    box.innerHTML = '<div class="cloud-bar"><span class="cloud-state">This signed-in account is not an admin.</span><button class="btn btn-ghost" data-action="openAdminAccount">Admin account</button></div>';
     return;
   }
   try {
@@ -889,13 +932,16 @@ async function renderCloudPanel() {
     return;
   }
   const n = cloudPending.length;
-  let html = '<div class="cloud-bar"><span class="cloud-state">Review queue' + (n ? '<span class="cloud-count">' + n + '</span>' : '') + ' · ' + esc(s.email || '') + '</span>'
-    + (n > 1 ? '<button class="btn btn-primary" data-action="cloudApproveAll">Approve all</button>' : '')
-    + '<button class="btn btn-ghost" data-action="cloudCheckForUpdates">Sync now</button>'
-    + '<button class="btn btn-ghost" data-action="cloudSignOut">Sign out</button></div>';
+  let html = '<div class="cloud-bar"><span class="cloud-state">Review queue' + (n ? '<span class="cloud-count">' + n + '</span>' : '') + '</span>'
+    + '<button class="btn btn-primary" data-action="cloudCheckForUpdates">Sync now</button>'
+    + '<button class="btn btn-ghost" data-action="openSyncHistory">History</button></div>';
   if (!n) {
     html += '<div class="cloud-empty">Nothing waiting. Approved changes are already live on every device.</div>';
   } else {
+    if (n > 1) {
+      html += '<div class="cloud-list-head"><span>' + n + ' changes waiting for review</span>'
+        + '<button class="cloud-link" type="button" data-action="cloudApproveAll">Approve all</button></div>';
+    }
     html += '<div class="cloud-list">';
     cloudPending.forEach(p => {
       const summary = p.summary || cloudDescribe(p.kind, p.payload);
@@ -908,14 +954,24 @@ async function renderCloudPanel() {
   }
   box.innerHTML = html;
 }
-async function cloudSignIn() {
-  const email = document.getElementById('cloudEmail').value.trim();
-  const pass = document.getElementById('cloudPass').value;
-  const err = document.getElementById('cloudErr');
-  const btn = document.getElementById('cloudSignInBtn');
-  err.textContent = '';
-  if (!email || !pass) { err.textContent = 'Email and password are required'; return; }
-  btn.disabled = true;
+function cloudErrorText(error) {
+  const raw = error && error.message ? error.message : 'Request failed';
+  const brace = raw.indexOf('{');
+  if (brace !== -1) {
+    try {
+      const data = JSON.parse(raw.slice(brace));
+      if (data && (data.message || data.error)) return data.message || data.error;
+    } catch (e) {}
+  }
+  return raw.replace(/^cloud \d+\s*/, '') || 'Request failed';
+}
+async function cloudSignInWith(email, pass, err, btn, passInput, onSuccess) {
+  if (err) err.textContent = '';
+  if (!email || !pass) {
+    if (err) err.textContent = 'Email and password are required';
+    return false;
+  }
+  if (btn) btn.disabled = true;
   try {
     const d = await cloudReq('/api/auth/sign-in/email', {
       body: { email: email, password: pass },
@@ -929,13 +985,14 @@ async function cloudSignIn() {
       cloudSaveSession(null);
       throw new Error('This account is not an admin.');
     }
-    document.getElementById('cloudPass').value = '';
-    closeModal('cloudModal');
+    if (passInput) passInput.value = '';
     await cloudLoadLayer(true);
-    renderCloudPanel();
+    if (onSuccess) await onSuccess();
+    return true;
   } catch (e) {
-    err.textContent = e && e.message ? e.message : 'Sign in failed';
-  } finally { btn.disabled = false; }
+    if (err) err.textContent = cloudErrorText(e);
+    return false;
+  } finally { if (btn) btn.disabled = false; }
 }
 async function cloudSignOut() {
   try {
@@ -946,30 +1003,81 @@ async function cloudSignOut() {
   _cloudCookieChecked = true;
   cloudAdmin = false;
   cloudPending = [];
-  renderCloudPanel();
+  if (currentView === 'adminAccount') await renderAdminAccount();
+  else renderCloudPanel();
+}
+function setCloudButtonBusy(btn, busy, label) {
+  if (!btn) return;
+  const idle = btn.dataset.idleLabel || btn.textContent.trim();
+  btn.dataset.idleLabel = idle;
+  clearTimeout(btn._cloudFeedbackTimer);
+  if (!busy) {
+    btn.disabled = false;
+    btn.classList.remove('is-busy', 'is-done');
+    btn.removeAttribute('aria-busy');
+    btn.textContent = idle;
+    return;
+  }
+  btn.disabled = true;
+  btn.classList.remove('is-done');
+  btn.classList.add('is-busy');
+  btn.setAttribute('aria-busy', 'true');
+  btn.replaceChildren();
+  const spinner = document.createElement('span');
+  spinner.className = 'btn-spinner';
+  spinner.setAttribute('aria-hidden', 'true');
+  const text = document.createElement('span');
+  text.textContent = label || idle;
+  btn.append(spinner, text);
+}
+function flashCloudButton(btn, label) {
+  if (!btn) return;
+  const idle = btn.dataset.idleLabel || btn.textContent.trim();
+  btn.dataset.idleLabel = idle;
+  clearTimeout(btn._cloudFeedbackTimer);
+  btn.disabled = false;
+  btn.classList.remove('is-busy');
+  btn.classList.add('is-done');
+  btn.removeAttribute('aria-busy');
+  btn.replaceChildren();
+  const check = document.createElement('span');
+  check.className = 'btn-check';
+  check.setAttribute('aria-hidden', 'true');
+  check.textContent = '✓';
+  const text = document.createElement('span');
+  text.textContent = label;
+  btn.append(check, text);
+  btn._cloudFeedbackTimer = setTimeout(() => {
+    if (!btn.isConnected) return;
+    btn.classList.remove('is-done');
+    btn.textContent = idle;
+  }, 1200);
 }
 async function cloudAfterReview(msg) {
   await cloudLoadLayer(true);
   await cloudApplyLayerToCorpus();
   renderCloudPanel();
 }
-async function cloudApprove(id) {
+async function cloudApprove(id, btn) {
+  setCloudButtonBusy(btn, true, 'Approving…');
   try { await cloudReq('/api/admin/approve', { body: { ids: [id] } }); }
-  catch (e) {  return; }
+  catch (e) { setCloudButtonBusy(btn, false); return; }
   cloudPending = cloudPending.filter(p => p.id !== id);
   await cloudAfterReview('Approved — syncing to all devices');
 }
-async function cloudApproveAll() {
+async function cloudApproveAll(btn) {
   const ids = cloudPending.map(p => p.id);
   if (!ids.length) return;
+  setCloudButtonBusy(btn, true, 'Approving…');
   try { await cloudReq('/api/admin/approve', { body: { ids: ids } }); }
-  catch (e) {  return; }
+  catch (e) { setCloudButtonBusy(btn, false); return; }
   cloudPending = [];
   await cloudAfterReview('Approved ' + ids.length + ' — syncing to all devices');
 }
-async function cloudReject(id) {
+async function cloudReject(id, btn) {
+  setCloudButtonBusy(btn, true, 'Rejecting…');
   try { await cloudReq('/api/admin/reject', { body: { ids: [id] } }); }
-  catch (e) {  return; }
+  catch (e) { setCloudButtonBusy(btn, false); return; }
   cloudPending = cloudPending.filter(p => p.id !== id);
   renderCloudPanel();
 }
@@ -1125,49 +1233,32 @@ function updateStats() {
   }
 }
 
-// ─── MOBILE SEARCH ───
+// ─── SEARCH ───
 function toggleSearch() {
-  const box = document.getElementById('searchBox');
-  const input = document.getElementById('searchInput');
-  const isMobile = window.matchMedia('(max-width: 768px)').matches;
-  if (isMobile) {
-    box.classList.add('active');
-    input.focus();
-  }
-}
-function closeSearch() {
-  const box = document.getElementById('searchBox');
-  const input = document.getElementById('searchInput');
-  const boxActive = box.classList.contains('active');
-  const inSearch = currentView === 'search';
-  // ponytail: Escape anywhere used to run the search pipeline (onSearch('') →
-  // renderRecentSearch), which force-showed an empty search view over the reader or
-  // a list — a blank page under the nav. Only act when search is actually in play.
-  if (!boxActive && !inSearch) return;
-  box.classList.remove('active');
-  syncSearchFields('');
-  clearTimeout(searchTimeout);
-  searchQuery = '';
-  if (!inSearch) return; // mobile search field was expanded — collapse it, don't navigate
-  // Leave the results page instead of re-rendering an empty one.
-  if (history.state && history.state.view === 'search') history.back();
-  else goHome();
+  openSearchModal();
 }
 function clearSearchInput() {
-  syncSearchFields('');
+  const input = document.getElementById('searchModalInput');
+  if (!input) return;
+  input.value = '';
+  const clear = document.getElementById('searchModalClear');
+  if (clear) clear.classList.remove('show');
   onSearch('');
-  document.getElementById('searchInput').focus();
+  input.focus();
 }
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if (document.getElementById('confirmModal')?.classList.contains('open')) return;
   if (document.getElementById('chordModal')?.classList.contains('open')) { requestCloseChordEditor(); return; }
-  closeSearch();
+  const bookMenu = document.getElementById('searchBookMenu');
+  const sortMenu = document.getElementById('searchSortMenu');
+  if ((bookMenu && !bookMenu.hidden) || (sortMenu && !sortMenu.hidden)) { closeSearchMenus(); return; }
+  if (document.getElementById('searchModal')?.classList.contains('open')) { closeSearchModal(); return; }
 });
 
 // ─── NAVIGATION ───
 let currentView = 'home', currentCat = null, currentList = [], currentSongIdx = -1;
-let currentGroup = null, currentListKind = 'home', searchQuery = '', _restoring = false;
+let currentGroup = null, currentListKind = 'home', _restoring = false;
 // ponytail: remember per-list scroll so back-navigation lands where the user was.
 let _scrollPos = {};
 // ponytail: remember per-song reader scroll so swiping back to a hymn keeps your place.
@@ -1239,7 +1330,10 @@ async function loadChordCharts() {
     const res = await fetch('chords.json', { cache: 'no-store' });
     if (!res.ok) return;
     const data = await res.json();
-    Object.keys(data).forEach(id => { if (!CHORD_CHARTS[id] && data[id]) CHORD_CHARTS[id] = data[id]; });
+    // Bundled charts replace the small legacy seed, but a chart saved on this
+    // device still wins. This keeps BL_1's full six-verse chart from being
+    // blocked by the old first-verse-only seed.
+    Object.keys(data).forEach(id => { if (!USER_CHORD_IDS.has(id) && data[id]) CHORD_CHARTS[id] = data[id]; });
   } catch (e) { /* chord charts are optional offline data */ }
 }
 // Solfa sheets are local assets, never arbitrary URLs from a cloud/backup row.
@@ -1608,25 +1702,22 @@ document.addEventListener('animationend', e => {
 // ponytail: how deep a view sits on the path (home → list → reader). The page
 // transition rides this: going deeper enters from the right, coming back enters
 // from the left, so movement reads as travel rather than as a fresh paint.
-const _VIEW_DEPTH = { home: 0, list: 1, search: 1, settings: 1, admin: 1, login: 1, detail: 2 };
+const _VIEW_DEPTH = { home: 0, list: 1, settings: 1, admin: 1, login: 1, adminAccount: 2, detail: 2 };
 function showView(v) {
   if (v === 'list' && currentView !== 'list' && currentView !== 'detail') _listOriginView = currentView + 'View';
-  // Leaving search commits the query the user settled on (not a keystroke prefix).
-  if (currentView === 'search' && v !== 'search') commitSearchHistory();
   const _fromDepth = _VIEW_DEPTH[currentView], _toDepth = _VIEW_DEPTH[v];
   document.documentElement.style.setProperty('--puan-dir',
     (_fromDepth == null || _toDepth == null || _toDepth >= _fromDepth) ? '1' : '-1');
   currentView = v;
   // ponytail: drives bottom-tab visibility (hidden in the reader) from CSS.
   document.body.dataset.view = v;
-  ['homeView','listView','detailView','searchView','adminView','settingsView'].forEach(id => {
+  ['homeView','listView','detailView','adminView','settingsView','adminAccountView'].forEach(id => {
     document.getElementById(id).classList.toggle('active', id === v + 'View');
   });
   document.getElementById('backBtn').classList.toggle('show', !['home','admin','settings'].includes(v));
-  const hideSearch = v === 'admin' || v === 'login';
+  const hideSearch = v === 'admin' || v === 'login' || v === 'adminAccount';
   const searchBox = document.getElementById('searchBox');
   if (hideSearch) { searchBox.style.display = 'none'; } else { searchBox.removeAttribute('style'); }
-  if (v !== 'search') searchBox.classList.remove('active');
   document.getElementById('searchToggle').style.display = hideSearch ? 'none' : '';
   // ponytail: reader controls belong only to the detail view. Toggle the footer host.
   document.getElementById('readerControlsHost').style.display = (v === 'detail' ? '' : 'none');
@@ -1642,12 +1733,6 @@ function showView(v) {
   const wf = document.getElementById('waFabWrap');
   if (wf) { wf.classList.toggle('is-hidden', v !== 'detail'); if (v !== 'detail') closeWaMenu(); }
   // ponytail: adminBtn removed — accessible via sidebar Settings
-  // ponytail: entering the search view without an active query means we came back
-  // to it — clear any leftover text so the previous search doesn't linger.
-  if (v === 'search' && !searchQuery) {
-    const si = document.getElementById('searchInput');
-    if (si) si.value = '';
-  }
   // ponytail: keep the tab title in sync with the current view.
   if (v !== 'detail') document.title = 'Khristian Labu - Gospel Songbook';
   syncTabBar();
@@ -1658,7 +1743,7 @@ function showView(v) {
 // Active tab mirrors where you are: home also covers songbook/category lists, and
 // settings stays lit while its sheet is open.
 function currentTab() {
-  if (currentView === 'settings' || currentView === 'admin') return 'settings';
+  if (currentView === 'settings' || currentView === 'admin' || currentView === 'adminAccount') return 'settings';
   if (currentView === 'search') return 'search';
   if (currentView === 'list' && currentListKind === 'fav') return 'fav';
   if (currentView === 'list' && currentListKind === 'history') return 'history';
@@ -1689,7 +1774,7 @@ function tabGo(id) {
     if (currentView === 'list' && currentListKind === 'fav') window.scrollTo({ top: 0, behavior: 'smooth' });
     else openFavs();
   } else if (id === 'search') {
-    openSearchTab();
+    openSearchModal();
   } else if (id === 'history') {
     if (currentView === 'list' && currentListKind === 'history') window.scrollTo({ top: 0, behavior: 'smooth' });
     else openHistoryPage();
@@ -1699,15 +1784,6 @@ function tabGo(id) {
   }
   syncTabBar();
 }
-async function openSearchTab() {
-  const input = document.getElementById('searchInputMobile');
-  if (currentView === 'search') { if (input) input.focus(); return; }
-  await ensureSongs();
-  renderRecentSearch();
-  navPush();
-  if (input) setTimeout(() => input.focus(), 140);
-}
-
 // ponytail: wire the SPA into the History API so the browser Back/Forward buttons
 // traverse in-app views instead of closing the tab. List views are rebuilt on restore;
 // only the detail view snapshots currentList (for prev/next + breadcrumb).
@@ -1719,7 +1795,6 @@ function buildState() {
     group: currentGroup,
     cat: currentCat,
     listKind: currentListKind,
-    q: searchQuery || '',
     songId: song ? song.id : null,
     pid: currentPlaylistId,
     list: song ? currentList.slice() : null
@@ -1738,7 +1813,6 @@ function applyState(s) {
   currentGroup = s.group || null;
   currentListKind = s.listKind || 'home';
   currentPlaylistId = s.pid || null;
-  searchQuery = s.q || '';
   switch (s.view) {
     case 'home':
       if (s.homeGrid === 'categoryGrid' && s.group) {
@@ -1776,10 +1850,8 @@ function applyState(s) {
       } else { showView('home'); renderGroups(); }
       break;
     }
-    case 'search':
-      doSearch(s.q || '');
-      break;
     case 'admin': openAdmin(); break;
+    case 'adminAccount': openAdminAccount(false); break;
     case 'settings': openSettings(); break;
     default: { showView('home'); renderGroups(); }
   }
@@ -1794,7 +1866,7 @@ function navBack() {
 }
 function goHome() {
   currentCat = null; currentGroup = null; currentListKind = 'home'; currentList = [];
-  syncSearchFields('');
+
   if (_rv.grid === 'group') showView('home');
   else if (document.getElementById('groupGrid').children.length) showHomeRoot();
   else { showView('home'); renderGroups(); }
@@ -1828,7 +1900,7 @@ async function openFavs() {
   const songs = getFavSongs();
   currentCat = null; currentList = songs; currentListKind = 'fav';
   _rv.listKind = 'fav'; _rv.cat = null; _rv.pid = null;
-  if (restoreList('fav')) { syncSearchFields(''); navPush(); return; }
+  if (restoreList('fav')) {  navPush(); return; }
   showView('list');
   document.getElementById('listHeader').innerHTML = '<h2>Favourites</h2><p>'+songs.length+' saved song'+(songs.length!==1?'s':'')+'</p>';
   renderSongList(songs);
@@ -1838,7 +1910,7 @@ async function openFavs() {
   _renderedListKey = 'fav';
   restoreScroll('fav');
   saveListCache('fav');
-  syncSearchFields('');
+
   _rv.listKind = 'fav'; _rv.cat = null; _rv.pid = null;
   navPush();
 }
@@ -2098,7 +2170,7 @@ async function openCategory(key, force) {
   _rv.cat = key; _rv.listKind = 'cat'; _rv.pid = null;
   // ponytail: already-rendered list → re-show the existing nodes (no rebuild, no
   // re-fade). Sorting is the only thing that forces a fresh render.
-  if (!force && restoreList(key)) { syncSearchFields(''); navPush(); return; }
+  if (!force && restoreList(key)) {  navPush(); return; }
   if (force) { delete _listCache[key]; delete _listNodes[key]; }
   showView('list');
   document.getElementById('listHeader').innerHTML = listHeaderHTML(key);
@@ -2106,7 +2178,7 @@ async function openCategory(key, force) {
   _renderedListKey = key;
   restoreScroll(key);
   saveListCache(key);
-  syncSearchFields('');
+
   _rv.cat = key; _rv.listKind = 'cat'; _rv.pid = null;
   navPush();
 }
@@ -4671,35 +4743,165 @@ function buildSearchIndex() {
   });
 }
 let searchTimeout;
-// ponytail: filter chips + sort are session UI state; recent searches persist.
-let searchFilter = 'all';   // all | title | lyrics | author | number
+// Search matches every field. The visible filter is the songbook scope, so the
+// old Title/Lyrics/Author/Number chips are intentionally gone.
+let searchFilter = 'all';
 let searchSort = 'relevance'; // relevance | number | alpha | recent
 let searchHistory = readJSON('labu_search_history', [], Array.isArray).filter(x => typeof x === 'string');
 // Live search holds the query in memory while its results are on screen; it is
-// committed to Recent Searches only when the user is done with it (clear/leave/
+// committed to Recent Searches only when the user is done with it (clear/close/
 // Enter/open result) so no keystroke prefix is ever stored.
 let pendingSearchQuery = '';
-// Search always covers every enabled songbook; disabled collections are skipped.
-// ponytail: two search fields exist now — the desktop header box and the in-page
-// field on the phone search tab. Keep their values and clear buttons in lockstep.
-function syncSearchFields(q) {
-  const desk = document.getElementById('searchInput');
-  const mob = document.getElementById('searchInputMobile');
-  if (desk && desk.value !== q) desk.value = q;
-  if (mob && mob.value !== q) mob.value = q;
-  const c1 = document.getElementById('searchClear');
-  const c2 = document.getElementById('searchClearMobile');
-  if (c1) c1.classList.toggle('show', !!q);
-  if (c2) c2.classList.toggle('show', !!q);
+// searchBook is the selected filter; searchScopedBook is set when the modal was
+// opened from a songbook list/reader, which locks search to that book.
+let searchBook = 'all';
+let searchHomeBook = 'all';
+let searchScopedBook = null;
+function searchBookKeys() {
+  return enabledBookKeys().filter(key => SONGS[key] && SONGS[key].songs);
 }
-function clearSearchInputMobile() {
-  syncSearchFields('');
-  onSearch('');
-  const m = document.getElementById('searchInputMobile');
-  if (m) m.focus();
+function searchContextBook() {
+  if (!currentCat || !searchBookKeys().includes(currentCat)) return null;
+  if (currentView === 'list' && currentListKind === 'cat') return currentCat;
+  if (currentView === 'detail') {
+    if (currentListKind === 'cat') return currentCat;
+    if (currentListKind === 'search' && searchScopedBook === currentCat) return currentCat;
+  }
+  return null;
+}
+const SEARCH_SORT_LABELS = { relevance: 'Relevance', number: 'Number', alpha: 'A–Z', recent: 'Recent' };
+function closeSearchMenus() {
+  ['searchBookMenu', 'searchSortMenu'].forEach(id => {
+    const menu = document.getElementById(id);
+    if (menu) menu.hidden = true;
+  });
+  ['searchBookFilterWrap', 'searchSortBtn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  });
+}
+function renderSearchBookMenu() {
+  const menu = document.getElementById('searchBookMenu');
+  if (!menu) return;
+  const item = (value, label, active) =>
+    '<button type="button" class="search-menu-item' + (active ? ' active' : '') + '" role="option" aria-selected="' + (active ? 'true' : 'false') + '" data-action="pickSearchBook" data-book="' + escAttr(value) + '">' +
+      '<span>' + esc(label) + '</span>' + (active ? '<span class="search-menu-check" aria-hidden="true">✓</span>' : '') +
+    '</button>';
+  let html = '<div class="search-menu-label">Search in</div>';
+  html += item('all', 'All songbooks', searchBook === 'all');
+  enabledGroups().forEach(group => {
+    const books = (group.books || []).filter(key => SONGS[key] && SONGS[key].songs);
+    if (!books.length) return;
+    html += '<div class="search-menu-group">' + esc(group.name || 'Songbooks') + '</div>';
+    books.forEach(key => { html += item(key, bookName(key), searchBook === key); });
+  });
+  menu.innerHTML = html;
+}
+function renderSearchSortMenu() {
+  const menu = document.getElementById('searchSortMenu');
+  if (!menu) return;
+  menu.innerHTML = Object.entries(SEARCH_SORT_LABELS).map(([value, label]) =>
+    '<button type="button" class="search-menu-item' + (searchSort === value ? ' active' : '') + '" role="option" aria-selected="' + (searchSort === value ? 'true' : 'false') + '" data-action="pickSearchSort" data-sort="' + value + '">' +
+      '<span>' + label + '</span>' + (searchSort === value ? '<span class="search-menu-check" aria-hidden="true">✓</span>' : '') +
+    '</button>'
+  ).join('');
+}
+function toggleSearchBookMenu() {
+  const menu = document.getElementById('searchBookMenu');
+  const btn = document.getElementById('searchBookFilterWrap');
+  if (!menu || !btn) return;
+  const willOpen = menu.hidden;
+  closeSearchMenus();
+  if (!willOpen) return;
+  renderSearchBookMenu();
+  menu.hidden = false;
+  btn.setAttribute('aria-expanded', 'true');
+}
+function toggleSearchSortMenu() {
+  const menu = document.getElementById('searchSortMenu');
+  const btn = document.getElementById('searchSortBtn');
+  if (!menu || !btn) return;
+  const willOpen = menu.hidden;
+  closeSearchMenus();
+  if (!willOpen) return;
+  renderSearchSortMenu();
+  menu.hidden = false;
+  menu.style.right = 'auto';
+  const toolbar = btn.closest('.search-modal-toolbar');
+  if (toolbar) {
+    const left = Math.min(btn.offsetLeft, toolbar.clientWidth - menu.offsetWidth - 12);
+    menu.style.left = Math.max(12, left) + 'px';
+  }
+  btn.setAttribute('aria-expanded', 'true');
+}
+function pickSearchBook(el) {
+  setSearchBookFilter(el.dataset.book || 'all');
+  closeSearchMenus();
+  document.getElementById('searchBookFilterWrap')?.focus();
+}
+function pickSearchSort(el) {
+  setSearchSort(el.dataset.sort || 'relevance');
+  closeSearchMenus();
+  document.getElementById('searchSortBtn')?.focus();
+}
+function renderSearchBookFilter() {
+  const wrap = document.getElementById('searchBookFilterWrap');
+  const label = document.getElementById('searchBookFilterLabel');
+  const pill = document.getElementById('searchScopePill');
+  if (!wrap || !label || !pill) return;
+  if (searchScopedBook) {
+    wrap.hidden = true;
+    pill.hidden = false;
+    pill.textContent = bookName(searchScopedBook);
+    pill.title = 'Searching in ' + bookName(searchScopedBook);
+    closeSearchMenus();
+    return;
+  }
+  wrap.hidden = false;
+  pill.hidden = true;
+  if (searchBook !== 'all' && !searchBookKeys().includes(searchBook)) searchBook = 'all';
+  label.textContent = searchBook === 'all' ? 'All songbooks' : bookName(searchBook);
+}
+async function openSearchModal() {
+  await ensureSongs();
+  const scope = searchContextBook();
+  searchScopedBook = scope;
+  if (scope) searchBook = scope;
+  else {
+    searchBook = searchHomeBook;
+    if (searchBook !== 'all' && !searchBookKeys().includes(searchBook)) searchBook = 'all';
+  }
+  closeSearchMenus();
+  renderSearchBookFilter();
+  const sortLabel = document.getElementById('searchSortLabel');
+  if (sortLabel) sortLabel.textContent = SEARCH_SORT_LABELS[searchSort] || 'Relevance';
+  const input = document.getElementById('searchModalInput');
+  const clear = document.getElementById('searchModalClear');
+  if (clear) clear.classList.toggle('show', !!(input && input.value.trim()));
+  openModal('searchModal');
+  if (input && input.value.trim()) doSearch(input.value);
+  else renderRecentSearch();
+  setTimeout(() => {
+    const field = document.getElementById('searchModalInput');
+    if (!field) return;
+    field.focus();
+    field.select();
+  }, 90);
+}
+function closeSearchModal() {
+  const modal = document.getElementById('searchModal');
+  if (!modal || !modal.classList.contains('open')) return;
+  commitSearchHistory();
+  clearTimeout(searchTimeout);
+  if (!searchScopedBook) searchHomeBook = searchBook;
+  closeSearchMenus();
+  closeModal('searchModal');
 }
 function onSearch(q) {
-  syncSearchFields(q);
+  const input = document.getElementById('searchModalInput');
+  if (input && input.value !== q) input.value = q;
+  const clear = document.getElementById('searchModalClear');
+  if (clear) clear.classList.toggle('show', !!q);
   clearTimeout(searchTimeout);
   // Search-as-you-type: a short debounce keeps one scan per burst while results
   // update within a keystroke or two.
@@ -4720,16 +4922,20 @@ function commitSearchHistory() {
   pendingSearchQuery = '';
 }
 function currentSearchQuery() {
-  const mob = document.getElementById('searchInputMobile');
-  if (mob && mob.value.trim()) return mob.value.trim();
-  return document.getElementById('searchInput').value.trim();
-}
-function setSearchFilter(f) {
-  searchFilter = f;
-  doSearch(currentSearchQuery());
+  const input = document.getElementById('searchModalInput');
+  return input ? input.value.trim() : '';
 }
 function setSearchSort(s) {
-  searchSort = s;
+  searchSort = ['relevance', 'number', 'alpha', 'recent'].includes(s) ? s : 'relevance';
+  const label = document.getElementById('searchSortLabel');
+  if (label) label.textContent = SEARCH_SORT_LABELS[searchSort] || 'Relevance';
+  doSearch(currentSearchQuery());
+}
+function setSearchBookFilter(value) {
+  if (searchScopedBook) return;
+  searchBook = value && value !== 'all' && searchBookKeys().includes(value) ? value : 'all';
+  searchHomeBook = searchBook;
+  renderSearchBookFilter();
   doSearch(currentSearchQuery());
 }
 function pushSearchHistory(q) {
@@ -4741,10 +4947,10 @@ function pushSearchHistory(q) {
   localStorage.setItem('labu_search_history', JSON.stringify(searchHistory));
 }
 function runRecentSearch(q) {
-  syncSearchFields(q);
-  doSearch(q);
-  const mob = document.getElementById('searchInputMobile');
-  if (mob && getComputedStyle(mob).display !== 'none') mob.focus();
+  const input = document.getElementById('searchModalInput');
+  if (input) input.value = q;
+  onSearch(q);
+  if (input) input.focus();
 }
 
 // Rank title first (exact → prefix → word start → contains), then author, number,
@@ -4794,21 +5000,22 @@ function matchSong(song, key, catName, q) {
   }
   return null;
 }
-const SEARCH_VERSE_LABELS = { v: 'Verse', c: 'Chorus', b: 'Bridge', p: 'Reference', pc: 'Pre-Chorus' };
-async function doSearch(q) {
+const SEARCH_VERSE_LABELS = { v: 'Verse', c: 'Chorus', b: 'Bridge', p: 'Reference', pc: 'Pre-Chorus' };async function doSearch(q) {
   await ensureSongs();
   // ponytail: keep the raw query for display/highlight/history, normalized for matching.
   q = (q || '').trim();
   const rawQ = q;
   q = normText(q);
-  searchQuery = rawQ;
   const el = document.getElementById('searchResults');
+  if (!el) return;
+  const count = document.getElementById('searchResultCount');
   if (!q) { commitSearchHistory(); renderRecentSearch(); return; }
-  const wasSearch = currentView === 'search';
-  showView('search');
-  currentListKind = 'search';
+  const scope = searchScopedBook && searchBookKeys().includes(searchScopedBook)
+    ? searchScopedBook
+    : (searchBook !== 'all' && searchBookKeys().includes(searchBook) ? searchBook : null);
+  const books = scope ? [scope] : searchBookKeys();
   const results = [];
-  enabledBookKeys().forEach(key => {
+  books.forEach(key => {
     const book = SONGS[key];
     if (!book || !book.songs) return;
     book.songs.forEach(song => {
@@ -4821,20 +5028,19 @@ async function doSearch(q) {
   else if (searchSort === 'recent') { const ri = id => recents.indexOf(id); results.sort((a, b) => (ri(a.id)>=0?ri(a.id):1e9) - (ri(b.id)>=0?ri(b.id):1e9)); }
   else results.sort((a, b) => a._score - b._score);
   // Only a query that actually matched is worth remembering; the commit happens
-  // when the user clears, opens a song, presses Enter, or leaves the search view.
+  // when the user closes the popup, presses Enter, or opens a result.
   pendingSearchQuery = results.length ? rawQ : '';
+  if (count) count.textContent = results.length.toLocaleString() + ' found';
   // ponytail: cap DOM nodes to the first 100 matches so the grid paints instantly
   // even when a query matches thousands of songs.
   const RENDER_CAP = 100;
   const shown = results.slice(0, RENDER_CAP);
   const moreNote = results.length > shown.length
-    ? '<div class="si-more">Showing first '+shown.length+' of '+results.length+' matches — refine your search to narrow down.</div>' : '';
-  el.innerHTML =
-    renderSearchToolbar('<span class="si-summary">'+results.length+' result'+(results.length!==1?'s':'')+' for "'+esc(rawQ)+'"</span>') +
-    '<div class="song-list-header"><h2>Search Results</h2></div>';
+    ? '<div class="si-more">Showing first '+shown.length+' of '+results.length.toLocaleString()+' matches — refine your search to narrow down.</div>' : '';
+  el.innerHTML = '';
   if (!results.length) {
-    el.innerHTML += '<div class="no-results"><div class="icon">'+SVG.search+'</div><p>No songs match your search.<br>Try a title, a lyric, an author, or a number.</p></div>';
-    if (!wasSearch) navPush();
+    el.innerHTML = '<div class="no-results"><div class="icon">'+SVG.search+'</div><p>No songs match your search.<br>Try a title, a lyric, an author, or a number.</p></div>';
+    el.scrollTop = 0;
     return;
   }
   const grid = document.createElement('div');
@@ -4843,7 +5049,13 @@ async function doSearch(q) {
     const item = document.createElement('div');
     item.className = 'song-item search-item fade-in';
     item.style.animationDelay = Math.min(i*0.02,0.5)+'s';
-    item.onclick = () => { commitSearchHistory(); currentCat = song.cat; currentList = SONGS[song.cat].songs; openSong(song); };
+    item.onclick = () => {
+      closeSearchModal();
+      currentCat = song.cat;
+      currentList = SONGS[song.cat].songs;
+      currentListKind = 'search';
+      openSong(song);
+    };
     const meta = [song.author, song.catName].filter(Boolean).join(' • ');
     const num = song.number ? '#'+song.number : '';
     const snippet = song.snippet
@@ -4860,22 +5072,7 @@ async function doSearch(q) {
   });
   el.appendChild(grid);
   if (moreNote) el.insertAdjacentHTML('beforeend', moreNote);
-  if (!wasSearch) navPush();
-}
-
-// ponytail: sticky toolbar with filter chips + sort dropdown, shown above results.
-function renderSearchToolbar(summary) {
-  const filters = [['all','All'],['title','Title'],['lyrics','Lyrics'],['author','Author'],['number','Number']];
-  const chips = filters.map(([v,l]) => '<button class="si-chip'+(searchFilter===v?' active':'')+'" data-action="setSearchFilter" data-filter="'+v+'">'+l+'</button>').join('');
-  const sorts = [['relevance','Relevance'],['number','Number'],['alpha','A–Z'],['recent','Recent']];
-  const opts = sorts.map(([v,l]) => '<option value="'+v+'"'+(searchSort===v?' selected':'')+'>'+l+'</option>').join('');
-  // The result count lives inside the sticky toolbar: as a sibling below it, the
-  // header scrolled underneath and the count was clipped on phones.
-  return '<div class="si-toolbar">'+
-    '<div class="si-chips">'+chips+'</div>'+
-    '<select class="si-sort" data-change-action="searchSort">'+opts+'</select>'+
-    (summary || '')+
-    '</div>';
+  el.scrollTop = 0;
 }
 
 // ponytail: empty search shows recent queries as tappable chips.
@@ -4886,18 +5083,19 @@ function clearSearchHistory() {
   renderRecentSearch();
 }
 function renderRecentSearch() {
-  currentListKind = 'search';
-  searchQuery = '';
-  showView('search');
   const el = document.getElementById('searchResults');
-  syncSearchFields('');
+  if (!el) return;
+  const count = document.getElementById('searchResultCount');
+  if (count) count.textContent = '';
   if (!searchHistory.length) {
     el.innerHTML = '<div class="no-results"><div class="icon">'+SVG.search+'</div><p>Search songs by title, lyrics, author, or number</p></div>';
+    el.scrollTop = 0;
     return;
   }
   const chips = searchHistory.map(h => '<button type="button" class="si-rec" data-q="'+escAttr(h)+'">'+esc(h)+'</button>').join('');
   el.innerHTML = '<div class="song-list-header si-rec-head"><h2>Recent Searches</h2><button class="si-clear-hist" data-action="clearSearchHistory">Clear</button></div><div class="si-recent">'+chips+'</div>';
   el.querySelectorAll('.si-rec').forEach(btn => { btn.onclick = () => runRecentSearch(btn.dataset.q || ''); });
+  el.scrollTop = 0;
 }
 
 // ─── THEME ───
@@ -5087,6 +5285,184 @@ window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', ()
   if ((localStorage.getItem('labu-theme') || 'system') === 'system') applyTheme();
 });
 
+// Admin account lives in Settings; Manage Songs is only the song editor.
+const ADMIN_OWNER_EMAIL = 'minatolun@gmail.com';
+const ADMIN_SHIELD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>';
+const ADMIN_LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>';
+const ADMIN_USER_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>';
+const ADMIN_SIGNOUT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+const ADMIN_SYNC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><polyline points="3 21 3 16 8 16"/><polyline points="21 3 21 8 16 8"/></svg>';
+function cloudCanCreateAdmin() {
+  const session = cloudSession();
+  const user = (session && session.user) || {};
+  if (user.canCreateAdmin === true) return true;
+  const email = String((session && session.email) || user.email || '').toLowerCase();
+  return email === ADMIN_OWNER_EMAIL;
+}
+async function renderAdminAccount() {
+  const box = document.getElementById('adminAccountBody');
+  if (!box) return;
+  if (!CLOUD_ON) {
+    box.innerHTML = '<div class="glass-card settings-panel"><div class="sc-head"><span class="sc-ic">' + ADMIN_SHIELD + '</span><span>Admin account</span></div><p class="admin-account-note">Admin access unavailable.</p></div>';
+    return;
+  }
+  let session = cloudSession();
+  if (!session) await cloudRestoreSession();
+  session = cloudSession();
+  if (!session || !(await cloudCheckAdmin())) {
+    box.innerHTML = '<div class="glass-card settings-panel">'
+      + '<div class="sc-head"><span class="sc-ic">' + ADMIN_SHIELD + '</span><span>Admin sign in</span></div>'
+      + '<div class="form-group"><label for="adminAccountEmail">Email</label><input type="email" id="adminAccountEmail" autocomplete="username" placeholder="you@example.com"></div>'
+      + '<div class="form-group"><label for="adminAccountPass">Password</label><input type="password" id="adminAccountPass" autocomplete="current-password" data-enter-action="adminAccountSignIn"></div>'
+      + '<div id="adminAccountErr" class="cloud-err" role="alert"></div>'
+      + '<button class="btn btn-primary btn-block" id="adminAccountSignInBtn" data-action="adminAccountSignIn">Sign in</button>'
+      + '</div>';
+    return;
+  }
+
+  const user = session.user || {};
+  const email = session.email || user.email || '';
+  box.innerHTML = '<div class="glass-card settings-panel admin-account-card">'
+    + '<div class="admin-account-head">'
+    + '<div class="admin-account-identity"><span class="admin-account-email">' + esc(email) + '</span><span class="admin-account-badge">Admin</span></div>'
+    + '<div class="admin-account-tools" role="group" aria-label="Admin account actions">'
+    + '<button class="admin-icon-btn" type="button" data-action="openAdminPasswordModal" aria-label="Change password" title="Change password">' + ADMIN_LOCK + '</button>'
+    + (cloudCanCreateAdmin() ? '<button class="admin-icon-btn" type="button" data-action="openAdminAddAdminModal" aria-label="Add another admin" title="Add another admin">' + ADMIN_USER_PLUS + '</button>' : '')
+    + '<button class="admin-icon-btn admin-icon-btn-out" type="button" data-action="adminAccountSignOut" aria-label="Sign out" title="Sign out">' + ADMIN_SIGNOUT + '</button>'
+    + '</div></div></div>'
+    + '<div id="adminAccountMsg" class="admin-account-ok" role="status"></div>'
+    + '<div class="glass-card settings-panel admin-sync-card">'
+    + '<div class="sc-head"><span class="sc-ic">' + ADMIN_SYNC + '</span><span>Song sync</span></div>'
+    + '<div id="cloudPanel" class="cloud-panel admin-cloud-panel"></div>'
+    + '</div>';
+  await renderCloudPanel();
+}
+function openAdminPasswordModal() {
+  ['adminCurrentPass', 'adminNewPass', 'adminConfirmPass'].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.value = '';
+  });
+  const err = document.getElementById('adminChangeErr');
+  if (err) err.textContent = '';
+  openModal('adminPasswordModal');
+  setTimeout(() => document.getElementById('adminCurrentPass')?.focus(), 80);
+}
+function openAdminAddAdminModal() {
+  ['adminAddName', 'adminAddEmail', 'adminAddPass', 'adminAddConfirm'].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.value = '';
+  });
+  const err = document.getElementById('adminAddErr');
+  if (err) err.textContent = '';
+  openModal('adminAddAdminModal');
+  setTimeout(() => document.getElementById('adminAddName')?.focus(), 80);
+}
+function showAdminAccountMsg(text) {
+  const el = document.getElementById('adminAccountMsg');
+  if (!el) return;
+  el.textContent = text;
+  clearTimeout(el._msgTimer);
+  el._msgTimer = setTimeout(() => { if (el.isConnected) el.textContent = ''; }, 5000);
+}
+function renderSyncHistory() {
+  const list = document.getElementById('syncHistoryList');
+  if (!list) return;
+  const edits = (PUB.edits || [])
+    .filter(row => row && row.payload && Number.isFinite(Number(row.seq)))
+    .slice()
+    .sort((a, b) => Number(b.seq) - Number(a.seq))
+    .slice(0, 50);
+  if (!edits.length) {
+    list.innerHTML = '<div class="sync-history-empty">No synced changes yet. Approved edits will appear here.</div>';
+    return;
+  }
+  list.innerHTML = edits.map(row => {
+    const when = row.published_at ? cloudAgo(row.published_at) : '';
+    const meta = ['Published', when, '#' + Number(row.seq)].filter(Boolean).join(' · ');
+    return '<div class="sync-history-item"><span class="sync-history-dot" aria-hidden="true"></span>'
+      + '<div class="sync-history-main"><div class="sync-history-title">' + esc(cloudDescribe(row.kind, row.payload)) + '</div>'
+      + '<div class="sync-history-meta">' + esc(meta) + '</div></div></div>';
+  }).join('');
+}
+function openSyncHistory() {
+  renderSyncHistory();
+  openModal('syncHistoryModal');
+  cloudLoadLayer().then(() => {
+    const modal = document.getElementById('syncHistoryModal');
+    if (modal && modal.classList.contains('open')) renderSyncHistory();
+  }).catch(() => {});
+}
+function openAdminAccount(push) {
+  showView('adminAccount');
+  renderAdminAccount();
+  if (push !== false) navPush();
+  window.scrollTo(0, 0);
+}
+async function adminAccountSignIn() {
+  const email = document.getElementById('adminAccountEmail').value.trim();
+  const passInput = document.getElementById('adminAccountPass');
+  const err = document.getElementById('adminAccountErr');
+  const btn = document.getElementById('adminAccountSignInBtn');
+  await cloudSignInWith(email, passInput.value, err, btn, passInput, async () => {
+    await renderAdminAccount();
+  });
+}
+async function adminAccountSignOut() {
+  await cloudSignOut();
+}
+async function adminChangePassword() {
+  const current = document.getElementById('adminCurrentPass').value;
+  const next = document.getElementById('adminNewPass').value;
+  const confirm = document.getElementById('adminConfirmPass').value;
+  const err = document.getElementById('adminChangeErr');
+  const btn = document.getElementById('adminChangeBtn');
+  err.textContent = '';
+  if (!current || !next) { err.textContent = 'Current and new passwords are required'; return; }
+  if (next.length < 12 || next.length > 128) { err.textContent = 'New password must be 12-128 characters'; return; }
+  if (next !== confirm) { err.textContent = 'New passwords do not match'; return; }
+  setCloudButtonBusy(btn, true, 'Updating…');
+  try {
+    await cloudReq('/api/auth/change-password', {
+      body: { currentPassword: current, newPassword: next, revokeOtherSessions: true },
+    });
+    document.getElementById('adminCurrentPass').value = '';
+    document.getElementById('adminNewPass').value = '';
+    document.getElementById('adminConfirmPass').value = '';
+    setCloudButtonBusy(btn, false);
+    closeModal('adminPasswordModal');
+    showAdminAccountMsg('Password updated.');
+  } catch (e) {
+    setCloudButtonBusy(btn, false);
+    err.textContent = cloudErrorText(e);
+  }
+}
+async function adminAddAdmin() {
+  const name = document.getElementById('adminAddName').value.trim();
+  const email = document.getElementById('adminAddEmail').value.trim().toLowerCase();
+  const pass = document.getElementById('adminAddPass').value;
+  const confirm = document.getElementById('adminAddConfirm').value;
+  const err = document.getElementById('adminAddErr');
+  const btn = document.getElementById('adminCreateAdminBtn');
+  err.textContent = '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = 'Enter a valid email address'; return; }
+  if (pass.length < 12 || pass.length > 128) { err.textContent = 'Password must be 12-128 characters'; return; }
+  if (pass !== confirm) { err.textContent = 'Passwords do not match'; return; }
+  setCloudButtonBusy(btn, true, 'Creating…');
+  try {
+    await cloudReq('/api/admin/users', { body: { name: name || 'Admin', email: email, password: pass } });
+    document.getElementById('adminAddName').value = '';
+    document.getElementById('adminAddEmail').value = '';
+    document.getElementById('adminAddPass').value = '';
+    document.getElementById('adminAddConfirm').value = '';
+    setCloudButtonBusy(btn, false);
+    closeModal('adminAddAdminModal');
+    showAdminAccountMsg('Admin account created for ' + email + '.');
+  } catch (e) {
+    setCloudButtonBusy(btn, false);
+    err.textContent = cloudErrorText(e);
+  }
+}
+
 // ponytail: no login gate — every user can add/edit/remove songs. "Manage Songs" panel is public.
 function openAdmin() {
   showView('admin'); currentListKind = 'admin';
@@ -5117,7 +5493,6 @@ function renderAdminPanel() {
   renderAdminSongs();
   renderSongbookManage();
   buildFilterDropdown();
-  renderCloudPanel();
 }
 
 function filterAdminByBook(val) { adminBookFilter = val; renderAdminSongs(); }
@@ -5916,8 +6291,10 @@ function onHardwareBack() {
       return;
     }
   }
-  const sb = document.getElementById('searchBox');
-  if (sb && sb.classList.contains('active')) { closeSearch(); return; }
+  const bookMenu = document.getElementById('searchBookMenu');
+  const sortMenu = document.getElementById('searchSortMenu');
+  if ((bookMenu && !bookMenu.hidden) || (sortMenu && !sortMenu.hidden)) { closeSearchMenus(); return; }
+  if (document.getElementById('searchModal')?.classList.contains('open')) { closeSearchModal(); return; }
   if (!atRoot()) { history.back(); return; }
   const now = Date.now();
   if (now - _lastBack < 2000) { window.Capacitor.Plugins.App.exitApp(); }
@@ -5966,7 +6343,7 @@ async function openHistoryPage(push) {
   currentCat = null; currentGroup = null; currentPlaylistId = null;
   currentList = songs; currentListKind = 'history';
   _rv.listKind = 'history'; _rv.cat = null; _rv.pid = null;
-  if (push !== false && restoreList('history')) { syncSearchFields(''); navPush(); return; }
+  if (push !== false && restoreList('history')) {  navPush(); return; }
   showView('list');
   document.getElementById('listHeader').innerHTML =
     '<div class="list-head-row"><h2>History</h2>'
@@ -5992,7 +6369,7 @@ async function openHistoryPage(push) {
   _renderedListKey = 'history';
   restoreScroll('history');
   saveListCache('history');
-  syncSearchFields('');
+
   if (push !== false) navPush();
 }
 function clearOpenHistory() {
@@ -6017,7 +6394,7 @@ async function openRecents() {
   document.getElementById('listHeader').innerHTML = '<h2>History</h2><p>'+songs.length+' recently viewed song'+(songs.length!==1?'s':'')+'</p>';
   if (songs.length) { renderSongList(songs); _renderedListKey = 'recent'; restoreScroll('recent'); saveListCache('recent'); }
   else { _stashCurrentList(); document.getElementById('songGrid').innerHTML = '<div class="no-results"><div class="icon">'+SVG.clock+'</div><p>No songs viewed yet</p></div>'; _renderedListKey = 'recent'; }
-  syncSearchFields('');
+
   _rv.listKind = 'recent'; _rv.cat = null; _rv.pid = null;
   navPush();
 }
@@ -6042,7 +6419,7 @@ function openPlaylists() {
     item.innerHTML = '<div class="song-num song-num-accent">'+SVG.list+'</div><div class="song-info"><div class="song-title">'+esc(pl.name)+'</div><div class="song-meta">'+pl.songs.length+' song'+(pl.songs.length!==1?'s':'')+'</div></div>';
     grid.appendChild(item);
   });
-  syncSearchFields('');
+
   navPush();
 }
 async function openPlaylist(pid) {
@@ -6064,7 +6441,7 @@ async function openPlaylist(pid) {
   _renderedListKey = 'playlist:'+pid;
   restoreScroll('playlist:'+pid);
   saveListCache('playlist:'+pid);
-  syncSearchFields('');
+
   navPush();
 }
 function createPlaylist(name) {
@@ -6149,8 +6526,10 @@ function updateSettingsUI() {
   updateFontButtons(readerFamily);
   updateReaderSizeUI();
   applyAccent(localStorage.getItem('labu-accent') || 'madder');
-  syncSegmented('wakeOptions', _wakeOn ? 1 : 0);
-  syncSegmented('hapticOptions', _hapticsOn ? 1 : 0);
+  const wakeSwitch = document.getElementById('wakeSwitch');
+  if (wakeSwitch) wakeSwitch.setAttribute('aria-checked', _wakeOn ? 'true' : 'false');
+  const hapticSwitch = document.getElementById('hapticSwitch');
+  if (hapticSwitch) hapticSwitch.setAttribute('aria-checked', _hapticsOn ? 'true' : 'false');
   renderSongbookPrefs();
 }
 function renderSongbookPrefs() {
@@ -6507,7 +6886,11 @@ function closeWaMenu() {
   const f = document.getElementById('waFab');
   if (f) { f.classList.remove('active'); f.setAttribute('aria-expanded', 'false'); }
 }
-document.addEventListener('click', () => closeWaMenu());
+document.addEventListener('click', e => {
+  // The FAB toggles the menu itself; a blanket close here would race that
+  // handler and make the close button reopen the menu.
+  if (!e.target || !e.target.closest || !e.target.closest('#waFabWrap')) closeWaMenu();
+});
 
 function shareWhatsAppText() {
   closeWaMenu();
@@ -6849,8 +7232,9 @@ async function shareSolfaImage() {
 // Handlers live here, not in HTML attributes. The action name is allowlisted, so
 // injected markup can at most trigger an existing UI action, never arbitrary JS.
 const CLICK_ACTIONS = {
-  goHome, navBack, toggleSearch, clearSearchInput, toggleSidebar, minimizeUpdate,
-  restoreUpdate, closeSidebar, retryLoad, clearSearchInputMobile, toggleFindReplace,
+  goHome, navBack, toggleSearch, clearSearchInput, openSearchModal, closeSearchModal, toggleSidebar, minimizeUpdate,
+  toggleSearchBookMenu, toggleSearchSortMenu, pickSearchBook, pickSearchSort,
+  restoreUpdate, closeSidebar, retryLoad, toggleFindReplace,
   openExportModal: () => openExportModal(),
   toggleAdminAdd: (el, event) => toggleAdminAdd(event), closeFindReplace, executeReplace, clearFindReplace,
   saveSongbook, saveBook, saveSong, ceUndo, ceRedo, requestCloseChordEditor,
@@ -6861,7 +7245,11 @@ const CLICK_ACTIONS = {
   toggleWaMenu: () => toggleWaMenu(),
   renderCloudPanel, cloudApproveAll, toggleSort, openChordEditor, resetChordTranspose,
   closeSolfaZoom, clearSearchHistory, clearOpenHistory, openSettings, cloudSignOut,
-  cloudSignIn, openFavsThenClose: () => { openFavs(); closeSidebar(); },
+  openAdminAccount, adminAccountSignIn, adminChangePassword, adminAddAdmin,
+  openAdminPasswordModal, openAdminAddAdminModal, openSyncHistory,
+  adminAccountSignOut: () => adminAccountSignOut(),
+  openAdminAccountFromSettings: () => { closeSidebar(); openAdminAccount(); },
+  openFavsThenClose: () => { openFavs(); closeSidebar(); },
   openHistoryThenClose: () => { openHistoryPage(); closeSidebar(); },
   openPlaylistsThenClose: () => { openPlaylists(); closeSidebar(); },
   openSettingsThenClose: () => { openSettings(); closeSidebar(); },
@@ -6873,13 +7261,13 @@ const CLICK_ACTIONS = {
   ceNudgeKey: el => ceNudgeKey(Number(el.dataset.step)),
   transposeChordView: el => transposeChordView(Number(el.dataset.step)),
   setTheme: el => setTheme(el.dataset.theme),
-  setWakeLock: el => setWakeLock(el.dataset.on === 'true'),
-  setHaptics: el => setHaptics(el.dataset.on === 'true'),
+  setWakeLock: () => setWakeLock(!_wakeOn),
+  setHaptics: () => setHaptics(!_hapticsOn),
   tabGo: el => tabGo(el.dataset.tab),
   pickRestoreFile: () => document.getElementById('restoreFile').click(),
-  cloudCheckForUpdates: () => cloudCheckForUpdates(true),
-  cloudApprove: el => cloudApprove(Number(el.dataset.proposalId)),
-  cloudReject: el => cloudReject(Number(el.dataset.proposalId)),
+  cloudCheckForUpdates: el => cloudCheckForUpdates(true, el),
+  cloudApprove: el => cloudApprove(Number(el.dataset.proposalId), el),
+  cloudReject: el => cloudReject(Number(el.dataset.proposalId), el),
   chooseFont: el => chooseFont(el.dataset.font),
   openChordShape: el => openChordShape(el),
   scrollToVerse: el => scrollToVerse(Number(el.dataset.index)),
@@ -6890,7 +7278,6 @@ const CLICK_ACTIONS = {
   openSolfaZoom: el => openSolfaZoom(el.getAttribute('src') || el.dataset.src || ''),
   playKeyTone: el => playKeyTone(el),
   setReaderMode: el => setReaderMode(el.dataset.mode),
-  setSearchFilter: el => setSearchFilter(el.dataset.filter),
   setAccent: el => setAccent(el.dataset.accent),
   toggleCollapse: el => toggleCollapse(el.dataset.id),
   openSongbookModal: el => openSongbookModal(el.dataset.id),
@@ -6914,12 +7301,13 @@ const INPUT_ACTIONS = {
 };
 const CHANGE_ACTIONS = {
   adminBook: el => filterAdminByBook(el.value),
-  searchSort: el => setSearchSort(el.value),
   previewFindReplace: () => previewFindReplace(),
 };
 const ENTER_ACTIONS = {
   submitSearch: el => submitSearch(el),
-  cloudSignIn: () => cloudSignIn(),
+  adminAccountSignIn: () => adminAccountSignIn(),
+  adminChangePassword: () => adminChangePassword(),
+  adminAddAdmin: () => adminAddAdmin(),
   createPlaylistFromSettings: () => createPlaylistFromSettings(),
 };
 function delegatedTarget(event, attr) {
@@ -6927,6 +7315,11 @@ function delegatedTarget(event, attr) {
   return target && target.closest ? target.closest('[' + attr + ']') : null;
 }
 document.addEventListener('click', event => {
+  if (!event.target.closest?.('#searchBookMenu, #searchBookFilterWrap, #searchSortMenu, #searchSortBtn')) {
+    const bookMenu = document.getElementById('searchBookMenu');
+    const sortMenu = document.getElementById('searchSortMenu');
+    if ((bookMenu && !bookMenu.hidden) || (sortMenu && !sortMenu.hidden)) closeSearchMenus();
+  }
   const el = delegatedTarget(event, 'data-action');
   if (!el) return;
   const fn = CLICK_ACTIONS[el.dataset.action];

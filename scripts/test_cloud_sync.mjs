@@ -71,6 +71,9 @@ try {
   const submitted = [];
   const calls = [];
   const authCalls = [];
+  const passwordChanges = [];
+  const newAdmins = [];
+  let sessionEmail = 'minatolun@gmail.com';
 
   await page.route('https://mock.labu.api/**', async route => {
     const req = route.request();
@@ -84,14 +87,30 @@ try {
     const body = () => { try { return JSON.parse(req.postData() || '{}'); } catch (e) { return {}; } };
 
     if (path === '/api/auth/sign-in/email') {
-      return json({ user: { id: 'u1', email: 'admin@example.com' } }, 200, {
+      sessionEmail = String(body().email || '').toLowerCase();
+      return json({ user: { id: 'u1', email: sessionEmail } }, 200, {
         'set-cookie': 'better-auth.session_token=admin-token; Path=/; HttpOnly; Secure; SameSite=None',
       });
     }
     if (path === '/api/auth/sign-out') return json({ success: true }, 200, {
       'set-cookie': 'better-auth.session_token=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None',
     });
-    if (path === '/api/admin/me') return isAdmin ? json({ isAdmin: true, user: { id: 'u1', email: 'admin@example.com' } }) : json({ error: 'authentication required' }, 401);
+    if (path === '/api/auth/change-password') {
+      passwordChanges.push(body());
+      return json({ status: true });
+    }
+    if (path === '/api/admin/users') {
+      if (sessionEmail !== 'minatolun@gmail.com') return json({ error: 'only the owner can create admin accounts' }, 403);
+      newAdmins.push(body());
+      return json({ created: true, email: body().email }, 201);
+    }
+    if (path === '/api/admin/me') return isAdmin
+      ? json({
+        isAdmin: true,
+        canCreateAdmin: sessionEmail === 'minatolun@gmail.com',
+        user: { id: 'u1', email: sessionEmail, canCreateAdmin: sessionEmail === 'minatolun@gmail.com' },
+      })
+      : json({ error: 'authentication required' }, 401);
     if (path === '/api/state') return json({ version });
     if (path === '/api/published-edits') return json(published);
     if (path === '/api/admin/proposals') return isAdmin ? json(proposals.filter(p => p.status === 'pending')) : json({ error: 'admin access required' }, 403);
@@ -183,27 +202,72 @@ try {
     [...document.querySelectorAll('.toast')].map(t => t.textContent).filter(t => /review|submit/i.test(t)));
   check('no review toast is shown to the submitting device', reviewToasts.length === 0, reviewToasts.join(' | '));
 
-  // 3. Admin signs in, sees the queue, approves.
+  // 3. Admin signs in on the Admin account page, changes password, adds an admin, approves.
   await page.evaluate(() => localStorage.setItem('labu_cloud_session', JSON.stringify({ access_token: 'old-token' })));
   await page.evaluate(() => openAdmin());
-  await page.waitForFunction(() => {
-    const el = document.getElementById('cloudPanel');
-    return el && !el.hidden && el.textContent.includes('Admin sign in');
-  }, null, { timeout: 10000 });
-  check('manage songs shows the admin sign-in row', true);
+  const manageState = await page.evaluate(() => ({
+    panel: !!document.querySelector('#adminView #cloudPanel'),
+    sync: [...document.querySelectorAll('#adminView button')].some(b => /Sync now/.test(b.textContent)),
+  }));
+  check('Manage Songs no longer contains the song sync panel', !manageState.panel && !manageState.sync, JSON.stringify(manageState));
 
-  await page.locator('#cloudPanel button', { hasText: 'Admin sign in' }).click();
-  await page.fill('#cloudEmail', 'admin@example.com');
-  await page.fill('#cloudPass', 'secret');
-  await page.click('#cloudSignInBtn');
+  await page.evaluate(() => openAdminAccount());
+  await page.waitForFunction(() =>
+    document.getElementById('adminAccountBody')?.textContent.includes('Admin sign in'), null, { timeout: 10000 });
+  await page.fill('#adminAccountEmail', 'minatolun@gmail.com');
+  await page.fill('#adminAccountPass', 'secret');
+  await page.click('#adminAccountSignInBtn');
   await page.waitForFunction(() => {
     const el = document.getElementById('cloudPanel');
     return el && el.textContent.includes('Review queue');
   }, null, { timeout: 10000 });
-  check('signed-in admin sees the review queue', true);
-  check('pending proposal is listed', (await page.textContent('#cloudPanel')).includes('Pending Hymn'));
+  check('admin account page signs in and owns the review queue', true);
+  check('pending proposal is listed on the admin page', (await page.textContent('#cloudPanel')).includes('Pending Hymn'));
+  check('admin page no longer links back to Manage Songs',
+    !(await page.textContent('#adminAccountBody')).includes('Manage Songs'));
+  const syncCard = page.locator('#cloudPanel');
+  check('song sync hides the account email', !(await syncCard.textContent()).includes('minatolun@gmail.com'));
+  check('song sync has no sign-out button',
+    (await page.locator('#cloudPanel [data-action="cloudSignOut"]').count()) === 0);
+  check('song sync shows Sync now and History',
+    JSON.stringify(await page.locator('#cloudPanel .cloud-bar button').allTextContents()) === JSON.stringify(['Sync now', 'History']));
+  check('owner sees the Add another admin control',
+    await page.locator('#adminAccountBody [data-action="openAdminAddAdminModal"]').isVisible());
+  const cardGap = await page.evaluate(() => {
+    const cards = document.querySelectorAll('#adminAccountBody .glass-card');
+    if (cards.length < 2) return -1;
+    return Math.round(cards[1].getBoundingClientRect().top - cards[0].getBoundingClientRect().bottom);
+  });
+  check('admin cards have space between them', cardGap >= 12, String(cardGap));
   check('cloud session is not persisted in localStorage',
     await page.evaluate(() => localStorage.getItem('labu_cloud_session') === null));
+
+  await page.click('[data-action="openAdminPasswordModal"]');
+  await page.waitForSelector('#adminPasswordModal.open');
+  await page.fill('#adminCurrentPass', 'old-secret-123');
+  await page.fill('#adminNewPass', 'new-secret-456');
+  await page.fill('#adminConfirmPass', 'new-secret-456');
+  await page.click('#adminChangeBtn');
+  await page.waitForFunction(() =>
+    document.getElementById('adminAccountMsg')?.textContent.includes('Password updated'), null, { timeout: 10000 });
+  check('admin can change its own password in a popup',
+    passwordChanges.length === 1 && passwordChanges[0].currentPassword === 'old-secret-123'
+      && passwordChanges[0].newPassword === 'new-secret-456');
+  check('password popup closes after updating', !(await page.locator('#adminPasswordModal').evaluate(el => el.classList.contains('open'))));
+
+  await page.click('[data-action="openAdminAddAdminModal"]');
+  await page.waitForSelector('#adminAddAdminModal.open');
+  await page.fill('#adminAddName', 'Second Admin');
+  await page.fill('#adminAddEmail', 'second@example.com');
+  await page.fill('#adminAddPass', 'another-secret-789');
+  await page.fill('#adminAddConfirm', 'another-secret-789');
+  await page.click('#adminCreateAdminBtn');
+  await page.waitForFunction(() =>
+    document.getElementById('adminAccountMsg')?.textContent.includes('second@example.com'), null, { timeout: 10000 });
+  check('owner can create another admin account in a popup',
+    newAdmins.length === 1 && newAdmins[0].email === 'second@example.com'
+      && newAdmins[0].name === 'Second Admin');
+  check('add admin popup closes after creating', !(await page.locator('#adminAddAdminModal').evaluate(el => el.classList.contains('open'))));
 
   await page.locator('.cloud-item .btn-primary').first().click();
   await page.waitForFunction(() =>
@@ -215,10 +279,28 @@ try {
     .then(() => true).catch(() => false);
   check('queue empties after approval', queueEmptied);
 
-  await page.locator('#cloudPanel button', { hasText: 'Sign out' }).click();
+  await page.locator('#cloudPanel [data-action="openSyncHistory"]').click();
+  await page.waitForSelector('#syncHistoryModal.open');
+  check('history popup lists the approved change',
+    (await page.textContent('#syncHistoryList')).includes('Pending Hymn'));
+  check('history popup has no footer button',
+    (await page.locator('#syncHistoryModal .modal-footer').count()) === 0);
+  await page.locator('#syncHistoryModal [data-action="closeModal"]').last().click();
+
+  await page.locator('#adminAccountBody [data-action="adminAccountSignOut"]').click();
   await page.waitForFunction(() =>
-    document.getElementById('cloudPanel')?.textContent.includes('Admin sign in'), null, { timeout: 10000 });
+    document.getElementById('adminAccountBody')?.textContent.includes('Admin sign in'), null, { timeout: 10000 });
   check('sign-out sends the session cookie to the API', authCalls.some(call => call.startsWith('/api/auth/sign-out:') && call.includes('better-auth.session_token=admin-token')), authCalls.slice(-4).join(' | '));
+
+  await page.fill('#adminAccountEmail', 'second@example.com');
+  await page.fill('#adminAccountPass', 'another-secret-789');
+  await page.click('#adminAccountSignInBtn');
+  await page.waitForFunction(() => {
+    const el = document.getElementById('cloudPanel');
+    return el && el.textContent.includes('Review queue');
+  }, null, { timeout: 10000 });
+  check('other admins cannot see the Add another admin control',
+    (await page.locator('#adminAccountBody [data-action="openAdminAddAdminModal"]').count()) === 0);
 
   const legacyGoogle = await page.evaluate(async () => {
     localStorage.setItem('labu_google_token', JSON.stringify('legacy-google-token'));

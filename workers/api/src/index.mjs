@@ -3,6 +3,7 @@ import { getMigrations } from 'better-auth/db/migration';
 import { auth } from './auth.mjs';
 
 const KINDS = new Set(['song', 'struct', 'chord']);
+const OWNER_EMAIL = 'minatolun@gmail.com';
 const MAX_PAYLOAD_BYTES = 200_000;
 const MAX_JSON_BYTES = 250_000;
 const MAX_PENDING = 1_000;
@@ -257,7 +258,14 @@ function adminEmails() {
 }
 
 function isAdmin(user) {
-  return !!user && adminEmails().has(String(user.email || '').toLowerCase());
+  if (!user) return false;
+  // ADMIN_EMAILS bootstraps the first account; additional admins are stored with
+  // role='admin' in D1 so they do not need a Worker redeploy.
+  return user.role === 'admin' || adminEmails().has(String(user.email || '').toLowerCase());
+}
+
+function isOwner(user) {
+  return !!user && String(user.email || '').toLowerCase() === OWNER_EMAIL;
 }
 
 async function optionalSession(request) {
@@ -427,7 +435,42 @@ async function handleAdminMe(request) {
       role: user.role || 'user',
     },
     isAdmin: true,
+    canCreateAdmin: isOwner(user),
   });
+}
+
+async function handleCreateAdmin(request) {
+  const session = await requireAdmin(request);
+  if (!isOwner(session.user)) {
+    throw new HttpError(403, 'only the owner can create admin accounts');
+  }
+  const body = await readJson(request);
+  const email = String(body.email || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+    throw new HttpError(400, 'a valid email is required');
+  }
+  const password = String(body.password || '');
+  if (password.length < 12 || password.length > 128) {
+    throw new HttpError(400, 'password must be 12-128 characters');
+  }
+  const name = truncate(body.name || 'Admin', 120) || 'Admin';
+
+  const existing = await env.DB.prepare(
+    'SELECT id FROM user WHERE lower(email) = ? LIMIT 1',
+  ).bind(email).first();
+  if (existing) throw new HttpError(409, 'an account with that email already exists');
+
+  await auth.api.signUpEmail({ body: { email, password, name } });
+  const user = await env.DB.prepare(
+    'SELECT id FROM user WHERE lower(email) = ? LIMIT 1',
+  ).bind(email).first();
+  if (!user) throw new HttpError(500, 'admin user could not be created');
+
+  await env.DB.prepare(
+    "UPDATE user SET role = 'admin', emailVerified = 1, updatedAt = ? WHERE id = ?",
+  ).bind(nowMs(), user.id).run();
+
+  return json({ created: true, email, id: user.id }, 201);
 }
 
 async function handlePublish(request) {
@@ -601,6 +644,7 @@ async function route(request) {
   if (path === '/api/proposals' && request.method === 'POST') return handleProposal(request);
 
   if (path === '/api/admin/me' && request.method === 'GET') return handleAdminMe(request);
+  if (path === '/api/admin/users' && request.method === 'POST') return handleCreateAdmin(request);
   if (path === '/api/admin/proposals' && request.method === 'GET') return handleAdminProposals(request);
   if (path === '/api/admin/publish' && request.method === 'POST') return handlePublish(request);
   if (path === '/api/admin/approve' && request.method === 'POST') return handleApprove(request);

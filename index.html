@@ -38,10 +38,9 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       </button>
       <div class="search-box" id="searchBox">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="text" id="searchInput" placeholder="Search title, lyrics, author..." autocomplete="off" autocapitalize="off" spellcheck="false" data-input-action="search" data-enter-action="submitSearch">
-        <button class="search-clear" id="searchClear" data-action="clearSearchInput" title="Clear">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <button type="button" class="search-open-btn" id="searchOpenBtn" data-action="openSearchModal" aria-label="Search songs" title="Search songs">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <span>Search title, lyrics, author...</span>
         </button>
       </div>
       <button class="menu-btn" id="menuBtn" data-action="toggleSidebar" title="Menu">
@@ -145,15 +144,6 @@
   <div id="readerControlsHost"></div>
 </div>
 
-<!-- SEARCH -->
-<div class="view" id="searchView">
-  <div class="msearch">
-    <input id="searchInputMobile" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Search songs, lyrics, authors…" data-input-action="search" data-enter-action="submitSearch">
-    <button type="button" class="mclear" id="searchClearMobile" data-action="clearSearchInputMobile" aria-label="Clear search">×</button>
-  </div>
-  <div class="search-results" id="searchResults"></div>
-</div>
-
 <!-- ADMIN PANEL -->
 <div class="view" id="adminView">
   <div class="admin-panel">
@@ -172,7 +162,6 @@
         </div>
       </div>
     </div>
-    <div id="cloudPanel" class="cloud-panel" hidden></div>
     <div class="admin-toolbar">
       <select class="admin-filter" id="adminFilterSelect" data-change-action="adminBook">
         <option value="all">All Songbooks</option>
@@ -191,32 +180,6 @@
 </div>
 
 
-
-<!-- ADMIN SIGN-IN (Supabase) -->
-<div class="modal-overlay" id="cloudModal" data-action="closeModal" data-modal="cloudModal" data-backdrop>
-  <div class="modal modal-cloud">
-    <div class="modal-header">
-      <h2>Admin sign in</h2>
-      <button class="modal-close" data-action="closeModal" data-modal="cloudModal">&times;</button>
-    </div>
-    <div class="modal-body">
-      <p class="cloud-intro">Sign in to review submitted changes. Only accounts listed in the project's <code>admins</code> table can approve.</p>
-      <div class="form-group">
-        <label for="cloudEmail">Email</label>
-        <input type="email" id="cloudEmail" autocomplete="username" placeholder="you@example.com">
-      </div>
-      <div class="form-group">
-        <label for="cloudPass">Password</label>
-        <input type="password" id="cloudPass" autocomplete="current-password" data-enter-action="cloudSignIn">
-      </div>
-      <div id="cloudErr" role="alert" class="cloud-err"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" data-action="closeModal" data-modal="cloudModal">Cancel</button>
-      <button class="btn btn-primary" id="cloudSignInBtn" data-action="cloudSignIn">Sign in</button>
-    </div>
-  </div>
-</div>
 
 <!-- FIND & REPLACE MODAL -->
 <div class="modal-overlay" id="findReplaceModal" data-action="closeFindReplace" data-backdrop>
@@ -572,20 +535,12 @@ Second verse line 2"></textarea>
         </div>
         <div class="settings-control">
           <div class="sc-head"><span class="sc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></span><span>Keep screen on</span>
-            <div class="seg seg-compact" id="wakeOptions" class="seg-2">
-              <span class="seg-pill"></span>
-              <button class="seg-btn" id="wakeOff" data-action="setWakeLock" data-on="false">Off</button>
-              <button class="seg-btn" id="wakeOn" data-action="setWakeLock" data-on="true">On</button>
-            </div>
+            <button type="button" class="sb-switch" id="wakeSwitch" role="switch" aria-checked="false" aria-label="Keep screen on" data-action="setWakeLock"><span></span></button>
           </div>
         </div>
         <div class="settings-control">
           <div class="sc-head"><span class="sc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M3 8c-.8 1.2-1.2 2.6-1.2 4s.4 2.8 1.2 4"/><path d="M21 8c.8 1.2 1.2 2.6 1.2 4s-.4 2.8-1.2 4"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span><span>Haptic feedback</span>
-            <div class="seg seg-compact" id="hapticOptions" class="seg-2">
-              <span class="seg-pill"></span>
-              <button class="seg-btn" id="hapticOff" data-action="setHaptics" data-on="false">Off</button>
-              <button class="seg-btn" id="hapticOn" data-action="setHaptics" data-on="true">On</button>
-            </div>
+            <button type="button" class="sb-switch" id="hapticSwitch" role="switch" aria-checked="false" aria-label="Haptic feedback" data-action="setHaptics"><span></span></button>
           </div>
         </div>
       </div>
@@ -619,6 +574,17 @@ Second verse line 2"></textarea>
           <svg class="sr-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 6 15 12 9 18"/></svg>
         </button>
         <div class="settings-update-note" id="updateStatus" hidden></div>
+      </div>
+    </section>
+
+    <section class="settings-group">
+      <div class="settings-label">Admin</div>
+      <div class="glass-card settings-list">
+        <button class="settings-row" data-action="openAdminAccountFromSettings">
+          <span class="sr-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
+          <span class="sr-label">Admin account</span>
+          <svg class="sr-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 6 15 12 9 18"/></svg>
+        </button>
       </div>
     </section>
 
@@ -671,6 +637,101 @@ Second verse line 2"></textarea>
     </section>
 
     <div class="settings-version">App version <span id="appVersion"></span><span class="is-hidden" id="latestVersion"> · Latest: <span id="latestVersionVal"></span></span></div>
+  </div>
+</div>
+
+<!-- ADMIN ACCOUNT PAGE -->
+<div class="view" id="adminAccountView">
+  <div class="settings-page admin-account-page">
+    <section class="settings-group">
+      <div class="settings-label">Admin account</div>
+      <div id="adminAccountBody"></div>
+    </section>
+  </div>
+</div>
+
+<!-- CHANGE PASSWORD MODAL -->
+<div class="modal-overlay" id="adminPasswordModal" data-action="closeModal" data-modal="adminPasswordModal" data-backdrop>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="adminPasswordModalTitle">
+    <div class="modal-header">
+      <h2 id="adminPasswordModalTitle">Change password</h2>
+      <button class="modal-close" type="button" data-action="closeModal" data-modal="adminPasswordModal" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label for="adminCurrentPass">Current password</label><input type="password" id="adminCurrentPass" autocomplete="current-password"></div>
+      <div class="form-group"><label for="adminNewPass">New password</label><input type="password" id="adminNewPass" autocomplete="new-password"></div>
+      <div class="form-group"><label for="adminConfirmPass">Confirm new password</label><input type="password" id="adminConfirmPass" autocomplete="new-password" data-enter-action="adminChangePassword"></div>
+      <div id="adminChangeErr" class="cloud-err" role="alert"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" type="button" data-action="closeModal" data-modal="adminPasswordModal">Cancel</button>
+      <button class="btn btn-primary" id="adminChangeBtn" type="button" data-action="adminChangePassword">Update password</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD ADMIN MODAL -->
+<div class="modal-overlay" id="adminAddAdminModal" data-action="closeModal" data-modal="adminAddAdminModal" data-backdrop>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="adminAddAdminModalTitle">
+    <div class="modal-header">
+      <h2 id="adminAddAdminModalTitle">Add another admin</h2>
+      <button class="modal-close" type="button" data-action="closeModal" data-modal="adminAddAdminModal" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label for="adminAddName">Name (optional)</label><input type="text" id="adminAddName" autocomplete="name" maxlength="120" placeholder="Admin"></div>
+      <div class="form-group"><label for="adminAddEmail">Email</label><input type="email" id="adminAddEmail" autocomplete="off" placeholder="new-admin@example.com"></div>
+      <div class="form-group"><label for="adminAddPass">Password</label><input type="password" id="adminAddPass" autocomplete="new-password" minlength="12" maxlength="128"></div>
+      <div class="form-group"><label for="adminAddConfirm">Confirm password</label><input type="password" id="adminAddConfirm" autocomplete="new-password" minlength="12" maxlength="128" data-enter-action="adminAddAdmin"></div>
+      <div id="adminAddErr" class="cloud-err" role="alert"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" type="button" data-action="closeModal" data-modal="adminAddAdminModal">Cancel</button>
+      <button class="btn btn-primary" id="adminCreateAdminBtn" type="button" data-action="adminAddAdmin">Create admin</button>
+    </div>
+  </div>
+</div>
+
+<!-- SEARCH MODAL -->
+<div class="modal-overlay" id="searchModal" data-action="closeSearchModal" data-backdrop>
+  <div class="modal search-modal" role="dialog" aria-modal="true" aria-labelledby="searchModalTitle">
+    <h2 id="searchModalTitle" class="is-hidden">Search songs</h2>
+    <div class="search-modal-head">
+      <div class="search-modal-field">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input id="searchModalInput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" placeholder="Search songs, lyrics, authors…" data-input-action="search" data-enter-action="submitSearch">
+        <button type="button" class="search-modal-clear" id="searchModalClear" data-action="clearSearchInput" aria-label="Clear search">×</button>
+      </div>
+      <button class="search-modal-cancel" type="button" data-action="closeSearchModal">Cancel</button>
+    </div>
+    <div class="search-modal-toolbar">
+      <button type="button" class="search-book-btn" id="searchBookFilterWrap" aria-label="Songbook filter" aria-haspopup="listbox" aria-expanded="false" data-action="toggleSearchBookMenu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        <span id="searchBookFilterLabel">All songbooks</span>
+        <svg class="search-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <span class="search-scope-pill" id="searchScopePill" hidden></span>
+      <button type="button" class="search-sort-btn" id="searchSortBtn" aria-label="Sort search results" aria-haspopup="listbox" aria-expanded="false" data-action="toggleSearchSortMenu">
+        <span id="searchSortLabel">Relevance</span>
+        <svg class="search-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <span class="search-result-count" id="searchResultCount" role="status" aria-live="polite"></span>
+      <div class="search-menu search-book-menu" id="searchBookMenu" role="listbox" aria-label="Search in songbook" hidden></div>
+      <div class="search-menu search-sort-menu" id="searchSortMenu" role="listbox" aria-label="Sort search results" hidden></div>
+    </div>
+    <div class="search-results search-modal-results" id="searchResults"></div>
+  </div>
+</div>
+
+<!-- SYNC HISTORY MODAL -->
+<div class="modal-overlay" id="syncHistoryModal" data-action="closeModal" data-modal="syncHistoryModal" data-backdrop>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="syncHistoryModalTitle">
+    <div class="modal-header">
+      <h2 id="syncHistoryModalTitle">Sync history</h2>
+      <button class="modal-close" type="button" data-action="closeModal" data-modal="syncHistoryModal" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="syncHistoryList" class="sync-history-list"></div>
+    </div>
   </div>
 </div>
 
