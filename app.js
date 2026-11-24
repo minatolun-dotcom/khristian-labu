@@ -1,5 +1,5 @@
 // ─── DATA ───
-const DATA_VERSION = 37; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
+const DATA_VERSION = 38; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
 let CORPUS_HASH = '';
 function dataQuery() {
   const parts = [];
@@ -7,7 +7,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.78'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.79'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 const LATEST_JSON = 'https://dl.labu.lengkhawm.online/latest.json';
 let latestUpdate = null;
