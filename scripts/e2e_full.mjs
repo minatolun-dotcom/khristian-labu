@@ -184,6 +184,17 @@ await section('hd solfa upgrade', async () => {
   ok('download takes the HD sheet from R2',
     hdDownload.length === 1 && hdDownload[0].name === 'BL_1-t1.avif' && hdDownload[0].href.startsWith('blob:'),
     JSON.stringify(hdDownload));
+  // Capacitor has no DownloadListener, so the native shell saves via MediaStore.
+  const hdNative = await page.evaluate(async () => {
+    const calls = [];
+    window.KhristianDownload = { save: (name, b64, mime) => { calls.push({ name, mime, bytes: atob(b64).length }); return 'ok'; } };
+    try { await downloadSolfa(); } finally { delete window.KhristianDownload; }
+    return calls;
+  });
+  ok('native shell saves the HD sheet through the MediaStore bridge',
+    hdNative.length === 1 && hdNative[0].name === 'BL_1-t1.avif' && hdNative[0].mime === 'image/avif'
+      && hdNative[0].bytes === hdBytes.length,
+    JSON.stringify(hdNative));
   await page.unroute('https://dl.labu.lengkhawm.online/**');
   await page.route('https://dl.labu.lengkhawm.online/**', route => route.abort());
   const localDownload = await page.evaluate(async () => {
@@ -196,6 +207,16 @@ await section('hd solfa upgrade', async () => {
   ok('download falls back to the bundled sheet when R2 fails',
     localDownload.length === 1 && localDownload[0].name === 'BL_1-t1.avif' && localDownload[0].href.endsWith('assets/solfa/BL_1-t1.avif'),
     JSON.stringify(localDownload));
+  const localNative = await page.evaluate(async () => {
+    const calls = [];
+    window.KhristianDownload = { save: (name, b64, mime) => { calls.push({ name, mime, bytes: atob(b64).length }); return 'ok'; } };
+    try { await downloadSolfa(); } finally { delete window.KhristianDownload; }
+    return calls;
+  });
+  ok('native shell falls back to the bundled sheet when R2 fails',
+    localNative.length === 1 && localNative[0].name === 'BL_1-t1.avif'
+      && localNative[0].bytes === fs.statSync('assets/solfa/BL_1-t1.avif').size,
+    JSON.stringify(localNative));
   await page.close();
 });
 

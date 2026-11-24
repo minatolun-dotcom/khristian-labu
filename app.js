@@ -7,7 +7,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.71'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.72'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 const LATEST_JSON = 'https://dl.labu.lengkhawm.online/latest.json';
 let latestUpdate = null;
@@ -7447,6 +7447,22 @@ async function solfaToPng(url) {
   g.drawImage(img, 0, 0);
   return await new Promise(res => c.toBlob(res, 'image/png'));
 }
+// Capacitor's WebView ignores <a download> for blob URLs, so the native shell
+// exposes a MediaStore bridge that writes the file into public Downloads.
+function nativeSolfaBridge() {
+  const b = window.KhristianDownload;
+  return b && typeof b.save === 'function' ? b : null;
+}
+async function saveSolfaBlob(blob, name) {
+  const bridge = nativeSolfaBridge();
+  if (!bridge) { downloadBlob(blob, name); return; }
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  bridge.save(name, btoa(bin), blob.type || 'image/avif');
+}
 // Ask R2 for the 480 DPI sheet; null on offline, Save-Data, 404 or a timeout so
 // the caller can always fall back to the bundled 240 DPI file.
 async function fetchSolfaHdBlob(src) {
@@ -7468,10 +7484,18 @@ async function downloadSolfa() {
   const name = sheet.src.split('/').pop();
   const hd = await fetchSolfaHdBlob(sheet.src);
   if (hd) {
-    downloadBlob(hd, name);
     _solfaHd.ready[sheet.src] = true;
     upgradeSolfaSheet(sheet.src);
+    await saveSolfaBlob(hd, name);
     return;
+  }
+  // Native shells cannot download by link, so fetch the bundled file and save it
+  // through the same bridge when HD is unavailable.
+  if (nativeSolfaBridge()) {
+    try {
+      const res = await fetch(sheet.src);
+      if (res.ok) { await saveSolfaBlob(await res.blob(), name); return; }
+    } catch (e) {}
   }
   const a = document.createElement('a');
   a.href = sheet.src;
