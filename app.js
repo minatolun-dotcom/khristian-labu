@@ -951,35 +951,892 @@ async function renderCloudPanel() {
     box.innerHTML = '<div class="cloud-bar"><span class="cloud-state">This signed-in account is not an admin.</span><button class="btn btn-ghost" data-action="openAdminAccount">Admin account</button></div>';
     return;
   }
+  let pending;
   try {
-    cloudPending = (await cloudReq('/api/admin/proposals')) || [];
+    pending = (await cloudReq('/api/admin/proposals')) || [];
   } catch (e) {
     box.innerHTML = '<div class="cloud-bar"><span class="cloud-state">Review queue unavailable — check your connection.</span><button class="btn btn-ghost" data-action="renderCloudPanel">Retry</button></div>';
     return;
   }
-  const n = cloudPending.length;
-  let html = '<div class="cloud-bar"><span class="cloud-state">Review queue' + (n ? '<span class="cloud-count">' + n + '</span>' : '') + '</span>'
+  cloudPending = pending;
+  cloudCounts.pending = pending.length;
+  try {
+    const counts = await cloudReq('/api/admin/proposals/counts');
+    if (counts) cloudCounts = Object.assign({}, cloudCounts, counts);
+  } catch (e) { /* older Worker: the pending count still comes from the list */ }
+  if (cloudStatusFilter !== 'pending') {
+    try { cloudReviewed = (await cloudReq('/api/admin/proposals?status=' + cloudStatusFilter)) || []; }
+    catch (e) { cloudReviewed = []; }
+  } else {
+    cloudReviewed = [];
+  }
+  const items = cloudStatusFilter === 'pending' ? cloudPending : cloudReviewed;
+  const kindMap = cloudPendingTargetKinds();
+  const combinedShown = new Set();
+  let html = '<div class="cloud-bar"><span class="cloud-state">Review queue</span>'
     + '<button class="btn btn-primary" data-action="cloudCheckForUpdates">Sync now</button>'
     + '<button class="btn btn-ghost" data-action="openSyncHistory">History</button></div>';
-  if (!n) {
-    html += '<div class="cloud-empty">Nothing waiting. Approved changes are already live on every device.</div>';
+  html += '<div class="cloud-filters" role="group" aria-label="Submission status">';
+  [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected']].forEach(([key, label]) => {
+    const n = Number(cloudCounts[key]) || 0;
+    html += '<button class="cloud-filter' + (cloudStatusFilter === key ? ' is-active' : '') + '" type="button" '
+      + 'data-action="cloudFilter" data-status="' + key + '" aria-pressed="' + (cloudStatusFilter === key ? 'true' : 'false') + '">'
+      + label + ' <b>' + n + '</b></button>';
+  });
+  html += '</div>';
+  if (!items.length) {
+    html += cloudStatusFilter === 'pending'
+      ? '<div class="cloud-empty">Nothing waiting. Approved changes are already live on every device.</div>'
+      : '<div class="cloud-empty">No ' + cloudStatusFilter + ' submissions yet.</div>';
   } else {
-    if (n > 1) {
-      html += '<div class="cloud-list-head"><span>' + n + ' changes waiting for review</span>'
+    if (cloudStatusFilter === 'pending' && items.length > 1) {
+      html += '<div class="cloud-list-head"><span>' + items.length + ' changes waiting for review</span>'
         + '<button class="cloud-link" type="button" data-action="cloudApproveAll">Approve all</button></div>';
     }
     html += '<div class="cloud-list">';
-    cloudPending.forEach(p => {
+    items.forEach(p => {
       const summary = p.summary || cloudDescribe(p.kind, p.payload);
-      html += '<div class="cloud-item"><div class="cloud-item-main"><div class="cloud-summary">' + esc(summary) + '</div>'
-        + '<div class="cloud-meta">' + esc(p.submitter_name || 'anonymous') + ' · ' + cloudAgo(p.created_at) + '</div></div>'
-        + '<button class="btn btn-primary" data-action="cloudApprove" data-proposal-id="' + p.id + '">Approve</button>'
-        + '<button class="btn btn-ghost" data-action="cloudReject" data-proposal-id="' + p.id + '">Reject</button></div>';
+      const songId = proposalTargetId(p);
+      const kinds = songId ? kindMap.get(songId) : null;
+      // One badge per song: repeating it on every row of the same song is noise.
+      const combined = !!(kinds && kinds.has('song') && kinds.has('chord')) && !combinedShown.has(songId);
+      if (combined) combinedShown.add(songId);
+      const pendingRow = p.status === 'pending';
+      const reviewer = !pendingRow && p.reviewed_by_name ? ' · ' + p.reviewed_by_name : '';
+      html += '<div class="cloud-item">'
+        + '<div class="cloud-item-main">'
+        + '<div class="cloud-item-top"><span class="cloud-item-title">' + esc(proposalSongTitle(p)) + '</span>'
+        + cloudItemBadgesHTML(p, combined) + '</div>'
+        + '<div class="cloud-summary">' + esc(summary) + '</div>'
+        + '<div class="cloud-meta">' + esc(p.submitter_name || 'Anonymous') + ' · ' + cloudAgo(p.created_at) + ' · #' + p.id + esc(reviewer) + '</div>'
+        + (p.note && !pendingRow ? '<div class="cloud-reason">“' + esc(p.note) + '”</div>' : '')
+        + '</div>'
+        + '<div class="cloud-item-actions">'
+        + '<button class="btn btn-ghost" type="button" data-action="reviewOpen" data-proposal-id="' + p.id + '">' + (pendingRow ? 'Review' : 'View') + '</button>'
+        + (songId ? '<button class="btn btn-ghost" type="button" data-action="reviewHistory" data-song-id="' + escAttr(songId) + '" aria-label="History for this song">History</button>' : '')
+        + (pendingRow
+          ? '<button class="btn btn-primary" data-action="cloudApprove" data-proposal-id="' + p.id + '">Approve</button>'
+            + '<button class="btn btn-ghost" data-action="cloudReject" data-proposal-id="' + p.id + '">Reject</button>'
+          : '')
+        + '</div></div>';
     });
     html += '</div>';
   }
   box.innerHTML = html;
 }
+// ─── ADMIN REVIEW ───
+// A submission is a patch (a complete proposed song, or a complete chord chart),
+// so a review has three sides: what changed, the version that is published now,
+// and the version approval would publish. `reviewCurrent` holds all three.
+let reviewCurrent = null;
+let reviewTab = 'changes';
+let reviewBusy = false;
+let reviewRejectId = null;
+let reviewFlash = null;
+// Chord chips in a review preview are positioned from the *reviewed* chart, not
+// from the song the reader currently has open.
+let _reviewPosChart = null;
+let cloudCounts = { pending: 0, approved: 0, rejected: 0 };
+let cloudStatusFilter = 'pending';
+let cloudReviewed = [];
+
+const VERSE_TYPE_LABEL = { v: 'Verse', c: 'Chorus', b: 'Bridge', p: 'Reference', pc: 'Pre-Chorus' };
+const REVIEW_META_FIELDS = [
+  ['title', 'Title'], ['author', 'Author'], ['number', 'Number'], ['key', 'Key'],
+  ['solfa', 'Tune sheet'], ['solfa2', 'Tune 2 sheet'], ['solfaNote', 'Tune note'],
+];
+
+function proposalTargetId(proposal) {
+  const payload = proposal && proposal.payload;
+  if (!payload) return proposal && proposal.target ? proposal.target : '';
+  if (typeof payload.id === 'string' && payload.id) return payload.id;
+  if (typeof payload.from === 'string' && payload.from) return payload.from;
+  return '';
+}
+function proposalSongTitle(proposal) {
+  const payload = (proposal && proposal.payload) || {};
+  if (proposal && proposal.kind === 'chord') {
+    const found = songInCorpus(payload.id);
+    return (found && found.song.title) || payload.title || payload.id || 'Song';
+  }
+  if (payload.song && payload.song.title) return payload.song.title;
+  const found = songInCorpus(payload.id);
+  return (found && found.song.title) || payload.id || 'Song';
+}
+function songInCorpus(id) {
+  if (!id) return null;
+  const books = Object.keys(SONGS);
+  for (const cat of books) {
+    const book = SONGS[cat];
+    if (!book || !Array.isArray(book.songs)) continue;
+    const song = book.songs.find(s => s && s.id === id);
+    if (song) return { song, cat };
+  }
+  return null;
+}
+function isReferenceVerse(v) {
+  return (v && (v.type || 'v')) === 'p' && (v.lines || []).some(l => /\bdoh\s+is\b/i.test(l));
+}
+function lyricVersesOf(song) {
+  return ((song && song.verses) || []).filter(v => v && Array.isArray(v.lines) && !isReferenceVerse(v));
+}
+function keyMetaText(song) {
+  const dohVerse = ((song && song.verses) || []).find(v => (v.type || 'v') === 'p' && (v.lines || []).some(l => /\bdoh\s+is\b/i.test(l)));
+  if (!dohVerse) return (song && song.key) || '';
+  const line = dohVerse.lines.find(l => /\bdoh\s+is\b/i.test(l)) || '';
+  return line.replace(/^reference:\s*/i, '').trim();
+}
+// Same numbering convention as the reader: "Chorus 2" only when a song has two.
+function verseLabels(verses) {
+  const totals = {};
+  (verses || []).forEach(v => { const t = VERSE_TYPE_LABEL[v.type] ? v.type : 'v'; totals[t] = (totals[t] || 0) + 1; });
+  const seen = {};
+  return (verses || []).map(v => {
+    const t = VERSE_TYPE_LABEL[v.type] ? v.type : 'v';
+    seen[t] = (seen[t] || 0) + 1;
+    return VERSE_TYPE_LABEL[t] + (totals[t] > 1 ? ' ' + seen[t] : '');
+  });
+}
+
+// ── generic sequence diff (LCS) ──
+// Used for verse alignment, line alignment and word-level highlighting. Inputs
+// are small (a hymn, not a corpus), so the table is cheap and exact.
+function lcsOps(a, b) {
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { ops.push({ op: 'equal', a: i, b: j }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push({ op: 'del', a: i }); i++; }
+    else { ops.push({ op: 'ins', b: j }); j++; }
+  }
+  while (i < n) { ops.push({ op: 'del', a: i }); i++; }
+  while (j < m) { ops.push({ op: 'ins', b: j }); j++; }
+  return ops;
+}
+function wordTokens(text) {
+  return String(text || '').match(/\S+\s*/g) || [];
+}
+function wordDiff(before, after) {
+  const A = wordTokens(before), B = wordTokens(after);
+  const ops = lcsOps(A, B);
+  let left = '', right = '';
+  ops.forEach(o => {
+    if (o.op === 'equal') { const t = esc(A[o.a]); left += t; right += t; }
+    else if (o.op === 'del') left += '<del class="df-word-del">' + esc(A[o.a].trim()) + '</del> ';
+    else right += '<ins class="df-word-ins">' + esc(B[o.b].trim()) + '</ins> ';
+  });
+  return { before: left.replace(/\s+$/, ''), after: right.replace(/\s+$/, '') };
+}
+
+// ── lyrics diff ──
+// Verses align by type + exact content first, so an inserted verse never shifts
+// the numbering of every verse after it. Leftover runs of removed and added
+// verses pair up positionally as "modified", which is what a human reads.
+function verseSignature(v) {
+  return (v.type || 'v') + '|' + (v.lines || []).map(l => String(l).trim()).join('\n');
+}
+function diffLines(beforeLines, afterLines) {
+  const A = (beforeLines || []).map(l => String(l));
+  const B = (afterLines || []).map(l => String(l));
+  const ops = lcsOps(A.map(l => l.trim()), B.map(l => l.trim()));
+  const rows = [];
+  let dels = [], ins = [];
+  const flush = () => {
+    const n = Math.max(dels.length, ins.length);
+    for (let i = 0; i < n; i++) {
+      if (dels[i] !== undefined && ins[i] !== undefined) {
+        rows.push({ kind: 'mod', before: dels[i], after: ins[i], words: wordDiff(dels[i], ins[i]) });
+      } else if (dels[i] !== undefined) rows.push({ kind: 'del', before: dels[i] });
+      else rows.push({ kind: 'ins', after: ins[i] });
+    }
+    dels = []; ins = [];
+  };
+  ops.forEach(o => {
+    if (o.op === 'equal') { flush(); rows.push({ kind: 'same', before: A[o.a], after: B[o.b] }); }
+    else if (o.op === 'del') dels.push(A[o.a]);
+    else ins.push(B[o.b]);
+  });
+  flush();
+  return rows;
+}
+function diffSongLyrics(beforeSong, afterSong) {
+  const A = lyricVersesOf(beforeSong);
+  const B = lyricVersesOf(afterSong);
+  const ops = lcsOps(A.map(verseSignature), B.map(verseSignature));
+  const blocks = [];
+  let dels = [], ins = [];
+  const flush = () => {
+    const n = Math.max(dels.length, ins.length);
+    for (let i = 0; i < n; i++) {
+      if (dels[i] && ins[i]) blocks.push({ kind: 'mod', before: dels[i], after: ins[i] });
+      else if (dels[i]) blocks.push({ kind: 'del', before: dels[i] });
+      else blocks.push({ kind: 'add', after: ins[i] });
+    }
+    dels = []; ins = [];
+  };
+  ops.forEach(o => {
+    if (o.op === 'equal') { flush(); blocks.push({ kind: 'same', before: A[o.a], after: B[o.b] }); }
+    else if (o.op === 'del') dels.push(A[o.a]);
+    else ins.push(B[o.b]);
+  });
+  flush();
+  const beforeLabels = verseLabels(A);
+  const afterLabels = verseLabels(B);
+  let ai = 0, bi = 0;
+  blocks.forEach(block => {
+    block.lines = diffLines(block.before ? block.before.lines : [], block.after ? block.after.lines : []);
+    if (block.kind === 'same') {
+      block.label = afterLabels[bi] || VERSE_TYPE_LABEL.v;
+      block.type = block.after.type || 'v';
+      ai++; bi++;
+    } else if (block.kind === 'add') {
+      block.label = afterLabels[bi] || VERSE_TYPE_LABEL.v;
+      block.type = block.after.type || 'v';
+      bi++;
+    } else if (block.kind === 'del') {
+      block.label = beforeLabels[ai] || VERSE_TYPE_LABEL.v;
+      block.type = block.before.type || 'v';
+      ai++;
+    } else {
+      block.label = afterLabels[bi] || beforeLabels[ai] || VERSE_TYPE_LABEL.v;
+      block.type = (block.after && block.after.type) || (block.before && block.before.type) || 'v';
+      ai++; bi++;
+    }
+  });
+  return blocks;
+}
+
+// ── chord diff ──
+// Charts anchor chords either at a character (`pos`) or a fraction (`at`) of the
+// line. Both become character positions here, so a chord that merely moved is
+// compared against the lyric character it lands on, not against a name list.
+function lineChordSpecs(chart, vi, li, len) {
+  if (!chart || !len) return [];
+  const specs = ceChartSpecs(chart, vi, li);
+  if (!Array.isArray(specs)) return [];
+  return specs
+    .filter(spec => spec && spec.ch)
+    .map(spec => ({ ch: String(spec.ch), pos: ceSpecPos(spec, len) }))
+    .sort((a, b) => a.pos - b.pos);
+}
+function matchChordLine(before, after) {
+  const usedBefore = new Set(), usedAfter = new Set();
+  const pairs = [];
+  const take = (bi, ai, status) => {
+    usedBefore.add(bi); usedAfter.add(ai);
+    pairs.push({ before: before[bi], after: after[ai], status: status });
+  };
+  before.forEach((b, bi) => {
+    const ai = after.findIndex((a, idx) => !usedAfter.has(idx) && a.pos === b.pos && a.ch === b.ch);
+    if (ai >= 0) take(bi, ai, 'same');
+  });
+  before.forEach((b, bi) => {
+    if (usedBefore.has(bi)) return;
+    const ai = after.findIndex((a, idx) => !usedAfter.has(idx) && a.pos === b.pos);
+    if (ai >= 0) take(bi, ai, 'changed');
+  });
+  before.forEach((b, bi) => {
+    if (usedBefore.has(bi)) return;
+    const ai = after.findIndex((a, idx) => !usedAfter.has(idx) && a.ch === b.ch);
+    if (ai >= 0) take(bi, ai, 'moved');
+  });
+  return {
+    pairs: pairs.sort((a, b) => a.before.pos - b.before.pos),
+    removed: before.filter((_, i) => !usedBefore.has(i)),
+    added: after.filter((_, i) => !usedAfter.has(i)),
+  };
+}
+function diffChart(beforeChart, afterChart, song) {
+  const verses = lyricVersesOf(song);
+  const labels = verseLabels(verses);
+  const blocks = [];
+  verses.forEach((verse, vi) => {
+    const lines = [];
+    const lineCount = chart => {
+      const vl = chart && Array.isArray(chart.verseLines) ? chart.verseLines[vi] : null;
+      return Array.isArray(vl) ? vl.length : 0;
+    };
+    const count = Math.max((verse.lines || []).length, lineCount(beforeChart), lineCount(afterChart));
+    for (let li = 0; li < count; li++) {
+      const text = String((verse.lines || [])[li] || '');
+      const len = text.length || 1;
+      const before = lineChordSpecs(beforeChart, vi, li, len);
+      const after = lineChordSpecs(afterChart, vi, li, len);
+      const match = matchChordLine(before, after);
+      const changed = match.pairs.some(p => p.status !== 'same') || match.removed.length || match.added.length;
+      lines.push({ index: li, text: text, before: before, after: after, match: match, changed: changed });
+    }
+    blocks.push({ label: labels[vi] || VERSE_TYPE_LABEL.v, type: verse.type || 'v', lines: lines });
+  });
+  const beforeKey = (beforeChart && beforeChart.key) || '';
+  const afterKey = (afterChart && afterChart.key) || '';
+  return { blocks: blocks, keyChanged: !!beforeKey && !!afterKey && beforeKey !== afterKey, beforeKey: beforeKey, afterKey: afterKey };
+}
+function chartDiffCounts(chordDiff) {
+  const counts = { added: 0, removed: 0, changed: 0, moved: 0, same: 0 };
+  ((chordDiff && chordDiff.blocks) || []).forEach(block => block.lines.forEach(line => {
+    line.match.pairs.forEach(p => { counts[p.status] = (counts[p.status] || 0) + 1; });
+    counts.added += line.match.added.length;
+    counts.removed += line.match.removed.length;
+  }));
+  return counts;
+}
+function lyricDiffCounts(blocks) {
+  const counts = { lines: { same: 0, add: 0, del: 0, mod: 0 }, verses: { add: 0, del: 0, mod: 0, same: 0 } };
+  (blocks || []).forEach(block => {
+    counts.verses[block.kind] = (counts.verses[block.kind] || 0) + 1;
+    (block.lines || []).forEach(row => { counts.lines[row.kind] = (counts.lines[row.kind] || 0) + 1; });
+  });
+  return counts;
+}
+
+// ── review model ──
+function proposalCategories(proposal) {
+  const payload = (proposal && proposal.payload) || {};
+  const out = [];
+  if (proposal.kind === 'chord') { out.push({ id: 'chords', label: 'Chords' }); return out; }
+  if (proposal.kind === 'struct') { out.push({ id: 'structure', label: 'Songbooks' }); return out; }
+  if (payload.op === 'delete') { out.push({ id: 'delete', label: 'Deletes the song' }); return out; }
+  const found = songInCorpus(payload.id);
+  if (!found) { out.push({ id: 'new', label: 'New song' }); return out; }
+  const next = payload.song || {};
+  const prev = found.song;
+  const prevVerses = JSON.stringify((prev.verses || []).map(v => [v.type || 'v', (v.lines || []).map(l => String(l).trim())]));
+  const nextVerses = JSON.stringify((next.verses || []).map(v => [v.type || 'v', (v.lines || []).map(l => String(l).trim())]));
+  if (prevVerses !== nextVerses) out.push({ id: 'lyrics', label: 'Lyrics' });
+  if (REVIEW_META_FIELDS.some(([field]) => String(prev[field] == null ? '' : prev[field]) !== String(next[field] == null ? '' : next[field]))) {
+    out.push({ id: 'details', label: 'Song details' });
+  }
+  if (!out.length) out.push({ id: 'nochange', label: 'No visible change' });
+  return out;
+}
+function buildReview(proposal) {
+  const id = proposalTargetId(proposal);
+  const found = songInCorpus(id);
+  const review = {
+    proposal: proposal,
+    id: id,
+    cats: proposalCategories(proposal),
+    originalSong: found ? found.song : null,
+    originalCat: found ? found.cat : ((proposal.payload && proposal.payload.cat) || ''),
+    originalChart: found ? chordChartFor(found.song) : null,
+    proposedSong: null,
+    proposedChart: null,
+    deleted: false,
+    deferred: false,
+    invalid: '',
+    diff: [],
+    chordDiff: null,
+  };
+  if (proposal.kind === 'song') {
+    const payload = proposal.payload || {};
+    if (payload.op === 'delete') review.deleted = true;
+    else if (payload.song && typeof payload.song === 'object' && Array.isArray(payload.song.verses)) review.proposedSong = payload.song;
+    else review.invalid = 'This submission does not contain a valid song.';
+    if (!review.invalid && !review.originalSong && !review.deleted) review.deferred = true; // a brand-new song
+    review.proposedChart = review.originalChart;
+    if (!review.invalid && !review.deferred) review.proposalCats = proposalCategories(proposal);
+  } else if (proposal.kind === 'chord') {
+    const chart = proposal.payload && proposal.payload.chart;
+    if (chart && typeof chart === 'object' && Array.isArray(chart.lines)) review.proposedChart = chart;
+    else review.invalid = 'This submission does not contain a valid chord chart.';
+    review.proposedSong = review.originalSong;
+  }
+  try {
+    if (proposal.kind === 'song' && !review.invalid && !review.deferred && !review.deleted) {
+      review.diff = diffSongLyrics(review.originalSong, review.proposedSong);
+    }
+    if (review.originalSong && review.proposedChart) {
+      review.chordDiff = diffChart(review.originalChart, review.proposedChart, review.originalSong);
+    }
+  } catch (error) {
+    review.invalid = review.invalid || 'This submission could not be compared.';
+  }
+  return review;
+}
+
+// ── review preview (renderer parity) ──
+// Reuses the reader's own markup and chord machinery, with the reviewed chart
+// standing in for the open song's chart. Nothing here is a second renderer.
+function reviewSongHTML(song, chart, withChords) {
+  if (!song) return '<div class="rv-empty">This song is not in the songbook yet — approval will add it.</div>';
+  const verses = lyricVersesOf(song);
+  const labels = verseLabels(verses);
+  const meta = [];
+  if (song.author) meta.push(esc(song.author));
+  const key = keyMetaText(song);
+  if (key) meta.push('Key: ' + esc(key));
+  if (song.number) meta.push('No. ' + esc(song.number));
+  let html = '<div class="rv-song"><div class="rv-song-head"><h2>' + esc(song.title) + '</h2>'
+    + (meta.length ? '<div class="rv-song-meta">' + meta.join(' · ') + '</div>' : '') + '</div>';
+  html += '<div class="rv-lyrics">' + verses.map((v, i) =>
+    '<div class="verse ' + (VERSE_TYPE_LABEL[v.type] ? v.type : 'v') + '"><div class="verse-type ' + (VERSE_TYPE_LABEL[v.type] ? v.type : 'v') + '">'
+    + labels[i] + '</div><p>' + esc((v.lines || []).join('\n')) + '</p></div>').join('') + '</div>';
+  if (withChords) {
+    html += chart
+      ? chordSheetHTML(song, chart, { review: true })
+      : '<div class="rv-chords-empty">No chord chart for this song.</div>';
+  }
+  return html + '</div>';
+}
+
+function reviewMetaDiffHTML(original, proposed) {
+  const rows = [];
+  REVIEW_META_FIELDS.forEach(([field, label]) => {
+    const before = String((original || {})[field] == null ? '' : original[field]);
+    const after = String((proposed || {})[field] == null ? '' : proposed[field]);
+    if (before === after) return;
+    rows.push('<div class="df-meta-row"><span class="df-meta-label">' + esc(label) + '</span>'
+      + (before ? '<del>' + esc(before) + '</del>' : '<span class="df-meta-none">empty</span>')
+      + '<span class="df-meta-arrow" aria-hidden="true">→</span>'
+      + (after ? '<ins>' + esc(after) + '</ins>' : '<span class="df-meta-none">removed</span>') + '</div>');
+  });
+  if (!rows.length) return '';
+  return '<div class="df-meta"><div class="df-section-title">Song details</div>' + rows.join('') + '</div>';
+}
+
+function reviewVerseRowsHTML(block) {
+  return (block.lines || []).map(row => {
+    if (row.kind === 'same') {
+      return '<div class="df-row df-same"><span class="df-sign" aria-hidden="true">·</span><p>' + esc(row.after) + '</p></div>';
+    }
+    if (row.kind === 'del') {
+      return '<div class="df-row df-del"><span class="df-sign" aria-hidden="true">−</span><p>' + esc(row.before) + '</p></div>';
+    }
+    if (row.kind === 'ins') {
+      return '<div class="df-row df-ins"><span class="df-sign" aria-hidden="true">+</span><p>' + esc(row.after) + '</p></div>';
+    }
+    return '<div class="df-row df-mod"><span class="df-sign" aria-hidden="true">±</span><p>'
+      + '<span class="df-before">' + row.words.before + '</span>'
+      + '<span class="df-after">' + row.words.after + '</span></p></div>';
+  }).join('');
+}
+
+function lyricChangesHTML(review) {
+  let html = '';
+  const blocks = review.diff || [];
+  if (review.deleted) {
+    html += '<div class="df-alert df-alert-del"><strong>This submission deletes the song.</strong>'
+      + '<span>Approving removes “' + esc(review.originalSong ? review.originalSong.title : review.id) + '” from its songbook.</span></div>';
+  }
+  const meta = reviewMetaDiffHTML(review.originalSong, review.proposedSong);
+  if (meta) html += meta;
+  if (!blocks.length && !review.deferred) {
+    html += '<div class="df-empty">No lyric changes in this submission.</div>';
+  }
+  blocks.forEach(block => {
+    const badge = block.kind === 'same' ? 'unchanged' : block.kind === 'mod' ? 'modified' : block.kind === 'add' ? 'added' : 'removed';
+    html += '<section class="df-block df-' + block.kind + '">'
+      + '<div class="df-verse-head"><span class="df-verse-label">' + esc(block.label) + '</span>'
+      + '<span class="df-badge">' + badge + '</span></div>'
+      + reviewVerseRowsHTML(block) + '</section>';
+  });
+  if (review.deferred) {
+    html += '<div class="df-block df-add"><div class="df-verse-head"><span class="df-verse-label">New song</span><span class="df-badge">added</span></div>'
+      + (review.proposedSong ? '<div class="df-row df-ins"><span class="df-sign" aria-hidden="true">+</span><p>' + esc(review.proposedSong.title) + '</p></div>' : '')
+      + '<p class="df-note">Approval adds it to ' + esc(review.originalCat || (review.proposal.payload && review.proposal.payload.cat) || 'its songbook') + ' and marks it for review of the printed sheet.</p></div>';
+  }
+  return html;
+}
+
+function chordChipHTML(entry, cls, len) {
+  const pct = len > 1 ? (entry.pos / (len - 1)) * 100 : 0;
+  const left = Math.max(0, Math.min(100, pct));
+  const shift = left < 6 ? 0 : left > 94 ? 100 : 50;
+  return '<span class="rv-chord ' + cls + '" data-pct="' + left.toFixed(2) + '" data-shift="' + shift + '">'
+    + esc(entry.ch) + '</span>';
+}
+function chordDiffLineHTML(line) {
+  if (!line.changed) {
+    return '<div class="df-chord-line is-same"><div class="rv-chord-row">'
+      + (line.after.length ? line.after.map(e => chordChipHTML(e, 'is-same', line.text.length || 1)).join('') : '<span class="rv-chord-none">no chords</span>')
+      + '</div><p class="df-chord-text">' + esc(line.text || ' ') + '</p></div>';
+  }
+  const notes = [];
+  line.match.pairs.forEach(pair => {
+    if (pair.status === 'changed') notes.push(esc(pair.before.ch) + ' → ' + esc(pair.after.ch));
+    else if (pair.status === 'moved') notes.push(esc(pair.after.ch) + ' moved');
+  });
+  line.match.removed.forEach(entry => notes.push('−' + esc(entry.ch)));
+  line.match.added.forEach(entry => notes.push('+' + esc(entry.ch)));
+  return '<div class="df-chord-line is-changed">'
+    + '<div class="rv-chord-row is-before">' + line.before.map(e => {
+      const pair = line.match.pairs.find(p => p.before === e);
+      const cls = !pair ? 'is-del' : pair.status === 'same' ? 'is-same' : 'is-old';
+      return chordChipHTML(e, cls, line.text.length || 1);
+    }).join('') + '</div>'
+    + '<div class="rv-chord-row is-after">' + line.after.map(e => {
+      const pair = line.match.pairs.find(p => p.after === e);
+      const cls = !pair ? 'is-add' : pair.status === 'same' ? 'is-same' : 'is-new';
+      return chordChipHTML(e, cls, line.text.length || 1);
+    }).join('') + '</div>'
+    + '<p class="df-chord-text">' + esc(line.text || ' ') + '</p>'
+    + '<div class="df-chord-notes">' + notes.join(' · ') + '</div></div>';
+}
+function chordChangesHTML(review) {
+  const diff = review.chordDiff;
+  if (!diff) return '<div class="df-empty">No chord chart to compare.</div>';
+  const counts = chartDiffCounts(diff);
+  if (!counts.added && !counts.removed && !counts.changed && !counts.moved && !diff.keyChanged) {
+    return '<div class="df-empty">This submission does not change any chord.</div>';
+  }
+  let html = diff.keyChanged
+    ? '<div class="df-key-change">Key <del>' + esc(diff.beforeKey) + '</del> <span aria-hidden="true">→</span> <ins>' + esc(diff.afterKey) + '</ins></div>'
+    : '';
+  if (counts.removed || counts.changed || counts.moved) {
+    html += '<div class="df-legend"><span class="df-legend-item"><i class="rv-chord is-del"></i>removed</span>'
+      + '<span class="df-legend-item"><i class="rv-chord is-old"></i>was</span>'
+      + '<span class="df-legend-item"><i class="rv-chord is-new"></i>now</span>'
+      + '<span class="df-legend-item"><i class="rv-chord is-add"></i>added</span></div>';
+  }
+  diff.blocks.forEach(block => {
+    const changed = block.lines.some(l => l.changed);
+    html += '<section class="df-block df-chord-verse' + (changed ? ' df-mod' : ' df-same') + '">'
+      + '<div class="df-verse-head"><span class="df-verse-label">' + esc(block.label) + '</span>'
+      + (changed ? '<span class="df-badge">chords changed</span>' : '<span class="df-badge">unchanged</span>') + '</div>'
+      + block.lines.map(chordDiffLineHTML).join('') + '</section>';
+  });
+  return html;
+}
+function reviewSummaryText(review) {
+  if (review.invalid) return review.invalid;
+  const bits = [];
+  const lyric = lyricDiffCounts(review.diff);
+  const verseChanges = lyric.verses.add + lyric.verses.del + lyric.verses.mod;
+  if (verseChanges) bits.push(verseChanges + ' verse' + (verseChanges === 1 ? '' : 's') + ' changed');
+  const lineChanges = lyric.lines.add + lyric.lines.del + lyric.lines.mod;
+  if (lineChanges) bits.push(lineChanges + ' line' + (lineChanges === 1 ? '' : 's'));
+  const chords = chartDiffCounts(review.chordDiff);
+  const chordTotal = chords.added + chords.removed + chords.changed + chords.moved;
+  if (chordTotal) bits.push(chordTotal + ' chord' + (chordTotal === 1 ? '' : 's') + ' changed');
+  if (review.chordDiff && review.chordDiff.keyChanged) bits.push('key changed');
+  if (review.deleted) bits.push('deletes the song');
+  if (review.deferred) bits.push('new song');
+  return bits.length ? bits.join(' · ') : 'No content changes in this submission';
+}
+function reviewCatChipsHTML(cats) {
+  return (cats || []).map(cat => '<span class="rv-cat rv-cat-' + escAttr(cat.id) + '">' + esc(cat.label) + '</span>').join('');
+}
+function reviewNoticeHTML(type, text) {
+  return '<div class="review-notice is-' + type + '">' + esc(text) + '</div>';
+}
+function applyReviewChipPositions(root) {
+  if (!root) return;
+  root.querySelectorAll('.rv-chord[data-pct]').forEach(el => {
+    el.style.setProperty('--rv-left', el.dataset.pct + '%');
+    el.style.setProperty('--rv-shift', (el.dataset.shift || '50') + '%');
+  });
+}
+
+// ── review page ──
+function reviewErrorFrom(error) {
+  const raw = cloudErrorText(error);
+  if (/changed after this was submitted|stale|conflict/i.test(raw)) {
+    return 'This song changed after the submission was made, so approving would overwrite that change. Sync, then ask for a fresh submission (or reject this one).';
+  }
+  if (/already reviewed|reviewed by someone else/i.test(raw)) {
+    return 'Someone already reviewed this submission. Reload the queue to see the current state.';
+  }
+  return raw;
+}
+async function openReview(id, push) {
+  if (!CLOUD_ON) return;
+  reviewCurrent = null;
+  reviewFlash = null;
+  reviewTab = 'changes';
+  reviewBusy = false;
+  _reviewPosChart = null;
+  chordTranspose = 0;
+  showView('review');
+  if (push !== false) navPush();
+  window.scrollTo(0, 0);
+  document.getElementById('reviewKicker').textContent = 'Submission #' + id;
+  document.getElementById('reviewTitle').textContent = 'Loading…';
+  document.getElementById('reviewMeta').textContent = '';
+  document.getElementById('reviewCats').innerHTML = '';
+  document.getElementById('reviewSummary').textContent = '';
+  document.getElementById('reviewNotice').hidden = true;
+  document.getElementById('reviewBar').hidden = true;
+  document.getElementById('reviewBody').innerHTML = '<div class="rv-loading"><span class="btn-spinner" aria-hidden="true"></span><span>Loading submission…</span></div>';
+  let proposal = null;
+  try {
+    proposal = await cloudReq('/api/admin/proposals/' + Number(id));
+  } catch (error) {
+    // Older Workers have no detail route; the queue row already carries the patch.
+    proposal = cloudPending.concat(cloudReviewed).find(p => Number(p.id) === Number(id)) || null;
+    if (!proposal) reviewCurrent = { error: reviewErrorFrom(error) };
+  }
+  if (!reviewCurrent) {
+    if (!proposal) reviewCurrent = { error: 'This submission could not be loaded. It may already have been reviewed.' };
+    else reviewCurrent = buildReview(proposal);
+  }
+  renderReview();
+  // Deep link back into a review after a reload/back gesture.
+  navReplaceReview(id);
+}
+function navReplaceReview(id) {
+  if (_restoring) return;
+  try { history.replaceState(Object.assign(buildState(), { proposalId: Number(id) }), ''); } catch (e) {}
+}
+function renderReview() {
+  const cur = reviewCurrent;
+  const titleEl = document.getElementById('reviewTitle');
+  const metaEl = document.getElementById('reviewMeta');
+  const kickerEl = document.getElementById('reviewKicker');
+  const catsEl = document.getElementById('reviewCats');
+  const summaryEl = document.getElementById('reviewSummary');
+  const noticeEl = document.getElementById('reviewNotice');
+  const body = document.getElementById('reviewBody');
+  const bar = document.getElementById('reviewBar');
+  document.querySelectorAll('#reviewTabs .review-tab').forEach(tab => {
+    const on = tab.dataset.tab === reviewTab;
+    tab.classList.toggle('is-active', on);
+    tab.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  body.classList.toggle('is-plain', reviewTab !== 'changes');
+  if (!cur) return;
+  if (cur.error) {
+    kickerEl.textContent = 'Review';
+    titleEl.textContent = 'Submission unavailable';
+    metaEl.textContent = '';
+    catsEl.innerHTML = '';
+    summaryEl.textContent = '';
+    noticeEl.hidden = false;
+    noticeEl.className = 'review-notice is-error';
+    noticeEl.textContent = cur.error;
+    body.innerHTML = '';
+    bar.hidden = true;
+    return;
+  }
+  const proposal = cur.proposal;
+  const pending = proposal.status === 'pending';
+  kickerEl.textContent = pending ? 'Pending review · #' + proposal.id : 'Reviewed · #' + proposal.id + ' · ' + proposal.status;
+  titleEl.textContent = proposalSongTitle(proposal);
+  const metaBits = [
+    proposal.submitter_name ? proposal.submitter_name : 'Anonymous',
+    cloudAgo(proposal.created_at),
+    cur.originalCat ? cloudBookName(cur.originalCat) : '',
+    proposal.kind === 'chord' ? 'Chord chart' : 'Song content',
+  ].filter(Boolean);
+  metaEl.textContent = metaBits.join(' · ');
+  catsEl.innerHTML = reviewCatChipsHTML(cur.cats);
+  summaryEl.textContent = cur.invalid ? cur.invalid : reviewSummaryText(cur);
+  bar.hidden = !pending;
+  document.querySelectorAll('#reviewBar .btn').forEach(btn => { btn.disabled = false; });
+  let notice = '';
+  if (reviewFlash) {
+    notice = reviewNoticeHTML(reviewFlash.type, reviewFlash.text);
+  } else if (!pending) {
+    const who = proposal.reviewed_by_name ? ' by ' + esc(proposal.reviewed_by_name) : '';
+    notice = reviewNoticeHTML('info', 'This submission was ' + esc(proposal.status) + who
+      + (proposal.reviewed_at ? ' ' + cloudAgo(proposal.reviewed_at) : '') + '.'
+      + (proposal.note ? ' Reason: ' + proposal.note : ''));
+  }
+  if (cur.invalid) notice = reviewNoticeHTML('error', cur.invalid);
+  noticeEl.hidden = !notice;
+  if (notice) { noticeEl.className = 'review-notice' + (/is-error/.test(notice) ? ' is-error' : ' is-info'); noticeEl.innerHTML = notice; }
+  else { noticeEl.className = 'review-notice'; noticeEl.textContent = ''; }
+  if (reviewTab === 'original') {
+    body.innerHTML = '<div class="rv-pane"><div class="rv-pane-head">Published now</div>'
+      + reviewSongHTML(cur.originalSong, cur.originalChart, true) + '</div>';
+    _reviewPosChart = cur.originalChart;
+  } else if (reviewTab === 'proposed') {
+    if (cur.deleted) {
+      body.innerHTML = '<div class="rv-pane"><div class="df-alert df-alert-del"><strong>Approving deletes this song.</strong>'
+        + '<span>It disappears from its songbook on every device.</span></div></div>';
+      _reviewPosChart = null;
+    } else if (cur.invalid) {
+      body.innerHTML = '<div class="rv-pane"><div class="rv-empty">' + esc(cur.invalid) + '</div></div>';
+      _reviewPosChart = null;
+    } else {
+      body.innerHTML = '<div class="rv-pane"><div class="rv-pane-head">After approval</div>'
+        + reviewSongHTML(cur.proposedSong, cur.proposedChart, true) + '</div>';
+      _reviewPosChart = cur.proposedChart;
+    }
+  } else {
+    _reviewPosChart = null;
+    let changes = '';
+    if (proposal.kind === 'struct') {
+      changes = reviewStructChangesHTML(proposal);
+    } else {
+      changes = lyricChangesHTML(cur);
+      if (proposal.kind === 'chord' || (cur.chordDiff && chartDiffCounts(cur.chordDiff).changed)) {
+        changes += '<div class="df-section-title">Chords</div>' + chordChangesHTML(cur);
+      } else if (proposal.kind === 'song') {
+        changes += '<p class="df-note">Chord chart is unchanged by this submission.</p>';
+      }
+    }
+    body.innerHTML = '<div class="rv-pane">' + changes + '</div>';
+  }
+  applyReviewChipPositions(body);
+  if (_reviewPosChart) layoutChordSheetPositions(body);
+}
+function reviewStructChangesHTML(proposal) {
+  const payload = proposal.payload || {};
+  const labels = {
+    addGroup: 'New main songbook', addBook: 'New songbook', renameGroup: 'Rename main songbook',
+    renameBook: 'Rename songbook', deleteBook: 'Delete songbook', deleteGroup: 'Delete main songbook',
+  };
+  const song = payload.song || {};
+  const rows = [];
+  if (song.name) rows.push('<div class="df-meta-row"><span class="df-meta-label">Name</span><ins>' + esc(song.name) + '</ins></div>');
+  if (song.desc) rows.push('<div class="df-meta-row"><span class="df-meta-label">Description</span><ins>' + esc(song.desc) + '</ins></div>');
+  if (Array.isArray(song.books)) rows.push('<div class="df-meta-row"><span class="df-meta-label">Books</span><span>' + esc(song.books.join(', ')) + '</span></div>');
+  return '<div class="df-block df-mod"><div class="df-verse-head"><span class="df-verse-label">'
+    + esc(labels[payload.op] || 'Songbook change') + '</span><span class="df-badge">structure</span></div>'
+    + (rows.length ? '<div class="df-meta">' + rows.join('') + '</div>' : '')
+    + '<p class="df-note">Songbook structure changes are reviewed here; the library tree updates when this is approved.</p></div>';
+}
+function setReviewTab(tab) {
+  if (!['changes', 'original', 'proposed'].includes(tab) || tab === reviewTab) return;
+  reviewTab = tab;
+  renderReview();
+  window.scrollTo(0, 0);
+}
+function closeReview(push) {
+  _reviewPosChart = null;
+  reviewCurrent = null;
+  cloudStatusFilter = 'pending';
+  openAdminAccount(push);
+}
+async function reviewApprove(btn) {
+  const cur = reviewCurrent;
+  if (reviewBusy || !cur || !cur.proposal || cur.proposal.status !== 'pending') return;
+  reviewBusy = true;
+  const noticeEl = document.getElementById('reviewNotice');
+  const approveBtn = document.querySelector('#reviewBar .review-bar-approve');
+  setCloudButtonBusy(approveBtn, true, 'Approving…');
+  noticeEl.hidden = true;
+  try {
+    await cloudReq('/api/admin/approve', { body: { ids: [cur.proposal.id] } });
+    cur.proposal.status = 'approved';
+    cloudPending = cloudPending.filter(p => p.id !== cur.proposal.id);
+    await cloudAfterReview('approved');
+    reviewFlash = { type: 'ok', text: 'Approved. The change is published and every device will pick it up on its next sync.' };
+    renderReview();
+    renderCloudPanel();
+  } catch (error) {
+    reviewFlash = { type: 'error', text: reviewErrorFrom(error) };
+    renderReview();
+  } finally {
+    reviewBusy = false;
+    if (approveBtn && approveBtn.isConnected) setCloudButtonBusy(approveBtn, false);
+  }
+}
+function reviewReject(btn) {
+  const cur = reviewCurrent;
+  if (!cur || !cur.proposal || cur.proposal.status !== 'pending') return;
+  reviewRejectId = cur.proposal.id;
+  const lead = document.getElementById('reviewRejectLead');
+  if (lead) lead.textContent = '“' + proposalSongTitle(cur.proposal) + '” from '
+    + (cur.proposal.submitter_name || 'Anonymous') + ' will be rejected. The published song is not touched.';
+  const reason = document.getElementById('reviewRejectReason');
+  if (reason) reason.value = '';
+  const err = document.getElementById('reviewRejectErr');
+  if (err) err.textContent = '';
+  openModal('reviewRejectModal');
+  setTimeout(() => document.getElementById('reviewRejectReason')?.focus(), 80);
+}
+function closeReviewReject() {
+  reviewRejectId = null;
+  closeModal('reviewRejectModal');
+}
+async function confirmReviewReject(btn) {
+  const id = reviewRejectId;
+  if (reviewBusy || !id) return;
+  reviewBusy = true;
+  const reasonEl = document.getElementById('reviewRejectReason');
+  const note = reasonEl ? reasonEl.value.trim().slice(0, 300) : '';
+  const err = document.getElementById('reviewRejectErr');
+  if (err) err.textContent = '';
+  setCloudButtonBusy(btn, true, 'Rejecting…');
+  try {
+    await cloudReq('/api/admin/reject', { body: { ids: [id], note: note } });
+    cloudPending = cloudPending.filter(p => p.id !== id);
+    if (reviewCurrent && reviewCurrent.proposal && reviewCurrent.proposal.id === id) {
+      reviewCurrent.proposal.status = 'rejected';
+      reviewCurrent.proposal.note = note;
+      reviewCurrent.proposal.reviewed_at = Date.now();
+    }
+    closeModal('reviewRejectModal');
+    reviewRejectId = null;
+    reviewFlash = { type: 'ok', text: 'Rejected. Nothing was published.' };
+    renderReview();
+    renderCloudPanel();
+  } catch (error) {
+    if (err) err.textContent = reviewErrorFrom(error);
+  } finally {
+    reviewBusy = false;
+    if (btn && btn.isConnected) setCloudButtonBusy(btn, false);
+  }
+}
+
+// ── per-song moderation history (admin only) ──
+async function openReviewHistory(songId) {
+  if (!songId) return;
+  const body = document.getElementById('reviewHistoryBody');
+  const title = document.getElementById('reviewHistoryTitle');
+  if (title) title.textContent = 'History · ' + ((songInCorpus(songId) || {}).song || {}).title || songId;
+  if (body) body.innerHTML = '<div class="rv-loading"><span class="btn-spinner" aria-hidden="true"></span><span>Loading history…</span></div>';
+  openModal('reviewHistoryModal');
+  let data = null;
+  try { data = await cloudReq('/api/admin/song-revisions?id=' + encodeURIComponent(songId)); } catch (error) { data = null; }
+  if (!body) return;
+  if (!data) { body.innerHTML = '<p class="review-history-empty">History is unavailable right now.</p>'; return; }
+  const published = (data.published || []).slice().sort((a, b) => Number(b.seq) - Number(a.seq));
+  const reviewed = data.reviewed || [];
+  let html = '';
+  html += '<div class="rv-history-block"><div class="df-section-title">Published revisions (' + published.length + ')</div>';
+  html += published.length ? published.map(row => '<div class="rv-history-row">'
+    + '<span class="rv-history-when">' + esc(cloudAgo(row.published_at)) + '</span>'
+    + '<span class="rv-history-what">' + esc(row.kind === 'chord' ? 'Chord chart' : 'Song content') + '</span>'
+    + (row.proposal_id ? '<span class="rv-history-who">from review #' + row.proposal_id + '</span>' : '<span class="rv-history-who">direct admin edit</span>')
+    + '</div>').join('') : '<p class="review-history-empty">Nothing published for this song yet.</p>';
+  html += '</div><div class="rv-history-block"><div class="df-section-title">Decisions (' + reviewed.length + ')</div>';
+  html += reviewed.length ? reviewed.map(row => '<div class="rv-history-row is-' + esc(row.status) + '">'
+    + '<span class="rv-history-when">' + esc(cloudAgo(row.reviewed_at || row.created_at)) + '</span>'
+    + '<span class="rv-history-what">' + esc(row.status === 'approved' ? 'Approved' : 'Rejected')
+    + ' · ' + esc(row.submitter_name || 'Anonymous') + '</span>'
+    + '<span class="rv-history-who">' + esc(row.reviewed_by_name || 'admin')
+    + (row.note ? ' — ' + esc(row.note) : '') + '</span></div>').join('') : '<p class="review-history-empty">No decisions recorded yet.</p>';
+  html += '</div>';
+  body.innerHTML = html;
+}
+function closeReviewHistory() { closeModal('reviewHistoryModal'); }
+
+// ── dashboard ──
+function cloudPendingTargetKinds() {
+  const map = new Map();
+  cloudPending.forEach(p => {
+    const id = proposalTargetId(p);
+    if (!id) return;
+    if (!map.has(id)) map.set(id, new Set());
+    map.get(id).add(p.kind);
+  });
+  return map;
+}
+function cloudItemBadgesHTML(proposal, combined) {
+  const badges = [];
+  if (proposal.status && proposal.status !== 'pending') {
+    badges.push('<span class="cloud-badge is-' + esc(proposal.status) + '">' + esc(proposal.status) + '</span>');
+  }
+  proposalCategories(proposal).forEach(cat => badges.push('<span class="cloud-badge">' + esc(cat.label) + '</span>'));
+  if (combined) badges.push('<span class="cloud-badge is-combined">Lyrics + chords</span>');
+  return badges.join('');
+}
+async function cloudSetFilter(status) {
+  if (!['pending', 'approved', 'rejected'].includes(status)) return;
+  cloudStatusFilter = status;
+  await renderCloudPanel();
+}
+
 function cloudErrorText(error) {
   const raw = error && error.message ? error.message : 'Request failed';
   const brace = raw.indexOf('{');
@@ -1089,7 +1946,7 @@ async function cloudAfterReview(msg) {
 async function cloudApprove(id, btn) {
   setCloudButtonBusy(btn, true, 'Approving…');
   try { await cloudReq('/api/admin/approve', { body: { ids: [id] } }); }
-  catch (e) { setCloudButtonBusy(btn, false); return; }
+  catch (e) { setCloudButtonBusy(btn, false); showAdminAccountMsg(reviewErrorFrom(e)); return; }
   cloudPending = cloudPending.filter(p => p.id !== id);
   await cloudAfterReview('Approved — syncing to all devices');
 }
@@ -1098,14 +1955,14 @@ async function cloudApproveAll(btn) {
   if (!ids.length) return;
   setCloudButtonBusy(btn, true, 'Approving…');
   try { await cloudReq('/api/admin/approve', { body: { ids: ids } }); }
-  catch (e) { setCloudButtonBusy(btn, false); return; }
+  catch (e) { setCloudButtonBusy(btn, false); showAdminAccountMsg(reviewErrorFrom(e)); await renderCloudPanel(); return; }
   cloudPending = [];
   await cloudAfterReview('Approved ' + ids.length + ' — syncing to all devices');
 }
 async function cloudReject(id, btn) {
   setCloudButtonBusy(btn, true, 'Rejecting…');
   try { await cloudReq('/api/admin/reject', { body: { ids: [id] } }); }
-  catch (e) { setCloudButtonBusy(btn, false); return; }
+  catch (e) { setCloudButtonBusy(btn, false); showAdminAccountMsg(reviewErrorFrom(e)); return; }
   cloudPending = cloudPending.filter(p => p.id !== id);
   renderCloudPanel();
 }
@@ -1888,7 +2745,7 @@ document.addEventListener('animationend', e => {
 // ponytail: how deep a view sits on the path (home → list → reader). The page
 // transition rides this: going deeper enters from the right, coming back enters
 // from the left, so movement reads as travel rather than as a fresh paint.
-const _VIEW_DEPTH = { home: 0, list: 1, settings: 1, admin: 1, login: 1, adminAccount: 2, detail: 2 };
+const _VIEW_DEPTH = { home: 0, list: 1, settings: 1, admin: 1, login: 1, adminAccount: 2, review: 2, detail: 2 };
 function showView(v) {
   if (v === 'list' && currentView !== 'list' && currentView !== 'detail') _listOriginView = currentView + 'View';
   const _fromDepth = _VIEW_DEPTH[currentView], _toDepth = _VIEW_DEPTH[v];
@@ -1897,16 +2754,19 @@ function showView(v) {
   currentView = v;
   // ponytail: drives bottom-tab visibility (hidden in the reader) from CSS.
   document.body.dataset.view = v;
-  ['homeView','listView','detailView','adminView','settingsView','adminAccountView'].forEach(id => {
+  ['homeView','listView','detailView','adminView','settingsView','adminAccountView','reviewView'].forEach(id => {
     document.getElementById(id).classList.toggle('active', id === v + 'View');
   });
   document.getElementById('backBtn').classList.toggle('show', !['home','admin','settings'].includes(v));
-  const hideSearch = v === 'admin' || v === 'login' || v === 'adminAccount';
+  const hideSearch = v === 'admin' || v === 'login' || v === 'adminAccount' || v === 'review';
   const searchBox = document.getElementById('searchBox');
   if (hideSearch) { searchBox.style.display = 'none'; } else { searchBox.removeAttribute('style'); }
   document.getElementById('searchToggle').style.display = hideSearch ? 'none' : '';
   // ponytail: reader controls belong only to the detail view. Toggle the footer host.
   document.getElementById('readerControlsHost').style.display = (v === 'detail' ? '' : 'none');
+  // Review owns its own bottom action bar; the reader footer is hidden there.
+  const reviewBar = document.getElementById('reviewBar');
+  if (reviewBar && v !== 'review') reviewBar.hidden = true;
   // ponytail: never leave the scroll lock on outside the song reader.
   if (v !== 'detail') {
     document.documentElement.classList.remove('scroll-locked');
@@ -1929,7 +2789,7 @@ function showView(v) {
 // Active tab mirrors where you are: home also covers songbook/category lists, and
 // settings stays lit while its sheet is open.
 function currentTab() {
-  if (currentView === 'settings' || currentView === 'admin' || currentView === 'adminAccount') return 'settings';
+  if (currentView === 'settings' || currentView === 'admin' || currentView === 'adminAccount' || currentView === 'review') return 'settings';
   if (currentView === 'search') return 'search';
   if (currentView === 'list' && currentListKind === 'fav') return 'fav';
   if (currentView === 'list' && currentListKind === 'history') return 'history';
@@ -1983,6 +2843,7 @@ function buildState() {
     listKind: currentListKind,
     songId: song ? song.id : null,
     pid: currentPlaylistId,
+    proposalId: currentView === 'review' && reviewCurrent && reviewCurrent.proposal ? reviewCurrent.proposal.id : null,
     list: song ? currentList.slice() : null
   };
 }
@@ -2038,6 +2899,10 @@ function applyState(s) {
     }
     case 'admin': openAdmin(); break;
     case 'adminAccount': openAdminAccount(false); break;
+    case 'review':
+      if (s.proposalId) openReview(Number(s.proposalId), false);
+      else openAdminAccount(false);
+      break;
     case 'settings': openSettings(); break;
     default: { showView('home'); renderGroups(); }
   }
@@ -3930,7 +4795,8 @@ function chartChordNames(chart) {
   return names;
 }
 
-function chordSheetHTML(song, chart) {
+function chordSheetHTML(song, chart, opts) {
+  const reviewMode = !!(opts && opts.review);
   const vt = {v:'Verse',c:'Chorus',b:'Bridge',p:'Reference',pc:'Pre-Chorus'};
   const isRef = v => (v.type||'v') === 'p' && v.lines.some(l => /\bdoh\s+is\b/i.test(l));
   const verses = (song.verses||[]).filter(v => !isRef(v));
@@ -3938,16 +4804,18 @@ function chordSheetHTML(song, chart) {
   let html = '<div class="chord-sheet fade-in"><div class="chord-summary"><span class="chord-summary-label">Key <span class="chord-key-value">'+esc(chartKeyLabel(chart))+'</span></span>'
     + chartChordNames(chart).map(c => {
       const label = chordLabel(chart, c);
+      if (reviewMode) return '<span class="chord-pill is-static" data-chord="'+escAttr(c)+'">'+esc(label)+'</span>';
       return '<button type="button" class="chord-pill" data-chord="'+escAttr(c)+'" data-action="openChordShape" aria-label="Guitar chord '+escAttr(label)+'" title="Guitar chord '+escAttr(label)+'">'+esc(label)+'</button>';
     }).join('')
     + '</div>'
-    + '<div class="chord-tools"><span class="chord-tools-label">Transpose</span>'
-    + '<button type="button" class="chord-tool-btn" data-action="transposeChordView" data-step="-1" aria-label="Transpose down one semitone" title="Transpose down">−</button>'
-    + '<strong class="chord-tool-key">'+esc(chartKeyLabel(chart))+'</strong>'
-    + '<button type="button" class="chord-tool-btn" data-action="transposeChordView" data-step="1" aria-label="Transpose up one semitone" title="Transpose up">+</button>'
-    + '<button type="button" class="chord-tool-reset" data-action="resetChordTranspose"'+(chordTranspose?'':' disabled')+'>Reset</button>'
-    + '<button type="button" class="chord-tool-edit" data-action="openChordEditor" aria-label="Edit chords" title="Edit chords">'+SVG.pen+'</button>'
-    + '</div>';
+    + (reviewMode ? '' :
+      '<div class="chord-tools"><span class="chord-tools-label">Transpose</span>'
+      + '<button type="button" class="chord-tool-btn" data-action="transposeChordView" data-step="-1" aria-label="Transpose down one semitone" title="Transpose down">−</button>'
+      + '<strong class="chord-tool-key">'+esc(chartKeyLabel(chart))+'</strong>'
+      + '<button type="button" class="chord-tool-btn" data-action="transposeChordView" data-step="1" aria-label="Transpose up one semitone" title="Transpose up">+</button>'
+      + '<button type="button" class="chord-tool-reset" data-action="resetChordTranspose"'+(chordTranspose?'':' disabled')+'>Reset</button>'
+      + '<button type="button" class="chord-tool-edit" data-action="openChordEditor" aria-label="Edit chords" title="Edit chords">'+SVG.pen+'</button>'
+      + '</div>');
   let shown = 0;
   verses.forEach((v, vi) => {
     if (shown >= chart.verses) return;
@@ -4289,7 +5157,7 @@ function playChordTone(btn) {
 
 function positionChordReadLine(lineEl) {
   const song = currentList && currentList[currentSongIdx];
-  const chart = song ? chordChartFor(song) : null;
+  const chart = _reviewPosChart || (song ? chordChartFor(song) : null);
   if (!chart) return;
   const vi = Number(lineEl.dataset.v) || 0;
   const li = Number(lineEl.dataset.l) || 0;
@@ -7838,6 +8706,16 @@ const CLICK_ACTIONS = {
   cloudCheckForUpdates: el => cloudCheckForUpdates(true, el),
   cloudApprove: el => cloudApprove(Number(el.dataset.proposalId), el),
   cloudReject: el => cloudReject(Number(el.dataset.proposalId), el),
+  cloudFilter: el => cloudSetFilter(el.dataset.status),
+  reviewOpen: el => openReview(Number(el.dataset.proposalId)),
+  reviewHistory: el => openReviewHistory(el.dataset.songId),
+  closeReviewHistory,
+  setReviewTab: el => setReviewTab(el.dataset.tab),
+  closeReview: () => closeReview(),
+  reviewApprove: el => reviewApprove(el),
+  reviewReject: el => reviewReject(el),
+  closeReviewReject,
+  confirmReviewReject: el => confirmReviewReject(el),
   chooseFont: el => chooseFont(el.dataset.font),
   openChordShape: el => openChordShape(el),
   scrollToVerse: el => scrollToVerse(Number(el.dataset.index)),

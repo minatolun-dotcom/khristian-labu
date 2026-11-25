@@ -82,10 +82,13 @@ workers/api/wrangler.prod.jsonc` for every `secret put`.
 | POST | `/api/proposals` | public, D1 rate-limited (20/min/IP), deduplicated |
 | GET | `/api/admin/me` | admin cookie |
 | POST | `/api/admin/users` | owner only; create another admin `{name?, email, password}` |
-| GET | `/api/admin/proposals` | admin; pending queue |
+| GET | `/api/admin/proposals[?status=pending\|approved\|rejected\|all&song=id&limit=n]` | admin; default is the pending queue (array, so older clients keep working) |
+| GET | `/api/admin/proposals/counts` | admin; `{pending, approved, rejected}` |
+| GET | `/api/admin/proposals/:id` | admin; one submission with its patch, fingerprint and decision |
+| GET | `/api/admin/song-revisions?id=songId` | admin; published revisions + reviewed decisions (incl. rejection reasons) for one song |
 | POST | `/api/admin/publish` | admin; `{kind, payload, expectedVersion?}` |
-| POST | `/api/admin/approve` | admin; `{ids, expectedVersion?}` |
-| POST | `/api/admin/reject` | admin; `{ids, note?}` |
+| POST | `/api/admin/approve` | admin; `{ids, expectedVersion?}`; refuses stale submissions (409) |
+| POST | `/api/admin/reject` | admin; `{ids, note?}`; 409 if already decided |
 | * | `/api/auth/*` | Better Auth |
 
 Admin sessions use the HttpOnly Better Auth session cookie. The client never
@@ -93,6 +96,37 @@ receives or stores a bearer token; after a reload the cookie restores the sessio
 Production CORS is exact-origin for
 `https://labu.lengkhawm.online`, `https://localhost`, and `capacitor://localhost`;
 staging adds local dev origins. The debug APK uses `https://localhost` inside Capacitor.
+
+## Reviewing a submission
+
+A proposal is a patch and always carries the complete proposed song (or chord
+chart). To judge it, the review page needs the other side — the song as it is
+published right now — and a rule for detecting that the song moved on while the
+proposal waited.
+
+- **Original** is replayed from `published_edits` for that song id
+  (`workers/api/src/revisions.mjs`); the reader itself renders the published
+  corpus it already has.
+- **Proposed** is the proposal payload, rendered by the same reader functions
+  (`reviewSongHTML`/`chordSheetHTML`), never by a second renderer.
+- **`base_rev`** is a SHA-256 fingerprint of the published revision a proposal
+  was written against, computed at submission and stored on the row
+  (`proposals.base_rev`, migration `0003_review.sql`). An approval recomputes it:
+  if it differs, the request fails with `409 the song changed after this was
+  submitted` and nothing is written. Proposals created before this migration have
+  `base_rev = NULL` and are approved without the check (documented trade-off for
+  backward compatibility).
+- Approval writes the reviewed payload into `published_edits`, marks the
+  proposal approved, and bumps `publish_state.version` in one `env.DB.batch`
+  (atomic). The version bump is guarded by `WHERE version = <read version>`, so a
+  concurrent approval invalidates the batch instead of interleaving with it.
+- Decisions are recorded with `reviewed_by`, `reviewed_by_name` (snapshot, so a
+  deleted admin still reads correctly) and `reviewed_at`; rejections keep the
+  optional reason in `note`.
+
+No Turnstile/WAF change was needed: proposal submits are already IP rate-limited
+(20/min) and payload-capped, and every moderation route requires the admin
+session checked on the Worker.
 
 ## Data and backups
 

@@ -656,6 +656,71 @@ Second verse line 2"></textarea>
   </div>
 </div>
 
+<!-- ADMIN REVIEW (pending submission) -->
+<div class="view" id="reviewView">
+  <div class="review-page">
+    <div class="review-head">
+      <button class="review-back" type="button" data-action="closeReview" aria-label="Back to the review queue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        Queue
+      </button>
+      <div class="review-heading">
+        <div class="review-kicker" id="reviewKicker"></div>
+        <h1 id="reviewTitle">Submission</h1>
+        <div class="review-meta" id="reviewMeta"></div>
+      </div>
+      <div class="review-cats" id="reviewCats"></div>
+      <div class="review-tabs" role="tablist" aria-label="Review mode" id="reviewTabs">
+        <button class="review-tab is-active" type="button" role="tab" aria-selected="true" data-action="setReviewTab" data-tab="changes">Changes</button>
+        <button class="review-tab" type="button" role="tab" aria-selected="false" data-action="setReviewTab" data-tab="original">Original</button>
+        <button class="review-tab" type="button" role="tab" aria-selected="false" data-action="setReviewTab" data-tab="proposed">Proposed</button>
+      </div>
+      <div class="review-summary" id="reviewSummary"></div>
+      <div class="review-notice" id="reviewNotice" role="status" hidden></div>
+      <div class="review-body" id="reviewBody"></div>
+    </div>
+  </div>
+  <div class="review-bar" id="reviewBar" hidden>
+    <button class="btn btn-ghost review-bar-reject" type="button" data-action="reviewReject">Reject</button>
+    <button class="btn btn-primary review-bar-approve" type="button" data-action="reviewApprove">Approve &amp; publish</button>
+  </div>
+</div>
+
+<!-- REVIEW: REJECT REASON -->
+<div class="modal-overlay" id="reviewRejectModal" data-action="closeReviewReject" data-backdrop>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="reviewRejectTitle">
+    <div class="modal-header">
+      <h2 id="reviewRejectTitle">Reject this submission?</h2>
+      <button class="modal-close" type="button" data-action="closeReviewReject" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="review-reject-lead" id="reviewRejectLead"></p>
+      <div class="form-group">
+        <label for="reviewRejectReason">Reason (optional, kept in the history)</label>
+        <textarea id="reviewRejectReason" rows="3" maxlength="300" placeholder="e.g. changes the meaning of the second verse"></textarea>
+      </div>
+      <div id="reviewRejectErr" class="cloud-err" role="alert"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" type="button" data-action="closeReviewReject">Cancel</button>
+      <button class="btn btn-primary" id="reviewRejectConfirm" type="button" data-action="confirmReviewReject">Reject submission</button>
+    </div>
+  </div>
+</div>
+
+<!-- REVIEW: SONG HISTORY -->
+<div class="modal-overlay" id="reviewHistoryModal" data-action="closeReviewHistory" data-backdrop>
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="reviewHistoryTitle">
+    <div class="modal-header">
+      <h2 id="reviewHistoryTitle">Song history</h2>
+      <button class="modal-close" type="button" data-action="closeReviewHistory" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="reviewHistoryBody" class="review-history"></div>
+    </div>
+  </div>
+</div>
+
 <!-- CHANGE PASSWORD MODAL -->
 <div class="modal-overlay" id="adminPasswordModal" data-action="closeModal" data-modal="adminPasswordModal" data-backdrop>
   <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="adminPasswordModalTitle">

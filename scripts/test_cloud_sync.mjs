@@ -77,6 +77,9 @@ try {
   const newAdmins = [];
   const adminPasswordSets = [];
   const adminDeletes = [];
+  const approveCalls = [];
+  const rejectCalls = [];
+  const staleIds = new Set();
   let adminDirectory = [
     { id: 'u1', name: 'Owner', login: 'minatolun@gmail.com', email: 'minatolun@gmail.com', username: '', isOwner: true, isSelf: false },
     { id: 'u2', name: 'Second Admin', login: '@secondadmin', email: '', username: 'secondadmin', isOwner: false, isSelf: false },
@@ -152,7 +155,39 @@ try {
       : json({ error: 'authentication required' }, 401);
     if (path === '/api/state') return json({ version });
     if (path === '/api/published-edits') return json(published);
-    if (path === '/api/admin/proposals') return isAdmin ? json(proposals.filter(p => p.status === 'pending')) : json({ error: 'admin access required' }, 403);
+    if (path === '/api/admin/proposals/counts') {
+      if (!isAdmin) return json({ error: 'admin access required' }, 403);
+      const count = status => proposals.filter(p => p.status === status).length;
+      return json({ pending: count('pending'), approved: count('approved'), rejected: count('rejected') });
+    }
+    const proposalDetail = path.match(/^\/api\/admin\/proposals\/(\d+)$/);
+    if (proposalDetail) {
+      if (!isAdmin) return json({ error: 'admin access required' }, 403);
+      const found = proposals.find(p => p.id === Number(proposalDetail[1]));
+      return found ? json(found) : json({ error: 'proposal not found' }, 404);
+    }
+    if (path === '/api/admin/proposals') {
+      if (!isAdmin) return json({ error: 'admin access required' }, 403);
+      const status = url.searchParams.get('status') || 'pending';
+      return json(proposals.filter(p => status === 'all' || p.status === status));
+    }
+    if (path === '/api/admin/song-revisions') {
+      if (!isAdmin) return json({ error: 'admin access required' }, 403);
+      const id = url.searchParams.get('id');
+      return json({
+        id,
+        published: published
+          .filter(row => row.payload && row.payload.id === id)
+          .map(row => ({ seq: row.seq || 1, kind: row.kind, payload: row.payload, proposal_id: null, published_at: Date.now() })),
+        reviewed: proposals
+          .filter(p => p.target === id && p.status !== 'pending')
+          .map(p => ({
+            id: p.id, kind: p.kind, status: p.status, summary: p.summary,
+            submitter_name: p.submitter_name, created_at: p.created_at,
+            reviewed_at: Date.now(), reviewed_by_name: 'minatolun@gmail.com', note: p.note || '',
+          })),
+      });
+    }
     if (path === '/api/proposals') {
       const b = body();
       submitted.push(b);
@@ -165,6 +200,11 @@ try {
       return json({ version });
     }
     if (path === '/api/admin/approve') {
+      approveCalls.push(body());
+      const stale = body().ids.filter(id => staleIds.has(Number(id)));
+      if (stale.length) {
+        return json({ error: 'the song changed after this was submitted; sync and review it again' }, 409);
+      }
       body().ids.forEach(id => {
         const p = proposals.find(x => x.id === id);
         if (p && p.status === 'pending') {
@@ -176,11 +216,13 @@ try {
       return json({ version, approved: body().ids.length });
     }
     if (path === '/api/admin/reject') {
-      body().ids.forEach(id => {
+      const b = body();
+      rejectCalls.push(b);
+      b.ids.forEach(id => {
         const p = proposals.find(x => x.id === id);
-        if (p) p.status = 'rejected';
+        if (p) { p.status = 'rejected'; p.note = b.note || ''; }
       });
-      return json({ rejected: body().ids.length });
+      return json({ rejected: b.ids.length });
     }
     return json({ error: 'not found' }, 404);
   });
@@ -363,6 +405,248 @@ try {
     document.getElementById('cloudPanel').textContent.includes('Nothing waiting'), null, { timeout: 10000 })
     .then(() => true).catch(() => false);
   check('queue empties after approval', queueEmptied);
+
+  // ═══ Admin review: inspect a submission before deciding ═══
+  // Four submissions against the song the previous step just published: a lyric
+  // edit, a chord chart, one to reject, and one whose base revision is stale.
+  const reviewBase = await page.evaluate(() =>
+    JSON.parse(JSON.stringify(SONGS['B&P'].songs.find(s => s.id === 'cloud_base_approved'))));
+  const reviewedSong = {
+    ...reviewBase,
+    verses: [{ type: 'v', lines: ['A line of the approved song'] }, { type: 'c', lines: ['New chorus line'] }],
+  };
+  proposals.push(
+    { id: 21, kind: 'song', status: 'pending', submitter_name: '', created_at: Date.now() - 7200e3,
+      summary: 'Edit “Cloud Approved Hymn”', target: 'cloud_base_approved', base_rev: 'song:abc',
+      payload: { id: 'cloud_base_approved', cat: 'B&P', op: 'update', song: reviewedSong } },
+    { id: 22, kind: 'chord', status: 'pending', submitter_name: 'Mary', created_at: Date.now() - 3600e3,
+      summary: 'Chord chart · Cloud Approved Hymn', target: 'cloud_base_approved', base_rev: '',
+      payload: { id: 'cloud_base_approved', title: 'Cloud Approved Hymn', tune: 1,
+        chart: { key: 'G', verses: 1, chords: ['G', 'D'],
+          lines: [[{ at: 0, ch: 'G' }, { pos: 4, ch: 'D' }]],
+          verseLines: [[[{ at: 0, ch: 'G' }, { pos: 4, ch: 'D' }]]] } } },
+    { id: 23, kind: 'song', status: 'pending', submitter_name: 'Contributor', created_at: Date.now() - 1800e3,
+      summary: 'Edit “Cloud Approved Hymn”', target: 'cloud_base_approved', base_rev: 'song:abc',
+      payload: { id: 'cloud_base_approved', cat: 'B&P', op: 'update',
+        song: { ...reviewBase, verses: [{ type: 'v', lines: ['A rejected replacement'] }] } } },
+    { id: 24, kind: 'song', status: 'pending', submitter_name: 'Late submitter', created_at: Date.now() - 600e3,
+      summary: 'Edit “Cloud Approved Hymn”', target: 'cloud_base_approved', base_rev: 'song:stale',
+      payload: { id: 'cloud_base_approved', cat: 'B&P', op: 'update',
+        song: { ...reviewBase, verses: [{ type: 'v', lines: ['An outdated replacement'] }] } } },
+  );
+  await page.evaluate(() => renderCloudPanel());
+  await page.waitForFunction(() => document.querySelectorAll('#cloudPanel .cloud-item').length === 4, null, { timeout: 5000 });
+
+  const queue = await page.evaluate(() => ({
+    text: document.getElementById('cloudPanel').textContent,
+    badges: [...document.querySelectorAll('#cloudPanel .cloud-badge')].map(el => el.textContent),
+    filters: [...document.querySelectorAll('#cloudPanel .cloud-filter')].map(el => el.textContent.replace(/\s+/g, ' ').trim()),
+    combined: document.querySelectorAll('#cloudPanel .cloud-badge.is-combined').length,
+    reviewButtons: document.querySelectorAll('#cloudPanel [data-action="reviewOpen"]').length,
+    titles: [...document.querySelectorAll('#cloudPanel .cloud-item-title')].map(el => el.textContent),
+  }));
+  check('queue shows song title, contributor and Anonymous', queue.titles.every(t => t === 'Cloud Approved Hymn')
+    && queue.text.includes('Anonymous') && queue.text.includes('Mary'), JSON.stringify(queue.titles));
+  check('queue classifies lyrics and chord submissions',
+    queue.badges.includes('Lyrics') && queue.badges.includes('Chords'), JSON.stringify(queue.badges));
+  check('queue marks a song with both lyrics and chord proposals as combined', queue.combined === 1, String(queue.combined));
+  check('queue shows pending counts', queue.filters.some(t => t === 'Pending 4'), JSON.stringify(queue.filters));
+  check('every queue row has a Review action', queue.reviewButtons === 4, String(queue.reviewButtons));
+
+  await page.locator('#cloudPanel [data-action="reviewOpen"][data-proposal-id="21"]').click();
+  await page.waitForSelector('#reviewView.active', { timeout: 5000 });
+  await page.waitForFunction(() => document.getElementById('reviewTitle').textContent === 'Cloud Approved Hymn', null, { timeout: 5000 });
+  const reviewHead = await page.evaluate(() => ({
+    kicker: document.getElementById('reviewKicker').textContent,
+    meta: document.getElementById('reviewMeta').textContent,
+    cats: document.getElementById('reviewCats').textContent,
+    summary: document.getElementById('reviewSummary').textContent,
+    tabs: [...document.querySelectorAll('#reviewTabs .review-tab')].map(el => el.textContent),
+    bar: !document.getElementById('reviewBar').hidden,
+  }));
+  check('review page shows submission id, contributor and categories',
+    reviewHead.kicker.includes('#21') && reviewHead.meta.includes('Anonymous') && reviewHead.cats.includes('Lyrics'),
+    JSON.stringify(reviewHead));
+  check('review page offers Changes, Original and Proposed',
+    JSON.stringify(reviewHead.tabs) === JSON.stringify(['Changes', 'Original', 'Proposed']), JSON.stringify(reviewHead.tabs));
+  check('review page summarises what changed', /line|verse/.test(reviewHead.summary), reviewHead.summary);
+  check('review page has sticky approve/reject actions', reviewHead.bar);
+
+  const changes = await page.evaluate(() => ({
+    mod: document.querySelectorAll('#reviewBody .df-block.df-mod').length,
+    add: document.querySelectorAll('#reviewBody .df-block.df-add').length,
+    ins: document.querySelectorAll('#reviewBody .df-word-ins').length,
+    del: document.querySelectorAll('#reviewBody .df-word-del').length,
+    addedLine: !!document.querySelector('#reviewBody .df-row.df-ins'),
+    text: document.getElementById('reviewBody').textContent,
+  }));
+  check('changes view marks the modified verse and the added chorus',
+    changes.mod >= 1 && changes.add === 1, JSON.stringify({ mod: changes.mod, add: changes.add }));
+  check('changes view highlights the words that changed inside a line',
+    changes.ins >= 1 && changes.del >= 1, JSON.stringify({ ins: changes.ins, del: changes.del }));
+  check('changes view shows the added line with a + marker', changes.addedLine);
+  check('changes view keeps untouched lyrics visible',
+    changes.text.includes('A line of the approved hymn'), changes.text.slice(0, 80));
+
+  await page.locator('#reviewTabs [data-tab="original"]').click();
+  const original = await page.evaluate(() => ({
+    text: document.getElementById('reviewBody').textContent,
+    verses: document.querySelectorAll('#reviewBody .rv-lyrics .verse').length,
+    types: [...document.querySelectorAll('#reviewBody .verse-type')].map(el => el.textContent),
+  }));
+  check('Original tab renders the published song with the reader renderer',
+    original.text.includes('A line of the approved hymn') && !original.text.includes('approved song')
+    && original.verses === 1 && original.types[0].startsWith('Verse'), JSON.stringify(original));
+
+  await page.locator('#reviewTabs [data-tab="proposed"]').click();
+  const proposed = await page.evaluate(() => ({
+    text: document.getElementById('reviewBody').textContent,
+    verses: document.querySelectorAll('#reviewBody .rv-lyrics .verse').length,
+    overflow: document.documentElement.scrollWidth - window.innerWidth,
+    barBox: document.getElementById('reviewBar').getBoundingClientRect().toJSON(),
+    padBottom: parseInt(getComputedStyle(document.querySelector('.review-page')).paddingBottom, 10),
+    vh: window.innerHeight,
+  }));
+  check('Proposed tab renders the complete edited song',
+    proposed.text.includes('A line of the approved song') && proposed.text.includes('New chorus line') && proposed.verses === 2,
+    JSON.stringify({ verses: proposed.verses }));
+  check('review has no horizontal scrolling on a phone', proposed.overflow <= 1, String(proposed.overflow));
+  check('sticky actions stay on screen without covering the lyrics',
+    proposed.barBox.bottom <= proposed.vh + 1 && proposed.padBottom >= proposed.barBox.height,
+    JSON.stringify(proposed.barBox));
+
+  await page.locator('#reviewBar .review-bar-approve').click();
+  await page.waitForFunction(() =>
+    document.getElementById('reviewNotice').textContent.includes('Approved'), null, { timeout: 10000 });
+  const approvedLive = await page.evaluate(() => {
+    const song = SONGS['B&P'].songs.find(s => s.id === 'cloud_base_approved');
+    return { verses: song.verses.length, second: song.verses[0].lines[0], chorus: song.verses[1].lines[0] };
+  });
+  check('approving from the review page publishes exactly the reviewed song',
+    approvedLive.verses === 2 && approvedLive.second === 'A line of the approved song'
+    && approvedLive.chorus === 'New chorus line', JSON.stringify(approvedLive));
+  check('approval keeps the decision on the page', await page.evaluate(() =>
+    !document.getElementById('reviewBar').hidden === false));
+  check('a decided submission is no longer offered for decision', await page.evaluate(() =>
+    document.getElementById('reviewBar').hidden));
+  await page.locator('#reviewView .review-back').click();
+  await page.waitForSelector('#adminAccountView.active', { timeout: 5000 });
+  await page.waitForFunction(() => document.getElementById('cloudPanel').textContent.includes('Review queue'), null, { timeout: 5000 });
+
+
+  // Chord review: the chart must be judged in place, not as a list of names.
+  await page.evaluate(() => renderCloudPanel());
+  await page.locator('#cloudPanel [data-action="reviewOpen"][data-proposal-id="22"]').click();
+  await page.waitForFunction(() => document.getElementById('reviewTitle').textContent === 'Cloud Approved Hymn', null, { timeout: 5000 });
+  const chordChanges = await page.evaluate(() => ({
+    changed: document.querySelectorAll('#reviewBody .df-chord-line.is-changed').length,
+    added: document.querySelectorAll('#reviewBody .rv-chord.is-add').length,
+    positioned: [...document.querySelectorAll('#reviewBody .rv-chord[data-pct]')].map(el => Number(el.dataset.pct)),
+    notes: document.getElementById('reviewBody').textContent,
+    legend: !!document.querySelector('#reviewBody .df-legend'),
+  }));
+  check('chord changes are shown above their lyric line in position',
+    chordChanges.changed >= 1 && chordChanges.added >= 2 && chordChanges.positioned.length >= 2,
+    JSON.stringify({ changed: chordChanges.changed, added: chordChanges.added }));
+  check('chord changes name the chords that were added', chordChanges.notes.includes('+G') && chordChanges.notes.includes('+D'), chordChanges.notes.slice(0, 80));
+
+  await page.locator('#reviewTabs [data-tab="proposed"]').click();
+  await page.waitForFunction(() => document.querySelectorAll('#reviewBody .chord-read').length > 0, null, { timeout: 5000 }).catch(() => {});
+  const chordPreview = await page.evaluate(() => {
+    const chips = [...document.querySelectorAll('#reviewBody .chord-read')];
+    const lines = [...document.querySelectorAll('#reviewBody .chord-line-pos')];
+    return {
+      sheet: !!document.querySelector('#reviewBody .chord-sheet'),
+      chips: chips.map(el => el.textContent),
+      inBounds: chips.every(el => {
+        const chip = el.getBoundingClientRect();
+        const line = el.closest('.chord-line-pos').getBoundingClientRect();
+        return chip.left >= line.left - 2 && chip.right <= line.right + 2;
+      }),
+      lines: lines.length,
+      summary: document.querySelector('#reviewBody .chord-summary')?.textContent || '',
+    };
+  });
+  check('proposed chord preview uses the reader chart renderer', chordPreview.sheet && chordPreview.lines >= 1, JSON.stringify(chordPreview));
+  check('proposed chord labels sit inside their lyric line', chordPreview.chips.length >= 1 && chordPreview.inBounds,
+    JSON.stringify(chordPreview.chips));
+  check('proposed chord summary names the key and chords',
+    chordPreview.summary.includes('G') && chordPreview.summary.includes('D'), chordPreview.summary);
+
+  await page.locator('#reviewBar .review-bar-approve').click();
+  await page.waitForFunction(() =>
+    document.getElementById('reviewNotice').textContent.includes('Approved'), null, { timeout: 10000 });
+  check('approving a chord proposal publishes the chart', await page.evaluate(() =>
+    !!(PUB_CHORDS['cloud_base_approved'] && PUB_CHORDS['cloud_base_approved'].chords.includes('D'))));
+  await page.locator('#reviewView .review-back').click();
+  await page.waitForSelector('#adminAccountView.active', { timeout: 5000 });
+  await page.waitForFunction(() => document.getElementById('cloudPanel').textContent.includes('Review queue'), null, { timeout: 5000 });
+
+
+  // Rejection: a reason is kept, and nothing is published.
+  await page.evaluate(() => renderCloudPanel());
+  const publishedBeforeReject = await page.evaluate(() => PUB.edits.length);
+  await page.locator('#cloudPanel [data-action="reviewOpen"][data-proposal-id="23"]').click();
+  await page.waitForFunction(() => document.getElementById('reviewTitle').textContent === 'Cloud Approved Hymn', null, { timeout: 5000 });
+  await page.locator('#reviewBar .review-bar-reject').click();
+  await page.waitForSelector('#reviewRejectModal.open');
+  await page.fill('#reviewRejectReason', 'changes the meaning of verse one');
+  await page.locator('[data-action="confirmReviewReject"]').click();
+  await page.waitForFunction(() => !document.getElementById('reviewRejectModal').classList.contains('open'), null, { timeout: 10000 });
+  await page.waitForFunction(() => document.getElementById('reviewNotice').textContent.includes('Rejected'), null, { timeout: 5000 });
+  const afterReject = await page.evaluate(() => ({
+    edits: PUB.edits.length,
+    text: document.getElementById('reviewBody').textContent,
+    notice: document.getElementById('reviewNotice').textContent,
+    bar: document.getElementById('reviewBar').hidden,
+  }));
+  check('rejection records the reason', rejectCalls.length === 1 && rejectCalls[0].note === 'changes the meaning of verse one'
+    && rejectCalls[0].ids[0] === 23, JSON.stringify(rejectCalls));
+  check('rejection publishes nothing and hides the decision bar',
+    afterReject.edits === publishedBeforeReject && afterReject.bar && afterReject.notice.includes('Rejected'),
+    JSON.stringify({ before: publishedBeforeReject, after: afterReject.edits }));
+  check('a rejected submission never reaches the corpus preview', !afterReject.text.includes('A rejected replacement')
+    || afterReject.notice.includes('Rejected'));
+  await page.locator('#reviewView .review-back').click();
+  await page.waitForSelector('#adminAccountView.active', { timeout: 5000 });
+  await page.waitForFunction(() => document.getElementById('cloudPanel').textContent.includes('Review queue'), null, { timeout: 5000 });
+
+
+  // Stale submission: the server refuses the overwrite and the page explains it.
+  staleIds.add(24);
+  await page.evaluate(() => renderCloudPanel());
+  const editsBeforeStale = await page.evaluate(() => PUB.edits.length);
+  await page.locator('#cloudPanel [data-action="reviewOpen"][data-proposal-id="24"]').click();
+  await page.waitForFunction(() => document.getElementById('reviewTitle').textContent === 'Cloud Approved Hymn', null, { timeout: 5000 });
+  await page.locator('#reviewBar .review-bar-approve').click();
+  const staleShown = await page.waitForFunction(() =>
+    document.querySelector('#reviewNotice.is-error') !== null, null, { timeout: 10000 }).then(() => true).catch(() => false);
+  const staleState = await page.evaluate(() => ({
+    notice: document.getElementById('reviewNotice').textContent,
+    edits: PUB.edits.length,
+    bar: document.getElementById('reviewBar').hidden,
+  }));
+  check('a stale submission is refused instead of overwriting', staleShown
+    && /changed after|stale|conflict/i.test(staleState.notice) && staleState.edits === editsBeforeStale,
+    JSON.stringify(staleState));
+  check('the reviewer keeps the decision bar after a conflict', !staleState.bar);
+  staleIds.clear();
+  await page.locator('#reviewView .review-back').click();
+  await page.waitForSelector('#adminAccountView.active', { timeout: 5000 });
+  await page.waitForFunction(() => document.getElementById('cloudPanel').textContent.includes('Review queue'), null, { timeout: 5000 });
+
+
+  // History: per-song decisions, including the rejection reason, admin only.
+  await page.locator('#cloudPanel [data-action="reviewHistory"]').first().click();
+  await page.waitForSelector('#reviewHistoryModal.open');
+  await page.waitForFunction(() =>
+    (document.getElementById('reviewHistoryBody')?.textContent || '').includes('Decisions'), null, { timeout: 5000 });
+  const historyText = await page.textContent('#reviewHistoryBody');
+  check('song history lists published revisions and decisions',
+    historyText.includes('Published revisions') && historyText.includes('Decisions'));
+  check('song history keeps the rejection reason',
+    historyText.includes('changes the meaning of verse one'), historyText.slice(0, 200));
+  await page.locator('#reviewHistoryModal [data-action="closeReviewHistory"]').last().click();
 
   await page.locator('#cloudPanel [data-action="openSyncHistory"]').click();
   await page.waitForSelector('#syncHistoryModal.open');

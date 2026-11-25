@@ -76,6 +76,17 @@ check('CORS preflight allows the Pages origin', preflight.status === 204 && pref
 const noAuth = await req('/api/admin/me');
 check('admin route rejects anonymous requests', noAuth.status === 401, String(noAuth.status));
 
+// Review data is moderation data: every new read route must reject anonymous
+// callers before it touches the database.
+const anonymousReviewRoutes = await Promise.all([
+  req('/api/admin/proposals/counts'),
+  req('/api/admin/proposals/1'),
+  req('/api/admin/song-revisions?id=anything'),
+]);
+check('anonymous callers cannot read review details, counts or history',
+  anonymousReviewRoutes.every(response => response.status === 401),
+  anonymousReviewRoutes.map(response => response.status).join(','));
+
 const publicSignup = await req('/api/auth/sign-up/email', {
   method: 'POST',
   body: JSON.stringify({ email: `test-${unique}@example.com`, password: 'not-allowed-password', name: 'Test' }),
@@ -140,6 +151,62 @@ check('admin session cookie is authorized', me.status === 200 && me.body?.isAdmi
 
 const queue = await req('/api/admin/proposals', { headers: authHeaders });
 check('admin can read the pending queue', queue.status === 200 && queue.body?.some(row => row.id === proposalId), JSON.stringify(queue.body).slice(0, 200));
+
+const detail = await req(`/api/admin/proposals/${proposalId}`, { headers: authHeaders });
+check('proposal detail returns the patch and its revision fingerprint',
+  detail.status === 200 && detail.body?.payload?.id === firstPayload.id
+  && detail.body?.target === firstPayload.id && 'base_rev' in (detail.body || {}),
+  JSON.stringify(detail.body).slice(0, 200));
+
+const counts = await req('/api/admin/proposals/counts', { headers: authHeaders });
+check('queue counters report each status',
+  counts.status === 200 && Number.isInteger(counts.body?.pending) && Number.isInteger(counts.body?.approved)
+  && Number.isInteger(counts.body?.rejected), JSON.stringify(counts.body));
+
+const filtered = await req('/api/admin/proposals?status=rejected', { headers: authHeaders });
+check('queue can be filtered by status', filtered.status === 200 && Array.isArray(filtered.body)
+  && filtered.body.every(row => row.status === 'rejected'), JSON.stringify(filtered.body).slice(0, 160));
+
+// Stale submissions: a song edited after the submission must not be overwritten.
+const staleId = `api_stale_${unique}`;
+const stalePayload = { id: staleId, cat: 'B&P', op: 'update', song: { id: staleId, title: 'Stale Base', verses: [{ type: 'v', lines: ['original line'] }] } };
+const staleProposal = await req('/api/proposals', {
+  method: 'POST',
+  body: JSON.stringify({ kind: 'song', payload: stalePayload, summary: 'stale candidate', name: 'contract-test' }),
+});
+check('proposal for the staleness test is queued', staleProposal.status === 201, JSON.stringify(staleProposal.body));
+const directEdit = await req('/api/admin/publish', {
+  method: 'POST',
+  headers: authHeaders,
+  body: JSON.stringify({
+    kind: 'song',
+    payload: { ...stalePayload, song: { ...stalePayload.song, title: 'Stale Base edited later' } },
+  }),
+});
+check('admin direct edit publishes for the staleness test', directEdit.status === 200, JSON.stringify(directEdit.body));
+const staleApprove = await req('/api/admin/approve', {
+  method: 'POST',
+  headers: authHeaders,
+  body: JSON.stringify({ ids: [staleProposal.body.id] }),
+});
+check('approving a stale submission is refused', staleApprove.status === 409, JSON.stringify(staleApprove.body));
+const staleQueue = await req(`/api/admin/proposals/${staleProposal.body.id}`, { headers: authHeaders });
+check('a refused stale submission stays pending', staleQueue.status === 200 && staleQueue.body?.status === 'pending',
+  JSON.stringify(staleQueue.body?.status));
+
+const staleReject = await req('/api/admin/reject', {
+  method: 'POST',
+  headers: authHeaders,
+  body: JSON.stringify({ ids: [staleProposal.body.id], note: 'superseded by a later edit' }),
+});
+check('a stale submission can still be rejected', staleReject.status === 200 && staleReject.body?.rejected === 1,
+  JSON.stringify(staleReject.body));
+const staleHistory = await req(`/api/admin/song-revisions?id=${staleId}`, { headers: authHeaders });
+check('song history carries published revisions and the rejection reason',
+  staleHistory.status === 200
+  && staleHistory.body?.published?.some(row => row.payload?.song?.title === 'Stale Base edited later')
+  && staleHistory.body?.reviewed?.some(row => row.status === 'rejected' && /superseded/.test(row.note || '')),
+  JSON.stringify(staleHistory.body).slice(0, 240));
 
 const beforeApprove = (await req('/api/state')).body.version;
 const approve = await req('/api/admin/approve', {

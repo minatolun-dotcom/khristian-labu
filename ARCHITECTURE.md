@@ -87,6 +87,40 @@ Only the diff layer lives in Cloudflare D1, so the corpus is never re-uploaded a
 public `LABU_CLOUD_API` Worker origin; with it blank the app is purely local. Admin
 sessions use Better Auth bearer tokens on the APK and session cookies on the web.
 
+## Admin review (inspect before approving)
+
+Submissions stay patches: a proposal carries the complete proposed song or chord
+chart, anonymous submit, and is reviewed in a dedicated mobile-first page.
+
+```mermaid
+flowchart LR
+    A[anonymous edit] --> B[proposal: patch + base_rev]
+    B --> C[queue: title, contributor, categories, counts]
+    C --> D[review page Changes / Original / Proposed]
+    D --> E{decision}
+    E -- approve --> F[re-check base_rev]
+    F -- matches --> G[published_edits + version++ (one batch)]
+    F -- stale --> H[409 conflict, nothing written]
+    E -- reject --> I[status + reviewer + reason]
+    G --> J[devices sync the overlay]
+```
+
+- **Changes** aligns verses by type+content (LCS) so an inserted verse does not
+  shift every later comparison, then diffs lines and highlights the words that
+  changed inside a modified line. Chords are compared **per character position**:
+  unchanged / moved / retimed (`C → D`) / added / removed, drawn above their own
+  lyric line instead of as a name list.
+- **Original** and **Proposed** reuse the reader's renderer
+  (`songDetailParts`, `chordSheetHTML`, `chordLineHTML` and the same chord
+  positioning code), so the proposed preview is the exact content approval
+  publishes — including chord alignment on a phone.
+- **`base_rev`** (SHA-256 of the published revision at submission) is recomputed
+  on approval. A mismatch returns `409` and the page explains it; no silent merge
+  ever happens. Legacy proposals without a fingerprint skip the gate.
+- Approval/rejection reuse the existing endpoints and `published_edits` audit
+  trail; decisions add reviewer, timestamp and rejection reason. Queue counters,
+  per-song history and every review route are admin-only.
+
 ## App updates (free, self-hosted distribution)
 
 The website is served by **Cloudflare Pages** and deployed from the staged `dist/` build by `.github/workflows/pages.yml` on every push to `main`. The approved-change API runs on a **Cloudflare Worker + D1** at `api.labu.lengkhawm.online`. The APK is built and signed by `.github/workflows/android-release.yml`, stored in **Cloudflare R2** at `dl.labu.lengkhawm.online`, and also attached to a **GitHub Release** as fallback. No Play Store and no paid cloud.

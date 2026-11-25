@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { getMigrations } from 'better-auth/db/migration';
 import { auth } from './auth.mjs';
+import { baseRev, canonical, payloadTarget, sha256Text, staleProposals } from './revisions.mjs';
 
 const KINDS = new Set(['song', 'struct', 'chord']);
 const OWNER_EMAIL = 'minatolun@gmail.com';
@@ -233,17 +234,23 @@ function payloadText(payload) {
   return text;
 }
 
-function canonical(value) {
-  if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
-  if (value && typeof value === 'object') {
-    return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}';
-  }
-  return JSON.stringify(value);
-}
-
-async function sha256(value) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+// Published-layer replay, revision fingerprints and staleness live in
+// revisions.mjs so they can be unit tested without D1.
+async function publishedRowsFor(target) {
+  if (!target) return [];
+  // Rows written before the `target` column existed carry NULL and may belong to
+  // any song, so they are replayed too and filtered by the caller.
+  const rows = await env.DB.prepare(`
+    SELECT seq, kind, payload, target
+    FROM published_edits
+    WHERE target = ? OR target IS NULL
+    ORDER BY seq ASC
+  `).bind(target).all();
+  return (rows.results || []).map(row => ({
+    seq: Number(row.seq),
+    kind: row.kind,
+    payload: JSON.parse(row.payload),
+  }));
 }
 
 function truncate(value, max) {
@@ -407,7 +414,7 @@ async function handleProposal(request) {
   const kind = assertKind(body.kind);
   const payload = validateEditPayload(kind, body.payload);
   const text = payloadText(payload);
-  const hash = await sha256(kind + '\n' + canonical(payload));
+  const hash = await sha256Text(kind + '\n' + canonical(payload));
 
   const existing = await env.DB.prepare(`
     SELECT id FROM proposals
@@ -429,12 +436,17 @@ async function handleProposal(request) {
   const name = truncate(submitter?.name || submitter?.email || body.name, 120);
   const baseVersion = Number.isInteger(Number(body.baseVersion)) ? Number(body.baseVersion) : 0;
   const createdAt = nowMs();
+  const target = payloadTarget(kind, payload);
+  // Fingerprint the published revision this proposal was written against. An
+  // approval recomputes it, so an outdated proposal is refused instead of
+  // silently overwriting whatever landed in the meantime.
+  const revision = await baseRev(kind, payload, await publishedRowsFor(target));
 
   const result = await env.DB.prepare(`
     INSERT OR IGNORE INTO proposals
-      (kind, payload, payload_hash, summary, status, base_version, submitter_user_id, submitter_name, created_at)
-    VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)
-  `).bind(kind, text, hash, summary, baseVersion, submitter?.id || null, name, createdAt).run();
+      (kind, payload, payload_hash, summary, status, base_version, submitter_user_id, submitter_name, created_at, target, base_rev)
+    VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
+  `).bind(kind, text, hash, summary, baseVersion, submitter?.id || null, name, createdAt, target, revision).run();
 
   if (Number(result.meta?.changes) === 1) {
     return json({ id: Number(result.meta.last_row_id), duplicate: false }, 201);
@@ -449,24 +461,125 @@ async function handleProposal(request) {
   return json({ id: Number(raced.id), duplicate: true });
 }
 
-async function handleAdminProposals(request) {
-  await requireAdmin(request);
-  const rows = await env.DB.prepare(`
-    SELECT id, kind, payload, summary, submitter_name, created_at, status
-    FROM proposals
-    WHERE status = 'pending'
-    ORDER BY created_at ASC
-    LIMIT 100
-  `).all();
-  return json((rows.results || []).map(row => ({
+const PROPOSAL_STATUSES = new Set(['pending', 'approved', 'rejected', 'all']);
+
+// Shaped for the review UI: the raw patch plus who/when/which revision.
+function adminProposal(row) {
+  if (!row) return null;
+  let payload = null;
+  try { payload = JSON.parse(row.payload); } catch { payload = null; }
+  return {
     id: Number(row.id),
     kind: row.kind,
-    payload: JSON.parse(row.payload),
+    status: row.status,
+    payload,
     summary: row.summary || '',
     submitter_name: row.submitter_name || '',
     created_at: Number(row.created_at),
+    reviewed_at: row.reviewed_at == null ? null : Number(row.reviewed_at),
+    reviewed_by_name: row.reviewed_by_name || '',
+    note: row.note || '',
+    base_rev: row.base_rev == null ? null : String(row.base_rev),
+    base_version: Number(row.base_version) || 0,
+    target: row.target || (payload ? payloadTarget(row.kind, payload) : ''),
+  };
+}
+
+// GET /api/admin/proposals?status=pending&song=<id>&limit=100
+// Defaults to the pending queue, which is what older clients expect (an array).
+async function handleAdminProposals(request) {
+  await requireAdmin(request);
+  const url = new URL(request.url);
+  const status = String(url.searchParams.get('status') || 'pending');
+  if (!PROPOSAL_STATUSES.has(status)) throw new HttpError(400, 'status must be pending, approved, rejected or all');
+  const song = url.searchParams.get('song');
+  if (song != null && !isSafeId(song)) throw new HttpError(400, 'song must be a safe ID');
+  const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit')) || 100));
+  const order = status === 'pending' ? 'created_at ASC' : 'created_at DESC';
+
+  const clauses = [];
+  const binds = [];
+  if (status !== 'all') { clauses.push('status = ?'); binds.push(status); }
+  if (song) { clauses.push('target = ?'); binds.push(song); }
+  const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : '';
+  const rows = await env.DB.prepare(`
+    SELECT id, kind, payload, summary, submitter_name, created_at, status,
+           reviewed_at, reviewed_by_name, note, base_rev, base_version, target
+    FROM proposals
+    ${where}
+    ORDER BY ${order}
+    LIMIT ?
+  `).bind(...binds, limit).all();
+  return json((rows.results || []).map(adminProposal));
+}
+
+// Queue counters for the dashboard, in one grouped query.
+async function handleAdminProposalCounts(request) {
+  await requireAdmin(request);
+  const rows = await env.DB.prepare(
+    'SELECT status, COUNT(*) AS n FROM proposals GROUP BY status',
+  ).all();
+  const counts = { pending: 0, approved: 0, rejected: 0 };
+  for (const row of rows.results || []) {
+    if (row.status in counts) counts[row.status] = Number(row.n) || 0;
+  }
+  return json(counts);
+}
+
+async function handleAdminProposal(request, id) {
+  await requireAdmin(request);
+  const row = await env.DB.prepare(`
+    SELECT id, kind, payload, summary, submitter_name, created_at, status,
+           reviewed_at, reviewed_by_name, note, base_rev, base_version, target
+    FROM proposals WHERE id = ?
+  `).bind(Number(id)).first();
+  if (!row) throw new HttpError(404, 'proposal not found');
+  return json(adminProposal(row));
+}
+
+// GET /api/admin/song-revisions?id=<songId>
+// Everything moderation knows about one song: the published layer that produced
+// what readers see now, and every reviewed proposal (approved or rejected) with
+// its reviewer and rejection reason. Admin-only: this is internal history.
+async function handleAdminSongRevisions(request) {
+  await requireAdmin(request);
+  const id = new URL(request.url).searchParams.get('id') || '';
+  if (!isSafeId(id)) throw new HttpError(400, 'id must be a safe song ID');
+  const rows = await env.DB.prepare(`
+    SELECT seq, kind, payload, proposal_id, published_at, target
+    FROM published_edits
+    WHERE target = ? OR target IS NULL
+    ORDER BY seq ASC
+  `).bind(id).all();
+  const published = (rows.results || [])
+    .map(row => ({
+      seq: Number(row.seq),
+      kind: row.kind,
+      payload: JSON.parse(row.payload),
+      proposal_id: row.proposal_id == null ? null : Number(row.proposal_id),
+      published_at: Number(row.published_at),
+    }))
+    .filter(row => row.payload && row.payload.id === id);
+  const reviewed = await env.DB.prepare(`
+    SELECT id, kind, status, summary, submitter_name, created_at, reviewed_at,
+           reviewed_by_name, note, base_rev, base_version
+    FROM proposals
+    WHERE target = ? AND status IN ('approved', 'rejected')
+    ORDER BY created_at DESC
+    LIMIT 100
+  `).bind(id).all();
+  return json({ id, published, reviewed: (reviewed.results || []).map(row => ({
+    id: Number(row.id),
+    kind: row.kind,
     status: row.status,
-  })));
+    summary: row.summary || '',
+    submitter_name: row.submitter_name || '',
+    created_at: Number(row.created_at),
+    reviewed_at: row.reviewed_at == null ? null : Number(row.reviewed_at),
+    reviewed_by_name: row.reviewed_by_name || '',
+    note: row.note || '',
+    base_rev: row.base_rev == null ? null : String(row.base_rev),
+  })) });
 }
 
 async function handleAdminMe(request) {
@@ -628,9 +741,9 @@ async function handlePublish(request) {
   const at = nowMs();
   const results = await env.DB.batch([
     env.DB.prepare(`
-      INSERT INTO published_edits (kind, payload, published_at)
-      VALUES (?, ?, ?)
-    `).bind(kind, text, at),
+      INSERT INTO published_edits (kind, payload, published_at, target)
+      VALUES (?, ?, ?, ?)
+    `).bind(kind, text, at, payloadTarget(kind, payload)),
     env.DB.prepare(`
       UPDATE publish_state
       SET version = version + 1, updated_at = ?
@@ -652,6 +765,10 @@ function parseIds(value) {
   return ids;
 }
 
+// Approval applies exactly the payload the admin reviewed. Before writing it,
+// the revision fingerprint recorded at submission is recomputed from the
+// published layer: if the song moved on in the meantime the approval is refused
+// (409 with the stale ids) instead of overwriting that change.
 async function handleApprove(request) {
   const session = await requireAdmin(request);
   const body = await readJson(request);
@@ -659,17 +776,24 @@ async function handleApprove(request) {
   const placeholders = ids.map(() => '?').join(',');
 
   const rows = await env.DB.prepare(`
-    SELECT id, kind, payload FROM proposals
+    SELECT id, kind, payload, base_rev FROM proposals
     WHERE id IN (${placeholders}) AND status = 'pending'
     ORDER BY id ASC
   `).bind(...ids).all();
-  const pending = rows.results || [];
+  const pending = (rows.results || []).map(row => ({
+    id: Number(row.id),
+    kind: row.kind,
+    payloadText: row.payload,
+    base_rev: row.base_rev == null ? null : String(row.base_rev),
+    payload: null,
+  }));
   if (pending.length !== ids.length) {
     throw new HttpError(409, 'one or more proposals are missing or already reviewed');
   }
   for (const row of pending) {
     try {
-      validateEditPayload(row.kind, JSON.parse(row.payload));
+      row.payload = JSON.parse(row.payloadText);
+      validateEditPayload(row.kind, row.payload);
     } catch (error) {
       if (error instanceof HttpError) throw new HttpError(400, 'proposal ' + row.id + ' has an invalid payload');
       throw error;
@@ -681,26 +805,46 @@ async function handleApprove(request) {
     throw new HttpError(409, `version conflict: expected ${body.expectedVersion}, current ${current.version}`);
   }
 
+  const cache = new Map();
+  const rowsFor = async id => {
+    if (!cache.has(id)) cache.set(id, await publishedRowsFor(id));
+    return cache.get(id);
+  };
+  const stale = await staleProposals(pending, rowsFor);
+  if (stale.length) {
+    throw new HttpError(409, 'the song changed after this was submitted; sync and review it again');
+  }
+
+  const reviewer = truncate(session.user.name || session.user.email || '', 120);
   const at = nowMs();
   const statements = pending.map(row => env.DB.prepare(`
-    INSERT INTO published_edits (kind, payload, proposal_id, published_at)
-    VALUES (?, ?, ?, ?)
-  `).bind(row.kind, row.payload, row.id, at));
+    INSERT INTO published_edits (kind, payload, proposal_id, published_at, target)
+    VALUES (?, ?, ?, ?, ?)
+  `).bind(row.kind, row.payloadText, row.id, at, payloadTarget(row.kind, row.payload)));
   statements.push(env.DB.prepare(`
     UPDATE proposals
-    SET status = 'approved', reviewed_at = ?, reviewed_by = ?
+    SET status = 'approved', reviewed_at = ?, reviewed_by = ?, reviewed_by_name = ?
     WHERE id IN (${placeholders}) AND status = 'pending'
-  `).bind(at, session.user.id, ...ids));
+  `).bind(at, session.user.id, reviewer, ...ids));
+  // The version guard is the write lock: if another approval landed between the
+  // stale check above and this batch, this UPDATE matches nothing and the whole
+  // batch is discarded, so two admins can never both approve over each other.
   statements.push(env.DB.prepare(`
     UPDATE publish_state
     SET version = version + 1, updated_at = ?
-    WHERE id = 1
+    WHERE id = 1 AND version = ?
     RETURNING version
-  `).bind(at));
+  `).bind(at, current.version));
 
   const results = await env.DB.batch(statements);
+  const decided = Number(results.at(-2)?.meta?.changes) || 0;
+  if (decided !== ids.length) {
+    throw new HttpError(409, 'one or more proposals were reviewed by someone else; refresh the queue');
+  }
   const version = Number(results.at(-1)?.results?.[0]?.version);
-  if (!version) throw new HttpError(500, 'approval did not advance the version');
+  if (!version) {
+    throw new HttpError(409, 'the published layer changed while approving; refresh and try again');
+  }
   return json({ version, approved: pending.length });
 }
 
@@ -708,13 +852,19 @@ async function handleReject(request) {
   const session = await requireAdmin(request);
   const body = await readJson(request);
   const ids = parseIds(body.ids);
+  const note = truncate(body.note, 300);
   const placeholders = ids.map(() => '?').join(',');
+  const reviewer = truncate(session.user.name || session.user.email || '', 120);
   const result = await env.DB.prepare(`
     UPDATE proposals
-    SET status = 'rejected', note = ?, reviewed_at = ?, reviewed_by = ?
+    SET status = 'rejected', note = ?, reviewed_at = ?, reviewed_by = ?, reviewed_by_name = ?
     WHERE id IN (${placeholders}) AND status = 'pending'
-  `).bind(truncate(body.note, 300), nowMs(), session.user.id, ...ids).run();
-  return json({ rejected: Number(result.meta?.changes) || 0 });
+  `).bind(note, nowMs(), session.user.id, reviewer, ...ids).run();
+  const rejected = Number(result.meta?.changes) || 0;
+  if (rejected !== ids.length) {
+    throw new HttpError(409, 'one or more proposals were already reviewed; refresh the queue');
+  }
+  return json({ rejected });
 }
 
 async function handleSetupMigrate(request) {
@@ -792,6 +942,10 @@ async function route(request) {
   if (adminUser && !adminUser[2] && request.method === 'DELETE') return handleRemoveAdmin(request, adminUser[1]);
   if (adminUser && adminUser[2] && request.method === 'POST') return handleSetAdminPassword(request, adminUser[1]);
   if (path === '/api/admin/proposals' && request.method === 'GET') return handleAdminProposals(request);
+  if (path === '/api/admin/proposals/counts' && request.method === 'GET') return handleAdminProposalCounts(request);
+  const adminProposalPath = path.match(/^\/api\/admin\/proposals\/(\d+)$/);
+  if (adminProposalPath && request.method === 'GET') return handleAdminProposal(request, adminProposalPath[1]);
+  if (path === '/api/admin/song-revisions' && request.method === 'GET') return handleAdminSongRevisions(request);
   if (path === '/api/admin/publish' && request.method === 'POST') return handlePublish(request);
   if (path === '/api/admin/approve' && request.method === 'POST') return handleApprove(request);
   if (path === '/api/admin/reject' && request.method === 'POST') return handleReject(request);
