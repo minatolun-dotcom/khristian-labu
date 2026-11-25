@@ -1833,15 +1833,28 @@ await section('pwa offline', async () => {
   // fetch goes through the SW (the first load races SW activation), then check.
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => document.getElementById('statSongs')?.textContent.includes('5,7'), null, { timeout: 30000 });
-  // cache.put runs after the fetch resolves, so poll briefly instead of racing it.
-  await page.waitForFunction(async () => {
+  // cache.put runs after the fetch resolves, so poll instead of racing it. This
+  // waits on the app's own warm-up (which now waits for SW control); nothing here
+  // fetches the corpus, so a regression on either side still fails.
+  const corpusCached = await page.waitForFunction(async () => {
     for (const k of await caches.keys()) {
       const c = await caches.open(k);
       const hit = (await c.keys()).find(r => new URL(r.url).pathname.endsWith('/songs.json.gzip'));
       if (hit && await c.match(hit)) return true;
     }
     return false;
-  }, null, { timeout: 5000 }).catch(() => {});
+  }, null, { timeout: 20000 }).then(() => true).catch(() => false);
+  if (!corpusCached) {
+    const dump = await page.evaluate(async () => {
+      const out = [];
+      for (const k of await caches.keys()) {
+        const c = await caches.open(k);
+        out.push(k + ': ' + (await c.keys()).map(r => new URL(r.url).pathname + new URL(r.url).search).filter(p => p.endsWith('.json') || p.endsWith('.gzip')).join(' '));
+      }
+      return out.join(' | ');
+    });
+    console.log('  corpus cache dump —', dump);
+  }
   const dataLen = await page.evaluate(async () => {
     const keys = await caches.keys();
     for (const k of keys) {

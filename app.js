@@ -1156,8 +1156,14 @@ async function loadSongs() {
       // control may land mid-load) so future visits (fresh IDB, private mode) stay
       // instant + offline via the SW cache too.
       if (navigator.serviceWorker) {
+        // Warm the SW corpus cache — but only from a page the worker actually
+        // controls. `ready` means a worker is active, not that it has claimed
+        // this page yet, and a fetch from an uncontrolled page never reaches the
+        // worker, so a cold install used to leave the corpus out of the cache.
+        const warmCorpusCache = () => fetch('songs.json.gzip' + dataQuery()).catch(() => {});
         navigator.serviceWorker.ready.then(() => {
-          fetch('songs.json.gzip' + dataQuery()).catch(() => {});
+          if (navigator.serviceWorker.controller) { warmCorpusCache(); return; }
+          navigator.serviceWorker.addEventListener('controllerchange', warmCorpusCache, { once: true });
         }).catch(() => {});
       }
     }
