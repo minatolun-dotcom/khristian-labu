@@ -1813,6 +1813,57 @@ await section('chord studio', async () => {
   await mp.close();
 });
 
+// ═══════════════ 11b. READER PINCH PERSISTS ═══════════════
+await section('reader pinch font', async () => {
+  const mp = await newPage({ width: 390, height: 844 }, { hasTouch: true });
+  await waitLoaded(mp);
+  await mp.evaluate(() => localStorage.removeItem('labu-reader-font'));
+  await mp.reload({ waitUntil: 'domcontentloaded' });
+  await mp.waitForFunction(() => document.getElementById('statSongs')?.textContent.includes('5,7'), null, { timeout: 30000 });
+  await mp.locator('#groupGrid .cat-card').first().click();
+  await mp.waitForSelector('#categoryGrid .cat-card');
+  await mp.locator('#categoryGrid .cat-card').filter({ hasText: 'Biakna Late' }).first().click();
+  await mp.waitForSelector('#songGrid .song-item');
+  await mp.locator('#songGrid .song-item').filter({ hasText: 'Jesu Minlian' }).first().click();
+  await mp.waitForSelector('#songDetail .verse');
+  const before = await mp.evaluate(() => readerFont);
+  // Synthetic two-finger spread: 80px -> 160px, i.e. double the lyric size.
+  const pinched = await mp.evaluate(() => {
+    const el = document.getElementById('songScroll');
+    const target = el.querySelector('.verse') || el;
+    const t = (id, x, y) => new Touch({ identifier: id, target, clientX: x, clientY: y });
+    const y = Math.round(target.getBoundingClientRect().top + 8);
+    const fire = (type, touches) => target.dispatchEvent(new TouchEvent(type, {
+      touches, targetTouches: touches, changedTouches: touches, bubbles: true, cancelable: true }));
+    fire('touchstart', [t(1, 100, y), t(2, 180, y)]);
+    fire('touchmove', [t(1, 60, y), t(2, 220, y)]);
+    fire('touchend', []);
+    return {
+      font: readerFont, zoom: readerZoomFont, stored: localStorage.getItem('labu-reader-font'),
+      slider: document.getElementById('readerSizeRange').value,
+      label: document.getElementById('readerSizeValue').textContent,
+      inline: document.getElementById('songDetail').style.getPropertyValue('--reader-font').trim()
+    };
+  });
+  ok('pinch enlarges the lyrics', pinched.zoom > before, before + ' -> ' + pinched.zoom);
+  ok('pinch writes its size into the Settings font size',
+    pinched.font === pinched.zoom && pinched.stored === String(pinched.zoom) &&
+    pinched.slider === String(pinched.zoom) && pinched.label === pinched.zoom + 'px',
+    JSON.stringify({ r: pinched.font, s: pinched.stored, slider: pinched.slider, label: pinched.label }));
+  // Changing songs must keep the pinched size instead of snapping back.
+  await mp.goBack();
+  await mp.waitForSelector('#songGrid .song-item');
+  await mp.locator('#songGrid .song-item').last().click();
+  await mp.waitForSelector('#songDetail .verse');
+  const next = await mp.evaluate(() => ({
+    font: readerFont,
+    inline: document.getElementById('songDetail').style.getPropertyValue('--reader-font').trim()
+  }));
+  ok('the next song keeps the pinched size',
+    next.font === pinched.zoom && next.inline === pinched.zoom + 'px', JSON.stringify(next));
+  await mp.close();
+});
+
 // ═══════════════ 12. PWA: SW + OFFLINE ═══════════════
 await section('pwa offline', async () => {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });

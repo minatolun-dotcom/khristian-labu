@@ -1296,8 +1296,9 @@ let _scrollPos = {};
 let _songScroll = {};
 // ponytail: cache rendered list DOM so back-nav shows it instantly (no rebuild/re-fade).
 let _listCache = {};
-// ponytail: the Settings font size is permanent. Pinching the lyrics changes a
-// transient size for the current song only; leaving the reader resets it.
+// ponytail: the Settings font size is permanent, and a pinch on the lyrics updates
+// it (see attachReaderPinch), so the size you zoom to is the size every song keeps.
+// readerZoomFont is the live value while a pinch is in flight.
 // parseFloat, not parseInt: the size slider stores tenths (17.4), and truncating
 // on load would make the reader jump back to a whole pixel.
 let readerFont = clampReaderFont(parseFloat(localStorage.getItem('labu-reader-font') || '17'));
@@ -2744,8 +2745,9 @@ document.getElementById('songGrid').addEventListener('click', e => {
   el.addEventListener('touchcancel', () => { if (armed) finish(); }, { passive: true });
 })();
 
-// Two-finger pinch changes the lyric size for the current song only. It never
-// writes to localStorage; a new song starts from the Settings font size again.
+// Two-finger pinch changes the lyric size. The size is committed when the pinch
+// ends, so it becomes the Settings size (slider + localStorage) and the next song
+// opens at it instead of snapping back to the previous setting.
 (function attachReaderPinch() {
   const el = document.getElementById('songScroll');
   if (!el) return;
@@ -2781,6 +2783,9 @@ document.getElementById('songGrid').addEventListener('click', e => {
   function end(e) {
     if (suppress) e.stopPropagation();
     if (e.touches.length < 2) {
+      // Commit the pinched size as the Settings size, so it survives a song change
+      // (setReaderFont applies it, writes localStorage and moves the slider).
+      if (pinch && readerZoomFont !== readerFont) setReaderFont(readerZoomFont);
       if (pinch) scheduleReaderControlsCheck();
       pinch = null;
       el.classList.remove('pinching');
@@ -4627,7 +4632,7 @@ function renderSongDetail(song, dir, keepHeader) {
     void el.offsetWidth; // force reflow so the animation restarts
     el.classList.add(dir === 'next' ? 'slide-next' : 'slide-prev');
   }
-  // Pinch zoom is per-song: a new song starts from the permanent Settings size.
+  // A new song starts from the saved size; readerZoomFont only leads it mid-pinch.
   if (_readerZoomSongId !== song.id) { _readerZoomSongId = song.id; readerZoomFont = readerFont; }
   el.style.setProperty('--reader-font', readerZoomFont+'px');
   el.style.setProperty('--reader-lh', readerLH);
