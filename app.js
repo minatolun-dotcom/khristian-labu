@@ -6155,36 +6155,61 @@ function toggleFindReplace() {
 }
 function closeFindReplace() { closeModal('findReplaceModal'); }
 
-function previewFindReplace() {
-  const findText = document.getElementById('findInput').value;
-  if (!findText) { clearFindReplace(); return; }
-  const caseSensitive = document.getElementById('frCaseSensitive').checked;
-  const searchTitles = document.getElementById('frTitles').checked;
-  const searchVerses = document.getElementById('frVerses').checked;
-  const searchAuthors = document.getElementById('frAuthors').checked;
-  frMatches = [];
+// The form is the source of truth: every action re-reads it, so a preview that
+// was never rendered (or is out of date) cannot change what a button does.
+function readFindReplaceForm() {
+  return {
+    findText: document.getElementById('findInput').value,
+    replaceText: document.getElementById('replaceInput').value,
+    caseSensitive: document.getElementById('frCaseSensitive').checked,
+    searchTitles: document.getElementById('frTitles').checked,
+    searchVerses: document.getElementById('frVerses').checked,
+    searchAuthors: document.getElementById('frAuthors').checked,
+  };
+}
+
+function collectFindMatches(form) {
+  const { findText, caseSensitive, searchTitles, searchVerses, searchAuthors } = form;
+  const matches = [];
+  if (!findText) return matches;
   CAT_ORDER.forEach(key => {
     SONGS[key].songs.forEach(song => {
       if (searchTitles && song.title) {
         const idx = findIndex(song.title, findText, caseSensitive);
-        if (idx !== -1) frMatches.push({ song, field: 'title', cat: key, original: song.title, idx });
+        if (idx !== -1) matches.push({ song, field: 'title', cat: key, original: song.title, idx });
       }
       if (searchAuthors && song.author) {
         const idx = findIndex(song.author, findText, caseSensitive);
-        if (idx !== -1) frMatches.push({ song, field: 'author', cat: key, original: song.author, idx });
+        if (idx !== -1) matches.push({ song, field: 'author', cat: key, original: song.author, idx });
       }
       if (searchVerses && song.verses) {
         song.verses.forEach((v, vi) => {
           v.lines.forEach((line, li) => {
             const idx = findIndex(line, findText, caseSensitive);
-            if (idx !== -1) frMatches.push({ song, field: 'verse', cat: key, verseIdx: vi, lineIdx: li, original: line, idx });
+            if (idx !== -1) matches.push({ song, field: 'verse', cat: key, verseIdx: vi, lineIdx: li, original: line, idx });
           });
         });
       }
     });
   });
+  return matches;
+}
+
+function previewFindReplace() {
+  const form = readFindReplaceForm();
+  const findText = form.findText;
   const stats = document.getElementById('frStats');
   const results = document.getElementById('frResults');
+  if (!findText) {
+    // Emptying Find only clears the preview — it must not eat the Replace text.
+    frMatches = [];
+    stats.textContent = '';
+    results.innerHTML = '';
+    results.classList.remove('show');
+    return;
+  }
+  const caseSensitive = form.caseSensitive;
+  frMatches = collectFindMatches(form);
   if (!frMatches.length) {
     stats.textContent = 'No matches found';
     results.innerHTML = '';
@@ -6219,19 +6244,24 @@ function highlightMatch(text, find, caseSensitive) {
 }
 
 async function executeReplace() {
-  // A stale preview (empty find, or text typed since) must not turn the button
-  // into a silent no-op that leaves the modal open forever.
-  if (!frMatches.length) previewFindReplace();
-  if (!frMatches.length) {
-    document.getElementById('frStats').textContent = 'No matches to replace';
+  const form = readFindReplaceForm();
+  const findText = form.findText;
+  const replaceText = form.replaceText;
+  const caseSensitive = form.caseSensitive;
+  const stats = document.getElementById('frStats');
+  if (!findText) {
+    stats.textContent = 'Type something to find first';
     return;
   }
-  const findText = document.getElementById('findInput').value;
-  const replaceText = document.getElementById('replaceInput').value;
-  const caseSensitive = document.getElementById('frCaseSensitive').checked;
-  const count = frMatches.length;
+  // Scan now, not from the preview: what the fields say is what gets replaced.
+  const matches = collectFindMatches(form);
+  if (!matches.length) {
+    frMatches = [];
+    stats.textContent = 'No matches to replace';
+    return;
+  }
   const touched = new Map();
-  frMatches.forEach(m => {
+  matches.forEach(m => {
     if (m.field === 'title') {
       m.song.title = replaceAll(m.song.title, findText, replaceText, caseSensitive);
     } else if (m.field === 'author') {
@@ -6249,7 +6279,7 @@ async function executeReplace() {
       if (cat) await recordEdit(cat, song, 'update');
     }
   } catch (e) {
-    document.getElementById('frStats').textContent = 'Could not save replacement';
+    stats.textContent = 'Could not save replacement';
     return;
   }
   previewFindReplace();

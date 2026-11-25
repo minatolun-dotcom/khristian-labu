@@ -831,6 +831,30 @@ await section('admin CRUD', async () => {
   ok('find & replace applied to lyrics', verses.includes('E2EREPLACED') && !verses.includes('E2EMARKER'), verses.slice(0, 60));
   await page.locator('#songModal').locator('button:has-text("Cancel")').click().catch(() => {});
   await page.waitForSelector('#songModal.open', { state: 'detached' }).catch(() => {});
+  // Replace must work even when no preview was ever rendered: the button reads
+  // the fields, so writing them without an input event leaves it fully armed.
+  await page.locator('#adminView').locator('button[title="Find & Replace"]').click();
+  await page.waitForSelector('#findReplaceModal.open');
+  await page.evaluate(() => {
+    document.getElementById('findInput').value = 'E2EREPLACED';
+    document.getElementById('replaceInput').value = 'E2ESTALE';
+    frMatches = [];
+  });
+  ok('no preview was rendered', (await page.evaluate(() => frMatches.length)) === 0,
+    'stats=' + JSON.stringify(await page.textContent('#frStats')));
+  await page.locator('#findReplaceModal').locator('button:has-text("Replace All")').click();
+  const staleClosed = await page.waitForFunction(
+    () => !document.getElementById('findReplaceModal').classList.contains('open'),
+    null, { timeout: 5000 }).then(() => true).catch(() => false);
+  ok('replace works without a rendered preview', staleClosed,
+    'stats=' + JSON.stringify(await page.textContent('#frStats')));
+  await page.locator('#adminSongList .admin-song-row button[title="Edit"]').first().click();
+  await page.waitForSelector('#songModal.open');
+  const staleVerses = await page.inputValue('#formVerses');
+  ok('stale-preview replace reached the lyrics',
+    staleVerses.includes('E2ESTALE') && !staleVerses.includes('E2EREPLACED'), staleVerses.slice(0, 60));
+  await page.locator('#songModal').locator('button:has-text("Cancel")').click().catch(() => {});
+  await page.waitForSelector('#songModal.open', { state: 'detached' }).catch(() => {});
   // delete it
   await page.locator('#adminSongList .admin-song-row button.del').click();
   await page.waitForSelector('#confirmModal.open');
