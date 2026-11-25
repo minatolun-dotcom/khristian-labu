@@ -410,14 +410,15 @@ function setUpdateProgress(state, percent, message) {
   updateMessage = message || '';
   renderUpdateState();
 }
-async function startInAppUpdate(info) {
+async function startInAppUpdate(info, opts) {
   if (!isNativeUpdater()) { openApkDownload(); return; }
   info = info || {};
   const version = String(info.version || document.getElementById('updVer').textContent || '');
   updateState = 'preparing';
   updatePercent = -1;
   updateMessage = '';
-  openUpdatePopup();
+  // Startup downloads run in the pill: the app is usable while it downloads.
+  if (opts && opts.minimized) updateMinimized = true; else openUpdatePopup();
   renderUpdateState();
   const meta = (info.meta && info.meta.version === version ? info.meta : null)
     || (latestUpdate && latestUpdate.version === version ? latestUpdate : null)
@@ -436,19 +437,19 @@ async function startInAppUpdate(info) {
 window.__labuUpdateProgress = function(state, percent, message) {
   setUpdateProgress(String(state || ''), Number(percent), String(message || ''));
 };
-function showUpdateBanner(latest, meta) {
+function showUpdateBanner(latest, meta, opts) {
   latestUpdate = meta && meta.version === latest ? meta : null;
   updateState = 'available';
   updatePercent = -1;
   updateMessage = '';
-  updateMinimized = false;
+  updateMinimized = !!(opts && opts.minimized);
   setUpdateStatus('');
   document.getElementById('updVer').textContent = latest;
   document.getElementById('updProgress').hidden = true;
   document.getElementById('updProgressFill').style.width = '0%';
   document.getElementById('updProgressNote').textContent = '';
   setUpdButton('Update now', () => startInAppUpdate({ version: latest, meta: latestUpdate }));
-  openUpdatePopup();
+  if (!updateMinimized) openUpdatePopup();
   renderUpdateState();
   const lv = document.getElementById('latestVersion');
   if (lv) { document.getElementById('latestVersionVal').textContent = latest; lv.classList.remove('is-hidden'); }
@@ -537,8 +538,10 @@ async function checkForUpdate() {
   if (!info) return;
   // Compare against Android's view of the installed package, never the bundled string.
   if (compareVer(info.version, await runningVersion()) <= 0) return;
-  showUpdateBanner(info.version, info.meta);
-  startInAppUpdate(info);
+  // Download straight away, but minimized: a pill at the bottom shows the
+  // percentage while the songbook stays usable. The pill opens the dialog.
+  showUpdateBanner(info.version, info.meta, { minimized: true });
+  startInAppUpdate(info, { minimized: true });
 }
 
 // ─── INDEXEDDB (replaces the localStorage full-corpus store, which has a ~5MB quota) ───

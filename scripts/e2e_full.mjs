@@ -1170,15 +1170,44 @@ await section('update check', async () => {
     };
   });
   await waitLoaded(native);
-  await native.waitForSelector('#updateOverlay:not([hidden])', { timeout: 15000 });
+  await native.waitForSelector('#updateFab:not([hidden])', { timeout: 15000 });
   await native.waitForFunction(() => window.__starts.length === 1, null, { timeout: 5000 });
   ok('native startup picks the newer latest.json version', (await native.textContent('#updVer')) === '9.9.9');
   ok('native settings exposes Check for update', await native.evaluate(() => getComputedStyle(document.getElementById('checkUpdateRow')).display !== 'none'));
   const started = await native.evaluate(() => window.__starts[0]);
   ok('native update uses the verified APK metadata', started.url.includes('/apk/9999/') && started.sha256 === 'a'.repeat(64) && started.size === '123456' && started.version === '9.9.9', JSON.stringify(started));
-  const box = await native.locator('#updateBanner').boundingBox();
+  // A launch-time download must not cover the songbook: it starts in the pill.
+  const auto = await native.evaluate(() => ({
+    overlay: document.getElementById('updateOverlay').hidden,
+    fab: !document.getElementById('updateFab').hidden,
+    label: document.getElementById('updateFabText').textContent,
+  }));
+  ok('startup download starts minimized in the pill',
+    auto.overlay && auto.fab && /Preparing|Downloading/.test(auto.label), JSON.stringify(auto));
+  const pillBox = await native.locator('#updateFab').boundingBox();
   const vp = native.viewportSize();
-  ok('update dialog is centered on screen', !!box && Math.abs((box.y + box.height / 2) - vp.height / 2) < 40 && box.x >= 0 && box.x + box.width <= vp.width, JSON.stringify({ box, vp }));
+  ok('pill sits at the bottom of the screen',
+    !!pillBox && Math.abs((pillBox.x + pillBox.width / 2) - vp.width / 2) < 4 && pillBox.y + pillBox.height < vp.height && pillBox.y > vp.height / 2,
+    JSON.stringify({ pillBox, vp }));
+  const pillAt = async (pct) => {
+    await native.evaluate(p => window.__labuUpdateProgress('downloading', p, 'Downloading update…'), pct);
+    return native.evaluate(() => {
+      const fab = document.getElementById('updateFab');
+      const label = document.getElementById('updateFabText');
+      return {
+        w: Math.round(fab.getBoundingClientRect().width), h: Math.round(fab.getBoundingClientRect().height),
+        text: label.textContent, scroll: label.scrollWidth, client: label.clientWidth,
+        ws: getComputedStyle(label).whiteSpace, overlay: document.getElementById('updateOverlay').hidden,
+      };
+    });
+  };
+  const pill9 = await pillAt(9);
+  const pill100 = await pillAt(100);
+  ok('pill shows the download percentage while minimized', /Downloading 9%/.test(pill9.text) && pill9.overlay, JSON.stringify(pill9));
+  ok('pill keeps a fixed width as the percentage grows', pill9.w === pill100.w && pill9.w > 0, pill9.w + ' vs ' + pill100.w);
+  ok('pill content stays on one line', pill100.h < 60 && pill100.ws === 'nowrap' && pill100.scroll <= pill100.client + 1,
+    JSON.stringify({ h: pill100.h, ws: pill100.ws, scroll: pill100.scroll, client: pill100.client }));
+  await native.locator('#updateFab').click();
   await native.evaluate(() => window.__labuUpdateProgress('downloading', 42, 'Downloading update…'));
   const dl = await native.evaluate(() => ({
     visible: !document.getElementById('updProgress').hidden,
@@ -1307,22 +1336,41 @@ await section('update check', async () => {
     const realFetch = window.fetch.bind(window);
     window.fetch = async (url, opts) => {
       if (String(url).includes('version.json')) return { ok: true, json: async () => ({ version: '1.5.64' }) };
-      if (String(url).includes('latest.json')) return { ok: true, json: async () => ({
-        version: window.__latestVersion,
-        url: 'https://dl.labu.lengkhawm.online/apk/9998/khristian-labu.apk',
-        sha256: 'b'.repeat(64),
-        size: 123456,
-      }) };
+      if (String(url).includes('latest.json')) {
+        // Read the flag now, not inside json(): the startup check must see 0.0.1,
+        // otherwise it also starts a download and the manual check sees two.
+        const version = window.__latestVersion;
+        return { ok: true, json: async () => ({
+          version,
+          url: 'https://dl.labu.lengkhawm.online/apk/9998/khristian-labu.apk',
+          sha256: 'b'.repeat(64),
+          size: 123456,
+        }) };
+      }
       return realFetch(url, opts);
     };
   });
   await waitLoaded(manual);
+  // Let the startup check finish first: flipping the mocked version mid-flight
+  // would make it (correctly) start a download of its own and the manual check
+  // would then be a second start rather than the one under test.
+  await manual.waitForTimeout(1500);
   await manual.evaluate(() => { window.__latestVersion = '9.9.9'; openSettings(); });
   await manual.waitForSelector('#settingsView.active');
   await manual.waitForTimeout(500);
   await manual.locator('#checkUpdateRow').click({ force: true });
-  await manual.waitForFunction(() => window.__starts.length === 1, null, { timeout: 5000 });
-  ok('manual check does not report latest when latest.json is newer', (await manual.textContent('#updVer')) === '9.9.9' && (await manual.evaluate(() => window.__latestVersion)) === '9.9.9');
+  const manualStarted = await manual.waitForFunction(
+    () => window.__starts.length >= 1, null, { timeout: 8000 }).then(() => true).catch(() => false);
+  if (!manualStarted) {
+    console.log('  manual check dump —', JSON.stringify(await manual.evaluate(() => ({
+      starts: window.__starts.length, state: updateState,
+      status: document.getElementById('updateStatus').textContent,
+      ver: document.getElementById('updVer').textContent, latest: window.__latestVersion,
+      rowLabel: document.querySelector('#checkUpdateRow .sr-label')?.textContent,
+      busy: document.getElementById('checkUpdateRow').disabled,
+    }))));
+  }
+  ok('manual check does not report latest when latest.json is newer', manualStarted && (await manual.textContent('#updVer')) === '9.9.9' && (await manual.evaluate(() => window.__latestVersion)) === '9.9.9');
   await manual.close();
 });
 
