@@ -1,5 +1,5 @@
 // ─── DATA ───
-const DATA_VERSION = 38; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
+const DATA_VERSION = 39; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
 let CORPUS_HASH = '';
 function dataQuery() {
   const parts = [];
@@ -7,7 +7,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.79'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.80'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 const LATEST_JSON = 'https://dl.labu.lengkhawm.online/latest.json';
 let latestUpdate = null;
@@ -603,7 +603,12 @@ function applyEdit(e) {
     }
   }
   const i = arr.findIndex(s => s.id === e.id);
-  if (i >= 0) arr[i] = e.song; else arr.push(e.song);
+  if (i >= 0) {
+    // The bundled corpus carries the title printed on the solfa sheet, which beats
+    // any older title stored in a published edit (those were lyric incipits), so
+    // the corpus title always wins while every other edited field is replayed.
+    arr[i] = { ...e.song, title: arr[i].title || e.song.title };
+  } else arr.push(e.song);
 }
 // Rebuild CAT_ORDER / BOOK_GROUP from the (possibly user-extended) groups.
 function reindexBooks() {
