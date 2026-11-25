@@ -684,6 +684,10 @@ body[data-view="list"] #listFastScroll.on{display:block;pointer-events:auto;}
 .find-replace-results .match:last-child{border-bottom:none;}
 .find-replace-results .match-song{font-weight:500;color:var(--text);}
 .find-replace-results .match-text{color:var(--text3);font-size:0.8rem;}
+.find-replace-results .match-after{color:var(--text2);font-size:0.8rem;margin-top:0.15rem;}
+.find-replace-results .match-after::before{content:'\2192\00a0';color:var(--text3);}
+.find-replace-results .match-after .highlight{background:rgba(90,200,140,0.22);color:var(--text);}
+.find-replace-results .match-gone{color:var(--text3);font-style:italic;}
 .find-replace-results .highlight{background:rgba(255,122,26,0.24);color:var(--warm);padding:0 2px;border-radius:2px;}
 .find-replace-stats{font-size:0.85rem;color:var(--text2);margin-bottom:1rem;}
 .find-replace-actions{display:flex;gap:0.75rem;flex-wrap:wrap;}

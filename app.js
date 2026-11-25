@@ -6221,13 +6221,19 @@ function previewFindReplace() {
   }
   stats.textContent = frMatches.length + ' match' + (frMatches.length !== 1 ? 'es' : '') + ' found across ' + [...new Set(frMatches.map(m => m.song.id))].length + ' songs';
   results.classList.add('show');
-  const replaceText = document.getElementById('replaceInput').value;
+  const replaceText = form.replaceText;
   let html = '';
   frMatches.slice(0, 50).forEach(m => {
     const highlighted = highlightMatch(m.original, findText, caseSensitive);
     const songInfo = m.song.number ? '#' + m.song.number + ' ' : '';
     const fieldLabel = m.field === 'verse' ? ' (v' + (m.verseIdx+1) + ')' : ' [' + m.field + ']';
-    html += '<div class="match"><div><div class="match-song">' + esc(songInfo + m.song.title) + '</div><div class="match-text">' + esc(m.cat) + fieldLabel + ': ' + highlighted + '</div></div></div>';
+    // With something in Replace, show the line as it will read afterwards.
+    let afterRow = '';
+    if (replaceText) {
+      const after = highlightMatch(replaceAll(m.original, findText, replaceText, caseSensitive), replaceText, true);
+      afterRow = '<div class="match-after">' + (after ? after : '<span class="match-gone">(removed)</span>') + '</div>';
+    }
+    html += '<div class="match"><div><div class="match-song">' + esc(songInfo + m.song.title) + '</div><div class="match-text">' + esc(m.cat) + fieldLabel + ': ' + highlighted + '</div>' + afterRow + '</div></div>';
   });
   if (frMatches.length > 50) html += '<div class="match"><div class="match-text">... and ' + (frMatches.length - 50) + ' more matches</div></div>';
   results.innerHTML = html;

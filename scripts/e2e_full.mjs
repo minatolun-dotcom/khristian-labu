@@ -804,6 +804,10 @@ await section('admin CRUD', async () => {
     'find=' + (await page.inputValue('#findInput')) + ' replace=' + (await page.inputValue('#replaceInput')));
   await page.waitForTimeout(500);
   ok('find & replace preview counts matches', (await page.textContent('#frStats')).includes('match'));
+  const previewText = await page.textContent('#frResults');
+  ok('preview shows the replacement result',
+    previewText.includes('E2EREPLACED') && previewText.includes('E2EMARKER') &&
+    (await page.locator('#frResults .match-after').count()) >= 2, JSON.stringify(previewText.slice(0, 80)));
   await page.locator('#findReplaceModal').locator('button:has-text("Replace All")').click();
   // Closing the modal is the app's completion signal; the success toast is
   // ephemeral and can disappear before Playwright starts polling.
