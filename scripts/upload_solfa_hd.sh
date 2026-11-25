@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Upload the 480 DPI solfa sheets to R2 (labu-artifacts).
 #
-# The app fetches them from https://dl.labu.lengkhawm.online/solfa-hd/v2/<file>.avif
-# (v2 keeps the printed title/key header; the unversioned path stays untouched so
-#  its year-long immutable caches keep their old crop)
+# The app fetches them from https://dl.labu.lengkhawm.online/solfa-hd/v3/<file>.avif
+# (v3 frames every sheet on a uniform A4-proportioned page; v2 and the unversioned
+#  path stay untouched so their year-long immutable caches keep their old crop)
 # and keeps the bundled 240 DPI copies as the offline/fallback view.
 #
 #   npm run solfa:hd          # build solfa-hd/ from the printed PDF
@@ -23,7 +23,7 @@ if [ -n "$missing" ]; then
   printf '%s\n' "$missing" >&2
   exit 1
 fi
-echo "uploading $count sheets from $SRC to labu-artifacts/solfa-hd/v2/ ..."
+echo "uploading $count sheets from $SRC to labu-artifacts/solfa-hd/v3/ ..."
 
 # Each sheet is immutable content under its own name, so it can be cached for a
 # year at both the edge and in the browser. --remote is required: without it,
@@ -31,7 +31,7 @@ echo "uploading $count sheets from $SRC to labu-artifacts/solfa-hd/v2/ ..."
 # keep the 496-object run to a couple of minutes without hammering the API.
 for n in $names; do printf '%s\0' "$SRC/$n"; done | xargs -0 -P 10 -I{} bash -c '
   f="$1"
-  npx --no-install wrangler r2 object put "labu-artifacts/solfa-hd/v2/$(basename "$f")" \
+  npx --no-install wrangler r2 object put "labu-artifacts/solfa-hd/v3/$(basename "$f")" \
     --file "$f" \
     --content-type image/avif \
     --cache-control "public, max-age=31536000, immutable" \

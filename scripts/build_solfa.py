@@ -35,6 +35,12 @@ PAD = 8
 QUALITY = 55
 SPEED = 6
 
+# Every sheet is placed on a page of A4 proportions: the crop is tight to the
+# engraving, so the white frame is what gives the title block room to breathe and
+# makes short tunes and long tunes share one canvas width and minimum height.
+PAGE_RATIO = 297 / 210
+FRAME_PAD = 36  # white band above and below the engraving, in pixels
+
 HD_SCALE = 480 / 72
 
 
@@ -45,7 +51,7 @@ def set_hd():
     and is uploaded to R2, never committed. Spacers scale with the render so the
     HD sheet keeps the bundled sheet's proportions.
     """
-    global SCALE, QUALITY, SPEED, OUT, PAGE_SEGMENT_GAP, COMPACT_GAP, PAD
+    global SCALE, QUALITY, SPEED, OUT, PAGE_SEGMENT_GAP, COMPACT_GAP, PAD, FRAME_PAD
     SCALE = HD_SCALE
     QUALITY = 70
     SPEED = 8
@@ -53,6 +59,7 @@ def set_hd():
     PAGE_SEGMENT_GAP = 20
     COMPACT_GAP = 36
     PAD = 16
+    FRAME_PAD = 72
 
 # Songs whose tune is printed elsewhere ("Kaih No. X" / same tune note).
 SHARED = {
@@ -197,7 +204,18 @@ def build_plan(rows):
     return plan
 
 
-def segments_for(rows, order_to_next):
+def single_tune_page(rows, start):
+    """True when this tune is the only thing printed on its page."""
+    for r in rows:
+        if r["page"] != start["page"]:
+            continue
+        if r["num"] == start["num"] and abs(r["key_y"] - start["key_y"]) < 0.6:
+            continue
+        return False
+    return True
+
+
+def segments_for(rows, order_to_next, pdf=None):
     """Return (page, start_pdf_y, end_pdf_y) segments for a tune start."""
     start = order_to_next["start"]
     nxt = order_to_next.get("next")
@@ -216,7 +234,9 @@ def segments_for(rows, order_to_next):
             top = TOP_PDF
         bottom = BOTTOM_PDF
         if nxt is not None and page == nxt["page"] and nxt["key_y"] < 450:
-            bottom = min(nxt["title_y"] + 42, TOP_PDF)
+            # Cut in the blank gap above the next title, not at a fixed offset:
+            # a last stave or its lyric line often sits lower than the title + 42.
+            bottom = header_top(pdf, nxt["page"], nxt["title_y"]) if pdf is not None else min(nxt["title_y"] + 42, TOP_PDF)
         if top - bottom > 8:
             segments.append((page, top, bottom))
     return segments
@@ -292,7 +312,7 @@ def snap_top(pdf, page_no, limit_pdf_y):
 REF_LINE = re.compile(r"^(S\.?\s*S|ALEX|GREAT\s+HYMN|CH\.G\.H|BMH|SS)\b", re.I)
 
 
-def render_segment(pdf, page_no, top_pdf, bottom_pdf):
+def render_segment(pdf, page_no, top_pdf, bottom_pdf, full=False):
     page = pdf[page_no - 1]
     img = page.render(scale=SCALE).to_pil().convert("L")
     w, h = img.size
@@ -313,6 +333,10 @@ def render_segment(pdf, page_no, top_pdf, bottom_pdf):
         x0 = line["x0"] * SCALE - left
         x1 = line["x1"] * SCALE - left
         draw.rectangle((x0, y0, x1, y1), fill=255)
+    if full:
+        # A page that prints one song is shipped whole: the printed page already
+        # has its own margins, and trimming to the ink is what cut the last line.
+        return crop
     bbox = ImageOps.invert(crop).point(lambda v: 255 if v > 10 else 0).getbbox()
     if not bbox:
         return None
@@ -327,6 +351,7 @@ def render_segment(pdf, page_no, top_pdf, bottom_pdf):
 
 
 def build_asset(app_id, row_list, rows, pdf):
+    whole = False
     if len(row_list) == 1:
         start = row_list[0]
         # find next tune start in reading order
@@ -341,11 +366,13 @@ def build_asset(app_id, row_list, rows, pdf):
             start["_start_pdf_y"] = header_top(pdf, start["page"], start["title_y"])
             if app_id == "0":
                 nxt = rows[order + 1]
+        segs = segments_for(rows, {"start": start, "next": nxt}, pdf)
+        if len(segs) == 1 and single_tune_page(rows, start):
+            whole = True
+            segs = [(segs[0][0], TOP_PDF, BOTTOM_PDF)]
         parts = []
-        for page, top, bottom in segments_for(
-            rows, {"start": start, "next": nxt}
-        ):
-            part = render_segment(pdf, page, top, bottom)
+        for page, top, bottom in segs:
+            part = render_segment(pdf, page, top, bottom, full=whole)
             if part:
                 parts.append(part)
         label = app_id
@@ -356,7 +383,7 @@ def build_asset(app_id, row_list, rows, pdf):
             nxt = rows[order + 1]
             start = dict(r)
             start["_start_pdf_y"] = header_top(pdf, r["page"], r["title_y"])
-            for page, top, bottom in segments_for(rows, {"start": start, "next": nxt}):
+            for page, top, bottom in segments_for(rows, {"start": start, "next": nxt}, pdf):
                 part = render_segment(pdf, page, top, bottom)
                 if part:
                     parts.append(part)
@@ -386,7 +413,29 @@ def build_asset(app_id, row_list, rows, pdf):
     for p in out_parts:
         sheet.paste(p, (0, y))
         y += p.height
-    return compact_vertical(sheet)
+    if whole:
+        return frame_sheet(sheet)
+    return frame_sheet(compact_vertical(sheet))
+
+
+def frame_sheet(sheet):
+    """Place the engraving on a uniform A4-proportioned page.
+
+    Sheets are cut to their ink, so every one used to be a different size with
+    the title pressed against the top edge. A fixed page width and a white band
+    above and below give the whole book one canvas; a tune that runs past one
+    page keeps its natural height instead of being shrunk to fit, because
+    squeezing a three-page tune onto one page would halve the notes.
+    """
+    page_w = max(round(X1 * SCALE) - round(X0 * SCALE), sheet.width)
+    page_h = max(round(page_w * PAGE_RATIO), sheet.height + FRAME_PAD * 2)
+    page = Image.new("L", (page_w, page_h), 255)
+    # Centre the engraving: a short tune sits in the middle of the page with the
+    # same white margin above and below, and a near-full page is still held off
+    # the edges by FRAME_PAD.
+    top = max(FRAME_PAD, (page_h - sheet.height) // 2)
+    page.paste(sheet, ((page_w - sheet.width) // 2, top))
+    return page
 
 
 def compact_vertical(sheet, gap=COMPACT_GAP):
@@ -473,7 +522,8 @@ def main():
             continue
         if src == "C1":
             row = row_at(rows, 619, 492.3)
-            sheet = render_segment(pdf, 619, header_top(pdf, 619, row["title_y"]), BOTTOM_PDF)
+            part = render_segment(pdf, 619, header_top(pdf, 619, row["title_y"]), BOTTOM_PDF)
+            sheet = frame_sheet(part) if part else None
         else:
             row_list = plan[src]
             sheet = build_asset(src, row_list, rows, pdf)
