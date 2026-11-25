@@ -6254,6 +6254,27 @@ function clearFindReplace() {
 }
 
 // ─── ADD / EDIT MODAL ───
+// Titles come from the songbook sheet, so a title typed in the form cannot win.
+// Warn while typing instead of letting the change disappear on save.
+function updateTitleHint() {
+  const input = document.getElementById('formTitle');
+  const hint = document.getElementById('formTitleHint');
+  if (!hint) return;
+  const printed = input.dataset.printed || '';
+  const typed = input.value.trim();
+  if (printed && typed && typed !== printed) {
+    hint.textContent = 'The app shows the printed title “' + printed + '”, so this title will not appear.';
+    hint.hidden = false;
+  } else {
+    hint.hidden = true;
+  }
+}
+function setPrintedTitle(title) {
+  const input = document.getElementById('formTitle');
+  input.dataset.printed = title || '';
+  input.oninput = updateTitleHint;
+  updateTitleHint();
+}
 async function openAddModal() {
   await ensureSongs();
   document.getElementById('modalTitle').textContent = 'Add Song';
@@ -6265,6 +6286,7 @@ async function openAddModal() {
   document.getElementById('formTitle').value = '';
   document.getElementById('formAuthor').value = '';
   document.getElementById('formVerses').value = '';
+  setPrintedTitle('');
   openModal('songModal');
 }
 
@@ -6283,6 +6305,7 @@ async function openEditModal(id) {
   document.getElementById('formNum').value = song.number || '';
   document.getElementById('formKey').value = song.key || '';
   document.getElementById('formTitle').value = song.title || '';
+  setPrintedTitle(song.title || '');
   document.getElementById('formAuthor').value = song.author || '';
   // Convert verses back to text
   let txt = '';
