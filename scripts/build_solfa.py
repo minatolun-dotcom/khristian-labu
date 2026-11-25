@@ -312,7 +312,49 @@ def snap_top(pdf, page_no, limit_pdf_y):
 REF_LINE = re.compile(r"^(S\.?\s*S|ALEX|GREAT\s+HYMN|CH\.G\.H|BMH|SS)\b", re.I)
 
 
+def full_page_bottom(pdf, page_no, bottom_pdf):
+    """Bottom edge for a crop that ships a whole printed page.
+
+    The content band stops at BOTTOM_PDF, but a page whose engraving runs to the
+    foot (five systems — song 8) prints its last lyric line below that line, so
+    the fixed cut sliced it in half. When ink crosses the band edge, follow it
+    down to the end of that ink block and keep a PAD of white under it, never
+    reaching the cross-reference line printed at the page foot.
+    """
+    key = ("full", page_no, round(bottom_pdf, 1))
+    if key in _TOP_CACHE:
+        return _TOP_CACHE[key]
+    img = pdf[page_no - 1].render(scale=SCALE).to_pil().convert("L")
+    band = img.crop((round(X0 * SCALE), 0, min(img.width, round(X1 * SCALE)), img.height))
+    raw = band.tobytes()
+    bw = band.width
+
+    def ink(row):
+        return min(raw[row * bw:(row + 1) * bw]) < 245
+
+    edge = min(band.height - 1, int(round((595.28 - bottom_pdf) * SCALE)))
+    if not ink(edge):
+        _TOP_CACHE[key] = bottom_pdf
+        return bottom_pdf
+    limit = band.height
+    for line in page_lines(pdf[page_no - 1]):
+        txt = line["text"].strip()
+        # Foot captions are set in caps a line or two below the music; keep them
+        # out of the crop so the sheet ends on the tune.
+        if len(txt) < 6 or txt.upper() != txt or line["y"] + line["h"] / 2 > bottom_pdf:
+            continue
+        limit = min(limit, int(round((595.28 - (line["y"] + line["h"] / 2 + 3)) * SCALE)))
+    y = max(0, min(limit - 1, band.height - 1))
+    while y > edge and not ink(y):
+        y -= 1
+    out = min(bottom_pdf, 595.28 - (y + PAD) / SCALE)
+    _TOP_CACHE[key] = out
+    return out
+
+
 def render_segment(pdf, page_no, top_pdf, bottom_pdf, full=False):
+    if full:
+        bottom_pdf = full_page_bottom(pdf, page_no, bottom_pdf)
     page = pdf[page_no - 1]
     img = page.render(scale=SCALE).to_pil().convert("L")
     w, h = img.size
