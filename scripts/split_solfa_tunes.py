@@ -52,14 +52,14 @@ def main():
             continue
         for i, row in enumerate(row_list, 1):
             dest = B.OUT / f"BL_{num}-t{i}.avif"
-            if dest.exists() and not args.force:
+            if dest.exists() and not args.force and B.read_ok(dest):
                 print(f"keep {dest.name}")
                 continue
             sheet = B.build_asset(f"{num}t{i}", [row], rows, pdf)
             if sheet is None:
                 print(f"EMPTY {dest.name}")
                 continue
-            sheet.save(dest, "AVIF", quality=B.QUALITY, speed=B.SPEED)
+            B.save_avif(sheet, dest)
             written += 1
             print(f"{dest.name:18} {sheet.width}x{sheet.height} {dest.stat().st_size / 1024:5.1f} KB")
         print(f"{song['id']} -> {len(row_list)} tunes ({song['title']})")

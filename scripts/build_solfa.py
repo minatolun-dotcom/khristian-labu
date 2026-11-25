@@ -9,10 +9,21 @@ Usage:
     .venv-solfa/bin/python scripts/build_solfa.py --dry-run
     .venv-solfa/bin/python scripts/build_solfa.py --only BL_72
     .venv-solfa/bin/python scripts/build_solfa.py
+
+A build is resumable: sheets are written through a temp file and renamed, and
+a rerun keeps every sheet that is already complete and decodes, so an
+interrupted run only redoes the sheets it had not reached. A fingerprint of
+this script and its geometry is stored next to the output; when it changes,
+stale sheets are rebuilt instead of kept. `--jobs` renders sheets in parallel
+(default: one worker per core, at most 8).
 """
 import argparse
+import hashlib
 import json
+import multiprocessing
+import os
 import re
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from solfa_scan import page_lines
@@ -243,6 +254,31 @@ def segments_for(rows, order_to_next, pdf=None):
 
 
 _TOP_CACHE = {}
+_INK = {}
+
+
+def page_ink(pdf, page_no):
+    """Dark-pixel count per row of a page's content band, rendered once.
+
+    Every crop decision (title top, first stave, bottom edge) reads the same
+    band profile, so the page is rendered a single time per build.
+    """
+    key = (round(SCALE, 4), page_no)
+    if key in _INK:
+        return _INK[key]
+    img = pdf[page_no - 1].render(scale=SCALE).to_pil().convert("L")
+    left = round(X0 * SCALE)
+    right = min(img.width, round(X1 * SCALE))
+    band = img.crop((left, 0, right, img.height))
+    raw = band.tobytes()
+    w = band.width
+    counts = [sum(1 for v in raw[y * w:(y + 1) * w] if v < 245) for y in range(band.height)]
+    _INK[key] = (counts, w)
+    return _INK[key]
+
+
+def _row_of(pdf_y):
+    return int(round((595.28 - pdf_y) * SCALE))
 
 
 def header_top(pdf, page_no, title_pdf_y):
@@ -253,24 +289,17 @@ def header_top(pdf, page_no, title_pdf_y):
     Only the page's running header (page number, book name) stays out: the band
     is capped at TOP_PDF, and a mid-page tune starts at its own title.
     """
-    key = ("hdr", page_no, round(title_pdf_y, 1))
+    key = ("hdr", round(SCALE, 4), page_no, round(title_pdf_y, 1))
     if key in _TOP_CACHE:
         return _TOP_CACHE[key]
-    img = pdf[page_no - 1].render(scale=SCALE).to_pil().convert("L")
-    left = round(X0 * SCALE)
-    right = min(img.width, round(X1 * SCALE))
-    band = img.crop((left, 0, right, img.height))
-    raw = band.tobytes()
-    bw = band.width
+    counts, _ = page_ink(pdf, page_no)
+    h = len(counts)
 
-    def ink(row):
-        return min(raw[row * bw:(row + 1) * bw]) < 245
-
-    y = min(band.height - 1, max(0, int(round((595.28 - title_pdf_y) * SCALE))))
+    y = min(h - 1, max(0, _row_of(title_pdf_y)))
     # Enter the title line, then walk up to the top of its ink block.
-    while y < band.height - 1 and not ink(y):
+    while y < h - 1 and not counts[y]:
         y += 1
-    while y > 0 and ink(y):
+    while y > 0 and counts[y]:
         y -= 1
     top = min(TOP_PDF, 595.28 - y / SCALE)
     _TOP_CACHE[key] = top
@@ -283,26 +312,19 @@ def snap_top(pdf, page_no, limit_pdf_y):
     Using the "Doh is" line position alone clips the top of the first system
     (its notation line sits only a few points below the key line).
     """
-    key = (page_no, round(limit_pdf_y, 1))
+    key = ("snap", round(SCALE, 4), page_no, round(limit_pdf_y, 1))
     if key in _TOP_CACHE:
         return _TOP_CACHE[key]
-    img = pdf[page_no - 1].render(scale=SCALE).to_pil().convert("L")
-    left = round(X0 * SCALE)
-    right = min(img.width, round(X1 * SCALE))
-    band = img.crop((left, 0, right, img.height))
-    raw = band.tobytes()
-    bw = band.width
-    y = max(0, int((595.28 - limit_pdf_y) * SCALE))
+    counts, _ = page_ink(pdf, page_no)
+    h = len(counts)
+    y = max(0, _row_of(limit_pdf_y))
 
-    def ink(row):
-        return min(raw[row * bw:(row + 1) * bw]) < 245
-
-    while y < band.height and ink(y):  # finish the key/title line itself
+    while y < h and counts[y]:  # finish the key/title line itself
         y += 1
-    while y < band.height and not ink(y):  # cross the gap below it
+    while y < h and not counts[y]:  # cross the gap below it
         y += 1
     top = None
-    if y < band.height:
+    if y < h:
         top = 595.28 - y / SCALE
     out = top if top is not None else limit_pdf_y
     _TOP_CACHE[key] = out
@@ -312,49 +334,83 @@ def snap_top(pdf, page_no, limit_pdf_y):
 REF_LINE = re.compile(r"^(S\.?\s*S|ALEX|GREAT\s+HYMN|CH\.G\.H|BMH|SS)\b", re.I)
 
 
-def full_page_bottom(pdf, page_no, bottom_pdf):
-    """Bottom edge for a crop that ships a whole printed page.
+FOOT_LINE = re.compile(r"(copyright|renewal|rights reserved|permission|printed in)", re.I)
 
-    The content band stops at BOTTOM_PDF, but a page whose engraving runs to the
-    foot (five systems — song 8) prints its last lyric line below that line, so
-    the fixed cut sliced it in half. When ink crosses the band edge, follow it
-    down to the end of that ink block and keep a PAD of white under it, never
-    reaching the cross-reference line printed at the page foot.
+
+def foot_furniture_top(pdf, page_no, bottom_pdf):
+    """Top row of the printed foot block under a tune, or None.
+
+    A tune is closed by a short rule and a caps cross-reference line, or by a
+    copyright block. None of that belongs on a sheet: the crop stops above the
+    whole block, so a sheet never ends on a clipped rule or caption top.
     """
-    key = ("full", page_no, round(bottom_pdf, 1))
-    if key in _TOP_CACHE:
-        return _TOP_CACHE[key]
-    img = pdf[page_no - 1].render(scale=SCALE).to_pil().convert("L")
-    band = img.crop((round(X0 * SCALE), 0, min(img.width, round(X1 * SCALE)), img.height))
-    raw = band.tobytes()
-    bw = band.width
-
-    def ink(row):
-        return min(raw[row * bw:(row + 1) * bw]) < 245
-
-    edge = min(band.height - 1, int(round((595.28 - bottom_pdf) * SCALE)))
-    if not ink(edge):
-        _TOP_CACHE[key] = bottom_pdf
-        return bottom_pdf
-    limit = band.height
+    counts, w = page_ink(pdf, page_no)
+    tops = []
     for line in page_lines(pdf[page_no - 1]):
         txt = line["text"].strip()
-        # Foot captions are set in caps a line or two below the music; keep them
-        # out of the crop so the sheet ends on the tune.
-        if len(txt) < 6 or txt.upper() != txt or line["y"] + line["h"] / 2 > bottom_pdf:
+        if not txt or line["y"] >= bottom_pdf + 20:
             continue
-        limit = min(limit, int(round((595.28 - (line["y"] + line["h"] / 2 + 3)) * SCALE)))
-    y = max(0, min(limit - 1, band.height - 1))
-    while y > edge and not ink(y):
+        if not ((len(txt) >= 6 and txt.upper() == txt) or FOOT_LINE.search(txt)):
+            continue
+        top = _row_of(line["y"] + line["h"] + 1)
+        tops.append(top)
+        # The short rule printed just above the line belongs to the block too.
+        y = top - 1
+        window = top - int(14 * SCALE)
+        while y > window and not counts[y]:
+            y -= 1
+        if y <= window or y <= 0:
+            continue
+        start = y
+        while start > 0 and counts[start - 1]:
+            start -= 1
+        widest = max(counts[start:y + 1])
+        if y - start + 1 <= 4 and 0.15 * w <= widest <= 0.7 * w:
+            tops.append(start)
+    return min(tops) if tops else None
+
+
+def content_bottom(pdf, page_no, bottom_pdf, keep_page=False):
+    """Bottom edge for a crop: the tune's last line, never a clipped footer.
+
+    The fixed band is only a starting point. A tune can print its last lyric
+    line below it (the band used to slice that line in half), and the band can
+    also fall inside the rule or caption that closes the page (which left a
+    clipped sliver at the sheet's edge). Find the lowest line that belongs to
+    the tune, keep PAD of white under it, and stop above the foot block.
+    """
+    key = ("bot", round(SCALE, 4), page_no, round(bottom_pdf, 1), keep_page)
+    if key in _TOP_CACHE:
+        return _TOP_CACHE[key]
+    counts, w = page_ink(pdf, page_no)
+    h = len(counts)
+    edge = min(h - 1, _row_of(bottom_pdf))
+    limit = foot_furniture_top(pdf, page_no, bottom_pdf)
+    limit = h if limit is None else max(0, min(h, limit))
+
+    y = min(limit - 1, h - 1)
+    while y >= 0 and not counts[y]:
         y -= 1
-    out = min(bottom_pdf, 595.28 - (y + PAD) / SCALE)
+    if y < 0:
+        _TOP_CACHE[key] = bottom_pdf
+        return bottom_pdf
+    stop = max(y + 1, min(y + PAD, limit))
+    if y >= edge or limit <= edge:
+        # The tune's ink runs past the band, or the band would cut the closing
+        # rule/caption: the sheet ends on the tune with PAD under it.
+        out = 595.28 - stop / SCALE
+    elif keep_page:
+        # Nothing printed under the band: keep the printed page as it is.
+        out = bottom_pdf
+    else:
+        out = 595.28 - stop / SCALE
     _TOP_CACHE[key] = out
     return out
 
 
 def render_segment(pdf, page_no, top_pdf, bottom_pdf, full=False):
-    if full:
-        bottom_pdf = full_page_bottom(pdf, page_no, bottom_pdf)
+    if abs(bottom_pdf - BOTTOM_PDF) < 1e-6:
+        bottom_pdf = content_bottom(pdf, page_no, bottom_pdf, keep_page=full)
     page = pdf[page_no - 1]
     img = page.render(scale=SCALE).to_pil().convert("L")
     w, h = img.size
@@ -460,6 +516,25 @@ def build_asset(app_id, row_list, rows, pdf):
     return frame_sheet(compact_vertical(sheet))
 
 
+def pad_bottom(sheet, pad=PAD):
+    """Guarantee white under the last line, even where the print had none.
+
+    Some pages close a tune only a few points above the next stave or the foot
+    rule, so the crop has no room left; without this the line sat flush against
+    the sheet edge and read as cut.
+    """
+    w, h = sheet.size
+    raw = sheet.tobytes()
+    y = h - 1
+    while y >= 0 and min(raw[y * w:(y + 1) * w]) >= 245:
+        y -= 1
+    if y < 0 or h - 1 - y >= pad:
+        return sheet
+    out = Image.new("L", (w, h + pad - (h - 1 - y)), 255)
+    out.paste(sheet, (0, 0))
+    return out
+
+
 def frame_sheet(sheet):
     """Place the engraving on a uniform A4-proportioned page.
 
@@ -469,6 +544,7 @@ def frame_sheet(sheet):
     page keeps its natural height instead of being shrunk to fit, because
     squeezing a three-page tune onto one page would halve the notes.
     """
+    sheet = pad_bottom(sheet)
     page_w = max(round(X1 * SCALE) - round(X0 * SCALE), sheet.width)
     page_h = max(round(page_w * PAGE_RATIO), sheet.height + FRAME_PAD * 2)
     page = Image.new("L", (page_w, page_h), 255)
@@ -497,7 +573,10 @@ def compact_vertical(sheet, gap=COMPACT_GAP):
             y += 1
     if not runs:
         return sheet
-    new_h = sum(b - a for a, b in runs) + gap * (len(runs) - 1)
+    # Keep PAD of white under the last line: collapsing the blank runs used to
+    # drop the crop's bottom margin, which left multi-page tunes flush against
+    # the frame and looking cut.
+    new_h = sum(b - a for a, b in runs) + gap * (len(runs) - 1) + PAD
     out = Image.new("L", (w, new_h), 255)
     y = 0
     for i, (a, b) in enumerate(runs):
@@ -509,12 +588,87 @@ def compact_vertical(sheet, gap=COMPACT_GAP):
     return out
 
 
+def save_avif(sheet, dest):
+    """Write through a temp file, so an interrupted build leaves no half sheet."""
+    dest = Path(dest)
+    tmp = dest.with_name(dest.name + ".part")
+    sheet.save(tmp, "AVIF", quality=QUALITY, speed=SPEED)
+    os.replace(tmp, dest)
+
+
+def read_ok(path):
+    """True only for a complete AVIF that decodes."""
+    try:
+        with Image.open(path) as im:
+            im.load()
+    except Exception:
+        return False
+    return path.stat().st_size > 0
+
+
+def build_stamp():
+    """Fingerprint of this builder, so a geometry change rebuilds old sheets."""
+    digest = hashlib.sha1(Path(__file__).read_bytes())
+    digest.update(repr((SCALE, QUALITY, SPEED, PAD, FRAME_PAD, TOP_PDF, BOTTOM_PDF,
+                        PAGE_SEGMENT_GAP, COMPACT_GAP, X0, X1, PAGE_RATIO)).encode())
+    return digest.hexdigest()[:16]
+
+
+def sheet_for(src, rows, plan, pdf):
+    if src == "C1":
+        row = row_at(rows, 619, 492.3)
+        part = render_segment(pdf, 619, header_top(pdf, 619, row["title_y"]), BOTTOM_PDF)
+        return frame_sheet(part) if part else None
+    return build_asset(src, plan[src], rows, pdf)
+
+
+def plan_jobs(targets, song_ids, only, force, stamp_ok):
+    """Split the build into sheets to render and sheets a rerun can keep."""
+    jobs, kept, stale, seen = [], 0, 0, set()
+    for num, src in sorted(targets.items(), key=lambda kv: song_ids.index(f"BL_{kv[0]}")):
+        if only and f"BL_{num}" not in only:
+            continue
+        dest = OUT / f"BL_{src}.avif"
+        if dest in seen:
+            continue
+        seen.add(dest)
+        if dest.exists():
+            if not force and stamp_ok and read_ok(dest):
+                kept += 1
+                continue
+            stale += 1
+        jobs.append((src, str(dest)))
+    return jobs, kept, stale
+
+
+_WORKER = {}
+
+
+def _worker_init(hd, rows, plan):
+    if hd:
+        set_hd()
+    _WORKER["pdf"] = pdfium.PdfDocument(str(PDF))
+    _WORKER["rows"] = rows
+    _WORKER["plan"] = plan
+
+
+def _worker_build(job):
+    src, dest = job
+    sheet = sheet_for(src, _WORKER["rows"], _WORKER["plan"], _WORKER["pdf"])
+    if sheet is None:
+        return src, dest, None
+    save_avif(sheet, dest)
+    return src, dest, sheet.size
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--only", default="")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--hd", action="store_true", help="build the 480 DPI R2 copies into solfa-hd/")
+    ap.add_argument("--jobs", type=int, default=0,
+                    help="parallel workers (default: one per core, at most 8)")
     args = ap.parse_args()
     if args.hd:
         set_hd()
@@ -552,30 +706,55 @@ def main():
                 print(f"  {num:>4} p{','.join(str(r['page']) for r in rs)}")
         return
 
-    pdf = pdfium.PdfDocument(str(PDF))
     OUT.mkdir(parents=True, exist_ok=True)
-    built = {}
-    for num, src in sorted(targets.items(), key=lambda kv: song_ids.index(f"BL_{kv[0]}")):
-        if only and f"BL_{num}" not in only:
+    stamp_path = ROOT / (".solfa-build-hd.json" if args.hd else ".solfa-build.json")
+    stamp = build_stamp()
+    try:
+        stamp_ok = json.loads(stamp_path.read_text()).get("stamp") == stamp
+    except Exception:
+        stamp_ok = False
+    jobs, kept, stale = plan_jobs(targets, song_ids, only, args.force, stamp_ok)
+    if kept:
+        print(f"keeping {kept} sheets already built")
+    if stale and not stamp_ok:
+        print(f"rebuilding {stale} sheets left by an older builder")
+    if not jobs:
+        print("nothing to build")
+        return
+    if not only:
+        # Written before building, so an interrupted run can be resumed: the
+        # rerun sees the same fingerprint and keeps the sheets already done.
+        stamp_path.write_text(json.dumps({"stamp": stamp}) + "\n")
+
+    workers = args.jobs if args.jobs > 0 else min(8, os.cpu_count() or 1)
+    fork = "fork" in multiprocessing.get_all_start_methods()
+    if workers > 1 and len(jobs) > 1 and fork:
+        ctx = multiprocessing.get_context("fork")
+        with ProcessPoolExecutor(max_workers=workers, mp_context=ctx,
+                                 initializer=_worker_init,
+                                 initargs=(args.hd, rows, plan)) as pool:
+            results = list(pool.map(_worker_build, jobs, chunksize=1))
+    else:
+        workers = 1
+        pdf = pdfium.PdfDocument(str(PDF))
+        results = []
+        for src, dest in jobs:
+            sheet = sheet_for(src, rows, plan, pdf)
+            if sheet is None:
+                results.append((src, dest, None))
+                continue
+            save_avif(sheet, dest)
+            results.append((src, dest, sheet.size))
+
+    built = 0
+    for src, dest, size in results:
+        if size is None:
+            print(f"EMPTY BL_{src}.avif")
             continue
-        dest = OUT / f"BL_{src}.avif"
-        if dest.exists() and not args.force:
-            built[num] = dest
-            continue
-        if src == "C1":
-            row = row_at(rows, 619, 492.3)
-            part = render_segment(pdf, 619, header_top(pdf, 619, row["title_y"]), BOTTOM_PDF)
-            sheet = frame_sheet(part) if part else None
-        else:
-            row_list = plan[src]
-            sheet = build_asset(src, row_list, rows, pdf)
-        if sheet is None:
-            print(f"EMPTY {num} ({src})")
-            continue
-        sheet.save(dest, "AVIF", quality=QUALITY, speed=SPEED)
-        built[num] = dest
-        print(f"{dest.name:16} {sheet.width}x{sheet.height} {dest.stat().st_size/1024:5.1f} KB")
-    print(f"built {len(built)} assets")
+        built += 1
+        name = Path(dest).name
+        print(f"{name:16} {size[0]}x{size[1]} {Path(dest).stat().st_size/1024:5.1f} KB")
+    print(f"built {built} assets ({kept} kept, {workers} worker{'s' if workers != 1 else ''})")
 
 
 if __name__ == "__main__":

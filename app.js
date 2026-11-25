@@ -7,7 +7,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.82'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.83'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 const LATEST_JSON = 'https://dl.labu.lengkhawm.online/latest.json';
 let latestUpdate = null;
@@ -1476,7 +1476,7 @@ function currentSolfaSheet(song) {
 // v3: every sheet is now a full A4-proportioned page (whole printed page when a
 // page holds one tune), and these objects are cached immutably for a year, so a
 // new crop needs a new path to reach devices.
-const SOLFA_HD_BASE = 'https://dl.labu.lengkhawm.online/solfa-hd/v4/';
+const SOLFA_HD_BASE = 'https://dl.labu.lengkhawm.online/solfa-hd/v5/';
 const _solfaHd = { ready: Object.create(null), loading: Object.create(null), missing: Object.create(null) };
 
 function solfaHdUrl(src) {
