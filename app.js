@@ -6142,8 +6142,16 @@ function toggleFindReplace() {
   const modal = document.getElementById('findReplaceModal');
   if (modal.classList.contains('open')) { closeFindReplace(); return; }
   openModal('findReplaceModal');
-  // focus after the sheet animation has started, so mobile keyboards don't jump it
-  setTimeout(() => { const fi = document.getElementById('findInput'); if (fi) fi.focus(); }, 80);
+  // Focus after the sheet animation has started, so mobile keyboards don't jump
+  // it. Only if nothing inside the modal already has focus: this timer used to
+  // pull the caret back out of the Replace field, so text typed quickly landed
+  // in Find and the preview found nothing.
+  setTimeout(() => {
+    if (!modal.classList.contains('open')) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && modal.contains(active)) return;
+    const fi = document.getElementById('findInput'); if (fi) fi.focus();
+  }, 80);
 }
 function closeFindReplace() { closeModal('findReplaceModal'); }
 
@@ -6211,7 +6219,13 @@ function highlightMatch(text, find, caseSensitive) {
 }
 
 async function executeReplace() {
-  if (!frMatches.length) {  return; }
+  // A stale preview (empty find, or text typed since) must not turn the button
+  // into a silent no-op that leaves the modal open forever.
+  if (!frMatches.length) previewFindReplace();
+  if (!frMatches.length) {
+    document.getElementById('frStats').textContent = 'No matches to replace';
+    return;
+  }
   const findText = document.getElementById('findInput').value;
   const replaceText = document.getElementById('replaceInput').value;
   const caseSensitive = document.getElementById('frCaseSensitive').checked;
@@ -6234,7 +6248,10 @@ async function executeReplace() {
       CAT_ORDER.some(k => { if (SONGS[k].songs.some(s => s.id === id)) { cat = k; return true; } return false; });
       if (cat) await recordEdit(cat, song, 'update');
     }
-  } catch (e) {  return; }
+  } catch (e) {
+    document.getElementById('frStats').textContent = 'Could not save replacement';
+    return;
+  }
   previewFindReplace();
   renderAdminSongs();
   closeFindReplace();

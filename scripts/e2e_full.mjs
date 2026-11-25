@@ -796,6 +796,12 @@ await section('admin CRUD', async () => {
   await page.waitForSelector('#findReplaceModal.open');
   await page.fill('#findInput', 'E2EMARKER');
   await page.fill('#replaceInput', 'E2EREPLACED');
+  // The modal's delayed autofocus must not pull the caret out of Replace while
+  // it is being typed into; when it did, the text landed in Find instead, the
+  // preview dropped to 0 matches and Replace All became a silent no-op.
+  ok('replace text stays in the replace field',
+    (await page.inputValue('#findInput')) === 'E2EMARKER' && (await page.inputValue('#replaceInput')) === 'E2EREPLACED',
+    'find=' + (await page.inputValue('#findInput')) + ' replace=' + (await page.inputValue('#replaceInput')));
   await page.waitForTimeout(500);
   ok('find & replace preview counts matches', (await page.textContent('#frStats')).includes('match'));
   await page.locator('#findReplaceModal').locator('button:has-text("Replace All")').click();
