@@ -855,6 +855,22 @@ await section('admin CRUD', async () => {
     staleVerses.includes('E2ESTALE') && !staleVerses.includes('E2EREPLACED'), staleVerses.slice(0, 60));
   await page.locator('#songModal').locator('button:has-text("Cancel")').click().catch(() => {});
   await page.waitForSelector('#songModal.open', { state: 'detached' }).catch(() => {});
+  // Undo puts the pre-replace text back, and says what it undid.
+  ok('undo offered after a bulk replace',
+    !(await page.evaluate(() => document.getElementById('adminUndoBar').hidden)) &&
+    (await page.textContent('#adminUndoText')).includes('Replaced 2 matches'),
+    JSON.stringify(await page.textContent('#adminUndoText')));
+  await page.locator('#adminUndoBar').locator('button:has-text("Undo")').click();
+  const undone = await page.waitForFunction(
+    () => document.getElementById('adminUndoBar').hidden, null, { timeout: 5000 }).then(() => true).catch(() => false);
+  ok('undo hides its own offer', undone);
+  await page.locator('#adminSongList .admin-song-row button[title="Edit"]').first().click();
+  await page.waitForSelector('#songModal.open');
+  const undoneVerses = await page.inputValue('#formVerses');
+  ok('undo restored the pre-replace lyrics',
+    undoneVerses.includes('E2EREPLACED') && !undoneVerses.includes('E2ESTALE'), undoneVerses.slice(0, 60));
+  await page.locator('#songModal').locator('button:has-text("Cancel")').click().catch(() => {});
+  await page.waitForSelector('#songModal.open', { state: 'detached' }).catch(() => {});
   // delete it
   await page.locator('#adminSongList .admin-song-row button.del').click();
   await page.waitForSelector('#confirmModal.open');

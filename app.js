@@ -6137,6 +6137,9 @@ function downloadFile(content, filename, type) {
 
 // ─── FIND & REPLACE ───
 let frMatches = [];
+// One-shot record of the last Replace All: what each touched field held before,
+// so a bulk replacement can be rolled back without restoring anything else.
+let frUndo = null;
 
 function toggleFindReplace() {
   const modal = document.getElementById('findReplaceModal');
@@ -6261,7 +6264,9 @@ async function executeReplace() {
     return;
   }
   const touched = new Map();
+  const changes = [];
   matches.forEach(m => {
+    changes.push({ cat: m.cat, id: m.song.id, title: m.song.title, field: m.field, verseIdx: m.verseIdx, lineIdx: m.lineIdx, before: m.original });
     if (m.field === 'title') {
       m.song.title = replaceAll(m.song.title, findText, replaceText, caseSensitive);
     } else if (m.field === 'author') {
@@ -6282,9 +6287,65 @@ async function executeReplace() {
     stats.textContent = 'Could not save replacement';
     return;
   }
+  frUndo = { changes: changes, songs: touched.size };
+  syncReplaceUndo();
   previewFindReplace();
   renderAdminSongs();
   closeFindReplace();
+}
+
+// The admin banner is the only visible trace of a finished bulk replace, so it
+// doubles as the undo affordance: there is no toast layer in this app.
+function syncReplaceUndo() {
+  const bar = document.getElementById('adminUndoBar');
+  if (!bar) return;
+  const text = document.getElementById('adminUndoText');
+  if (!frUndo) { bar.hidden = true; text.textContent = ''; return; }
+  const n = frUndo.changes.length;
+  text.textContent = 'Replaced ' + n + ' match' + (n !== 1 ? 'es' : '') +
+    ' in ' + frUndo.songs + ' song' + (frUndo.songs !== 1 ? 's' : '') + '.';
+  bar.hidden = false;
+}
+
+async function undoReplace() {
+  if (!frUndo) { syncReplaceUndo(); return; }
+  const pending = frUndo;
+  frUndo = null;
+  const touched = new Map();
+  let restored = 0;
+  pending.changes.forEach(c => {
+    const book = SONGS[c.cat];
+    const song = book && book.songs && book.songs.find(s => s.id === c.id);
+    if (!song) return;
+    if (c.field === 'title') song.title = c.before;
+    else if (c.field === 'author') song.author = c.before;
+    else if (c.field === 'verse') {
+      const line = song.verses && song.verses[c.verseIdx] && song.verses[c.verseIdx].lines;
+      if (!line || line[c.lineIdx] === undefined) return;
+      line[c.lineIdx] = c.before;
+    } else { return; }
+    restored++;
+    touched.set(song.id + '\u0000' + c.cat, { cat: c.cat, song: song });
+  });
+  syncReplaceUndo();
+  if (!restored) {
+    // Nothing came back: say so rather than disappearing without a trace.
+    const stats = document.getElementById('frStats');
+    if (stats) stats.textContent = 'Nothing to undo';
+    return;
+  }
+  try {
+    await saveSongs();
+    for (const { cat, song } of touched.values()) await recordEdit(cat, song, 'update');
+  } catch (e) {
+    // Keep the record so the user can try again rather than losing the way back.
+    frUndo = pending;
+    syncReplaceUndo();
+    const stats = document.getElementById('frStats');
+    if (stats) stats.textContent = 'Could not undo the replacement';
+    return;
+  }
+  renderAdminSongs();
 }
 
 function replaceAll(text, find, replace, caseSensitive) {
@@ -7722,7 +7783,7 @@ const CLICK_ACTIONS = {
   toggleSearchBookMenu, toggleSearchSortMenu, pickSearchBook, pickSearchSort,
   restoreUpdate, closeSidebar, retryLoad, toggleFindReplace,
   openExportModal: () => openExportModal(),
-  toggleAdminAdd: (el, event) => toggleAdminAdd(event), closeFindReplace, executeReplace, clearFindReplace,
+  toggleAdminAdd: (el, event) => toggleAdminAdd(event), closeFindReplace, executeReplace, clearFindReplace, undoReplace,
   saveSongbook, saveBook, saveSong, ceUndo, ceRedo, requestCloseChordEditor,
   saveChordEditor, ceCloseWheel, ceWheelDelete, closeImagePreview, confirmImageShare,
   closeChordPop, playChordPop, executeExport, createPlaylistFromModal, toggleFontMenu,
