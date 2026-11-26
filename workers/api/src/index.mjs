@@ -407,7 +407,12 @@ async function handlePublishedEdits(request) {
   const params = new URL(request.url).searchParams;
   const since = Number(params.get('since') || 0);
   const asked = Number(params.get('limit') || 0);
-  const limit = Math.min(Math.max(Number.isFinite(asked) && asked > 0 ? Math.floor(asked) : LAYER_PAGE_SIZE, 1), LAYER_MAX_PAGE_SIZE);
+  // No `limit` means the whole layer, not one page: 1.5.85 clients ask for the
+  // overlay in a single request and would silently keep only the first 200 rows,
+  // then treat themselves as up to date. -1 is SQLite's "no limit".
+  const limit = Number.isFinite(asked) && asked > 0
+    ? Math.min(Math.floor(asked), LAYER_MAX_PAGE_SIZE)
+    : -1;
   const rows = await env.DB.prepare(`
     SELECT seq, kind, payload, published_at
     FROM published_edits

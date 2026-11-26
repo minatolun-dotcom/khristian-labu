@@ -262,6 +262,33 @@ check('the overlay honours a page size',
   && Number(paged.body[0].seq) === Number(afterApprove.body[0].seq),
   `paged=${paged.body?.length} total=${afterApprove.body?.length}`);
 
+// 1.5.85 clients (and anything that omits `limit`) must still receive the whole
+// overlay: they store it as the layer and never re-ask for the same version.
+const isLocalApi = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(BASE);
+if (isLocalApi) {
+  const bulkBefore = (await req('/api/published-edits?limit=1000')).body?.length || 0;
+  for (let i = 0; i < 205; i++) {
+    const bulkId = `api_bulk_${unique}_${i}`;
+    const bulk = await req('/api/admin/publish', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        kind: 'song',
+        payload: { id: bulkId, cat: 'B&P', op: 'update', song: { id: bulkId, title: `Bulk ${i}`, verses: [] } },
+      }),
+    });
+    if (bulk.status !== 200) throw new Error(`bulk publish failed: ${JSON.stringify(bulk.body)}`);
+  }
+  const unbounded = await req('/api/published-edits');
+  const bounded = await req('/api/published-edits?limit=200');
+  check('a request without limit returns the whole overlay, not one page',
+    unbounded.status === 200 && unbounded.body.length === bulkBefore + 205 && unbounded.body.length > 200,
+    `no-limit=${unbounded.body?.length} expected=${bulkBefore + 205}`);
+  check('an explicit limit still pages',
+    bounded.status === 200 && bounded.body.length === 200,
+    String(bounded.body?.length));
+}
+
 const rejectPayload = { id: `api_reject_${unique}`, cat: 'B&P', op: 'update', song: { id: `api_reject_${unique}`, title: 'Rejected Test Hymn', verses: [] } };
 const rejectProposal = await req('/api/proposals', {
   method: 'POST',
