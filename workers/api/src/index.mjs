@@ -14,6 +14,7 @@ const LOGIN_ATTEMPTS_PER_MINUTE = 10;
 const MAX_PAYLOAD_BYTES = 200_000;
 const MAX_JSON_BYTES = 250_000;
 const MAX_PENDING = 1_000;
+const MAX_PENDING_PER_IP = 25;
 const MAX_BATCH_IDS = 100;
 const PROPOSALS_PER_MINUTE = 20;
 const SAFE_ID = /^[A-Za-z0-9&_.-]{1,160}$/;
@@ -86,6 +87,13 @@ function preflight(request) {
 }
 
 async function readJson(request) {
+  // Only the app's own fetch calls this, and they always send JSON. Refusing
+  // other types also removes the form/text-plain shape a cross-site page can
+  // send without a CORS preflight.
+  const type = (request.headers.get('Content-Type') || '').toLowerCase();
+  if (request.body && !type.includes('json')) {
+    throw new HttpError(415, 'expected a JSON body');
+  }
   const declared = Number(request.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > MAX_JSON_BYTES) {
     throw new HttpError(413, 'request body is too large');
@@ -392,14 +400,21 @@ async function handleState() {
   return json(await getState());
 }
 
+const LAYER_PAGE_SIZE = 200;
+const LAYER_MAX_PAGE_SIZE = 1_000;
+
 async function handlePublishedEdits(request) {
-  const since = Number(new URL(request.url).searchParams.get('since') || 0);
+  const params = new URL(request.url).searchParams;
+  const since = Number(params.get('since') || 0);
+  const asked = Number(params.get('limit') || 0);
+  const limit = Math.min(Math.max(Number.isFinite(asked) && asked > 0 ? Math.floor(asked) : LAYER_PAGE_SIZE, 1), LAYER_MAX_PAGE_SIZE);
   const rows = await env.DB.prepare(`
     SELECT seq, kind, payload, published_at
     FROM published_edits
     WHERE seq > ?
     ORDER BY seq ASC
-  `).bind(Number.isFinite(since) && since > 0 ? since : 0).all();
+    LIMIT ?
+  `).bind(Number.isFinite(since) && since > 0 ? since : 0, limit).all();
   const edits = (rows.results || []).map(row => ({
     seq: Number(row.seq),
     kind: row.kind,
@@ -410,7 +425,8 @@ async function handlePublishedEdits(request) {
 }
 
 async function handleProposal(request) {
-  await consumeRateLimit(`proposal:${clientIp(request)}`);
+  const ip = clientIp(request);
+  await consumeRateLimit(`proposal:${ip}`);
   const body = await readJson(request);
   const kind = assertKind(body.kind);
   const payload = validateEditPayload(kind, body.payload);
@@ -430,6 +446,13 @@ async function handleProposal(request) {
   if (Number(pending?.n) >= MAX_PENDING) {
     throw new HttpError(429, 'review queue is full; try again later');
   }
+  // Per-address cap so one script cannot occupy the shared queue.
+  const mine = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM proposals WHERE status = 'pending' AND submitter_ip = ?",
+  ).bind(ip).first();
+  if (Number(mine?.n) >= MAX_PENDING_PER_IP) {
+    throw new HttpError(429, 'you already have several edits waiting for review; try again once they are reviewed');
+  }
 
   const session = await optionalSession(request);
   const submitter = session?.user || null;
@@ -445,9 +468,9 @@ async function handleProposal(request) {
 
   const result = await env.DB.prepare(`
     INSERT OR IGNORE INTO proposals
-      (kind, payload, payload_hash, summary, status, base_version, submitter_user_id, submitter_name, created_at, target, base_rev)
-    VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)
-  `).bind(kind, text, hash, summary, baseVersion, submitter?.id || null, name, createdAt, target, revision).run();
+      (kind, payload, payload_hash, summary, status, base_version, submitter_user_id, submitter_name, created_at, target, base_rev, submitter_ip)
+    VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)
+  `).bind(kind, text, hash, summary, baseVersion, submitter?.id || null, name, createdAt, target, revision, ip).run();
 
   if (Number(result.meta?.changes) === 1) {
     return json({ id: Number(result.meta.last_row_id), duplicate: false }, 201);
@@ -860,33 +883,41 @@ async function handleApprove(request) {
 
   const reviewer = truncate(session.user.name || session.user.email || '', 120);
   const at = nowMs();
+
+  // The version guard is the write lock, and it has to stand alone before any
+  // other write: a D1 batch commits every statement that matched, so putting
+  // the guard last (as this used to) left the edits published but the version
+  // unchanged whenever another approval landed in between — invisible to every
+  // device, reported to the admin as a failure.
+  const lock = await env.DB.prepare(`
+    UPDATE publish_state
+    SET version = version + 1, updated_at = ?
+    WHERE id = 1 AND version = ?
+    RETURNING version
+  `).bind(at, current.version).run();
+  const version = Number(lock.results?.[0]?.version);
+  if (Number(lock.meta?.changes) !== 1 || !version) {
+    throw new HttpError(409, 'the published layer changed while approving; refresh and try again');
+  }
+
+  // Each insert re-checks that its proposal is still pending inside the same
+  // transaction, so a submission rejected or approved from another tab in the
+  // meantime cannot land in the published layer unreviewed.
   const statements = pending.map(row => env.DB.prepare(`
     INSERT INTO published_edits (kind, payload, proposal_id, published_at, target)
-    VALUES (?, ?, ?, ?, ?)
-  `).bind(row.kind, row.payloadText, row.id, at, payloadTarget(row.kind, row.payload)));
+    SELECT ?, ?, ?, ?, ?
+    WHERE EXISTS (SELECT 1 FROM proposals WHERE id = ? AND status = 'pending')
+  `).bind(row.kind, row.payloadText, row.id, at, payloadTarget(row.kind, row.payload), row.id));
   statements.push(env.DB.prepare(`
     UPDATE proposals
     SET status = 'approved', reviewed_at = ?, reviewed_by = ?, reviewed_by_name = ?
     WHERE id IN (${placeholders}) AND status = 'pending'
   `).bind(at, session.user.id, reviewer, ...ids));
-  // The version guard is the write lock: if another approval landed between the
-  // stale check above and this batch, this UPDATE matches nothing and the whole
-  // batch is discarded, so two admins can never both approve over each other.
-  statements.push(env.DB.prepare(`
-    UPDATE publish_state
-    SET version = version + 1, updated_at = ?
-    WHERE id = 1 AND version = ?
-    RETURNING version
-  `).bind(at, current.version));
 
   const results = await env.DB.batch(statements);
-  const decided = Number(results.at(-2)?.meta?.changes) || 0;
+  const decided = Number(results.at(-1)?.meta?.changes) || 0;
   if (decided !== ids.length) {
     throw new HttpError(409, 'one or more proposals were reviewed by someone else; refresh the queue');
-  }
-  const version = Number(results.at(-1)?.results?.[0]?.version);
-  if (!version) {
-    throw new HttpError(409, 'the published layer changed while approving; refresh and try again');
   }
   return json({ version, approved: pending.length });
 }
@@ -958,6 +989,15 @@ async function route(request) {
   const path = url.pathname.replace(/\/+$/, '') || '/';
 
   if (request.method === 'OPTIONS') return preflight(request);
+
+  // Cross-site write guard. The session cookie is SameSite=None, so a browser
+  // attaches it to a request another page triggers; without this check a form
+  // on any site could publish or approve as the signed-in admin. Requests with
+  // no Origin (curl, native WebViews, same-origin GETs) are left alone.
+  const origin = request.headers.get('Origin');
+  if (origin && request.method !== 'GET' && !allowedOrigins().has(origin)) {
+    throw new HttpError(403, 'origin not allowed');
+  }
 
   if (path === '/api/health') {
     return json({ ok: true, service: 'labu-api', environment: env.ENVIRONMENT || 'unknown' });

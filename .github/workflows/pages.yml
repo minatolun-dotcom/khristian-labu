@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'index.html'
+      - 'app.js'
+      - 'styles.css'
       - 'sw.js'
       - 'songs.json'
       - 'songs.json.gzip'

@@ -73,6 +73,24 @@ const preflight = await fetch(BASE + '/api/proposals', {
 });
 check('CORS preflight allows the Pages origin', preflight.status === 204 && preflight.headers.get('access-control-allow-origin') === 'https://labu.lengkhawm.online');
 
+// The session cookie is SameSite=None, so the browser sends it on writes that
+// another site triggers. Only listed origins may write.
+const crossSite = await req('/api/proposals', {
+  method: 'POST',
+  headers: { Origin: 'https://evil.example' },
+  body: JSON.stringify({ kind: 'song', payload: firstPayload, summary: 'cross-site write' }),
+});
+check('a write from an unlisted origin is refused',
+  crossSite.status === 403 && crossSite.body?.error === 'origin not allowed',
+  String(crossSite.status) + ' ' + JSON.stringify(crossSite.body));
+
+const formBody = await req('/api/proposals', {
+  method: 'POST',
+  headers: { 'Content-Type': 'text/plain' },
+  body: JSON.stringify({ kind: 'song', payload: firstPayload, summary: 'form-post body' }),
+});
+check('a non-JSON body is refused', formBody.status === 415, String(formBody.status));
+
 const noAuth = await req('/api/admin/me');
 check('admin route rejects anonymous requests', noAuth.status === 401, String(noAuth.status));
 
@@ -160,7 +178,7 @@ check('proposal detail returns the patch and its revision fingerprint',
 check('proposal detail carries the published side for a before/after preview',
   detail.status === 200 && detail.body?.published && typeof detail.body.published === 'object'
   && 'rev' in detail.body.published && 'song' in detail.body.published && 'chart' in detail.body.published,
-  JSON.stringify(detail.body?.published).slice(0, 200));
+  String(JSON.stringify(detail.body?.published)).slice(0, 200));
 
 const counts = await req('/api/admin/proposals/counts', { headers: authHeaders });
 check('queue counters report each status',
@@ -236,6 +254,13 @@ check('already-approved proposal cannot be approved twice', secondApprove.status
 const afterApprove = await req('/api/published-edits');
 const publishedRow = afterApprove.body?.find(row => row.payload?.id === firstPayload.id);
 check('approved payload is present in the public overlay', !!publishedRow, JSON.stringify(afterApprove.body?.slice(-2)));
+
+const paged = await req('/api/published-edits?limit=1');
+check('the overlay honours a page size',
+  paged.status === 200 && paged.body?.length === 1
+  && afterApprove.body.length > 1
+  && Number(paged.body[0].seq) === Number(afterApprove.body[0].seq),
+  `paged=${paged.body?.length} total=${afterApprove.body?.length}`);
 
 const rejectPayload = { id: `api_reject_${unique}`, cat: 'B&P', op: 'update', song: { id: `api_reject_${unique}`, title: 'Rejected Test Hymn', verses: [] } };
 const rejectProposal = await req('/api/proposals', {

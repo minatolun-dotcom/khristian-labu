@@ -11,14 +11,13 @@ if (!fs.existsSync(file)) throw new Error('Missing www/index.html; run the web c
 
 const csp = [
   "default-src 'self'",
-  "script-src 'self' https://accounts.google.com https://apis.google.com",
+  "script-src 'self'",
   "script-src-attr 'none'",
   "style-src 'self' 'sha256-UP0QZg7irvSMvOBz9mH2PIIE28+57UiavRfeVea0l3g='",
   "style-src-attr 'none'",
-  "img-src 'self' data: blob: https://*.googleusercontent.com https://dl.labu.lengkhawm.online",
+  "img-src 'self' data: blob: https://dl.labu.lengkhawm.online",
   "font-src 'self' data:",
-  "connect-src 'self' data: https://api.labu.lengkhawm.online https://labu.lengkhawm.online https://accounts.google.com https://apis.google.com https://oauth2.googleapis.com https://www.googleapis.com https://api.github.com https://raw.githubusercontent.com https://dl.labu.lengkhawm.online",
-  "frame-src https://accounts.google.com",
+  "connect-src 'self' data: https://api.labu.lengkhawm.online https://labu.lengkhawm.online https://api.github.com https://raw.githubusercontent.com https://dl.labu.lengkhawm.online",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",

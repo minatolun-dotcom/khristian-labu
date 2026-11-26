@@ -189,7 +189,8 @@ final class UpdateInstaller {
             intent.setDataAndType(uri, MIME_APK);
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             activity.startActivity(intent);
-            pendingFile = null;
+            // Keep the verified file: if the user backs out of the confirmation,
+            // onResume offers it again instead of downloading 45 MB a second time.
             notifyState("installing", 100, "Confirm the installation.");
         } catch (Exception e) {
             notifyState("error", -1, readableError(e));

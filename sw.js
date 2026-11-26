@@ -1,7 +1,7 @@
 // Khristian Labu service worker — app shell + offline support.
 // ponytail: cache name is tied to DATA_VERSION; bump both together so data updates propagate.
-const CACHE = 'labu-v163';
-const SHELL = ['./', 'index.html', 'app.js', 'styles.css', 'groups.json', 'chords.json', 'logo.png', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
+const CACHE = 'labu-v164';
+const SHELL = ['./', 'index.html', 'app.js', 'cloud-sync.js', 'styles.css', 'groups.json', 'chords.json', 'logo.png', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png',
   'assets/fonts/outfit-400.woff2', 'assets/fonts/inter-400.woff2', 'assets/fonts/noto-400.woff2',
   'assets/fonts/literata-400.woff2', 'assets/fonts/lora-400.woff2', 'assets/fonts/merriweather-400.woff2',
   'assets/fonts/sourceserif-400.woff2', 'assets/fonts/crimson-400.woff2', 'assets/fonts/ebgaramond-400.woff2',

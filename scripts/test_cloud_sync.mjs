@@ -291,9 +291,9 @@ try {
   check('key metadata escapes injected attributes', guard.keySafe);
   check('solfa paths are limited to local sheet assets', guard.solfaSafe);
   check('HD solfa URLs are built only from bundled sheets', guard.hqSafe);
-  check('published layer version was cached', await page.evaluate(() => {
-    const c = JSON.parse(localStorage.getItem('labu_pub_cache') || 'null');
-    return !!c && c.version === 1 && c.edits.length === 1;
+  check('published layer version was cached in IndexedDB, not localStorage', await page.evaluate(async () => {
+    const c = await idbGet('cache', 'published').catch(() => null);
+    return !!c && c.version === 1 && c.edits.length === 1 && !localStorage.getItem('labu_pub_cache');
   }));
 
   // 2. A normal device's edit becomes a pending proposal.
@@ -732,6 +732,18 @@ try {
     serverOriginal.text.includes('A line only the published layer has') && !serverOriginal.text.includes(serverOriginal.local),
     JSON.stringify(serverOriginal).slice(0, 160));
   serverOriginalSong = null;
+  // A reviewer's own reason is data, not markup, in the notice above the card.
+  proposals.find(x => x.id === 23).note = 'changed “the” <img src=x onerror="window.__noteXss=1"> verse';
+  const injectedNote = await page.evaluate(() => {
+    reviewFlash = null;
+    return openReview(23).then(() => {
+      const notice = document.getElementById('reviewNotice');
+      return { text: notice.textContent, element: !!notice.querySelector('img'), xss: !!window.__noteXss };
+    });
+  });
+  check('a rejection reason renders as text, never as markup',
+    injectedNote.text.includes('<img src=x onerror=') && !injectedNote.element && !injectedNote.xss,
+    JSON.stringify(injectedNote).slice(0, 200));
   await page.locator('#reviewView .review-back').click();
   await page.waitForSelector('#adminAccountView.active', { timeout: 5000 });
   await page.waitForFunction(() => document.getElementById('cloudPanel').textContent.includes('Review queue'), null, { timeout: 5000 });
@@ -810,18 +822,6 @@ try {
   check('other admins cannot see the Manage admins control',
     (await page.locator('#adminAccountBody [data-action="openAdminManageModal"]').count()) === 0);
 
-  const legacyGoogle = await page.evaluate(async () => {
-    localStorage.setItem('labu_google_token', JSON.stringify('legacy-google-token'));
-    const originalFetch = window.fetch;
-    const urls = [];
-    window.fetch = async url => { urls.push(String(url)); return { ok: true, text: async () => '' }; };
-    try { await googleSignOut(); } finally { window.fetch = originalFetch; }
-    return {
-      cleared: !localStorage.getItem('labu_google_token'),
-      revoked: urls.some(url => url.includes('legacy-google-token')),
-    };
-  });
-  check('sign-out clears legacy Google token', legacyGoogle.cleared && legacyGoogle.revoked, JSON.stringify(legacyGoogle));
   check('no page errors', pageErrors.length === 0, pageErrors.join(' | '));
 
   await new Promise(r => setTimeout(r, 300));

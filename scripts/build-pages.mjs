@@ -12,6 +12,7 @@ const OUT = path.join(ROOT, 'dist');
 const FILES = [
   'index.html',
   'app.js',
+  'cloud-sync.js',
   'styles.css',
   'logo.png',
   'icon-192.png',

@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "sync": "mkdir -p www www/assets && cp index.html app.js styles.css logo.png songs.json songs.json.gzip groups.json chords.json manifest.webmanifest sw.js icon-192.png icon-512.png www/ && cp -r assets/. www/assets/ && node scripts/inject_android_csp.mjs && npx cap sync && python3 scripts/sync_android_splash.py",
+    "sync": "mkdir -p www www/assets && cp index.html app.js cloud-sync.js styles.css logo.png songs.json songs.json.gzip groups.json chords.json manifest.webmanifest sw.js icon-192.png icon-512.png www/ && cp -r assets/. www/assets/ && node scripts/inject_android_csp.mjs && npx cap sync && python3 scripts/sync_android_splash.py",
     "sync:splash": "python3 scripts/sync_android_splash.py",
     "build:pages": "node scripts/build-pages.mjs",
     "deploy:pages": "npm run build:pages && npx wrangler pages deploy dist --project-name khristian-labu --branch main",
@@ -41,7 +41,6 @@
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/share": "^8.0.1",
     "@capacitor/status-bar": "^8.0.3",
-    "@capawesome/capacitor-google-sign-in": "^0.1.2",
     "better-auth": "^1.7.27"
   },
   "devDependencies": {

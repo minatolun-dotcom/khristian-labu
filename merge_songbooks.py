@@ -24,6 +24,21 @@ BIBLE_REF   = re.compile(r'^\s*\d+\s*[A-Za-z]{2,}\.?\s*\d+:\d+')
 # short-circuits on BIBLE_REF.
 LEAD_NUM = re.compile(r'^\s*(?:\(\d+\)\s*|\d+[\.\)]\s*|\d+\s+)')
 
+# A key must name a note. Some sources ship a bare "Key" label with no note; the
+# reader would show it with no play button and the tonic cannot be derived, so it
+# is dropped here. Real spellings ("Key G", "Doh is G", "Ab", "F#m") pass through.
+KEY_PREFIX = re.compile(r'^(?:key(?:\s+of)?|doh\s+is)\s*:?\s*', re.I)
+# Any note letter is enough: real values look like "G", "Ab", "F#m", "Key G",
+# "Doh is Bb (Moderato)", "Eb/D#", "Doh is C or G". A label with no note at all
+# (a bare "Key") leaves the reader with nothing to play, so it is dropped.
+KEY_NOTE = re.compile(r'[A-G]')
+
+def clean_key(value):
+    s = str(value or '').strip()
+    if not s:
+        return ''
+    return s if KEY_NOTE.search(KEY_PREFIX.sub('', s)) else ''
+
 
 def strip_lead(line):
     line = line.strip()
@@ -63,7 +78,7 @@ def kbc_book(path, code, name, desc):
             'title': s.get('title', '').strip(),
             'author': s.get('author', '') or '',
             'number': str(num),
-            'key': s.get('key', '') or '',
+            'key': clean_key(s.get('key')),
             'verses': kbc_verses(s.get('lyrics', ''), s.get('reference')),
         })
     return code, {'info': {'name': name, 'description': desc, 'icon': ''}, 'songs': songs}
@@ -137,7 +152,7 @@ def zomi_books(path):
             'title': s.get('title', '').strip(),
             'author': '',
             'number': str(num),
-            'key': s.get('key', '') or '',
+            'key': clean_key(s.get('key')),
             'verses': zomi_verses(s.get('body', '')),
         }
         out.setdefault(code, {'info': {'name': name, 'description': 'Zomi Labu', 'icon': ''}, 'songs': []})
@@ -370,7 +385,7 @@ def mizo_book(path, code, name, desc):
             'title': (s.get('title') or '').strip(),
             'author': author,
             'number': num,
-            'key': k,
+            'key': clean_key(k),
             'verses': mizo_verses(thu),
         })
     songs.sort(key=lambda x: int(x['number']) if x['number'].isdigit() else 9999)

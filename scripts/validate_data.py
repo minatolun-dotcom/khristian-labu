@@ -50,9 +50,14 @@ ALLOWED_TYPES = {'v', 'c', 'b', 'p', 'pc'}
 # (kept on purpose as preface scripture).
 BIBLE_REF = re.compile(r'^\s*\d+\s*[A-Za-z]{2,}\.?\s*\d+:\d+')
 VERSE_ARTIFACT = re.compile(r'^\d+[\.\)]?\s')
+# A key is either empty or names a note, optionally behind "Key"/"Key of"/"Doh is".
+# A bare "Key" (90 songs once carried it) leaves the reader with no tonic to play.
+KEY_PREFIX = re.compile(r'^(?:key(?:\s+of)?|doh\s+is)\s*:?\s*', re.I)
+KEY_NOTE = re.compile(r'[A-G]')  # any note letter; annotations and dual keys are fine
 total = 0
 no_number = 0
 global_ids = {}
+bad_keys = []
 html_re = re.compile(r'<[a-zA-Z/][^>]*>')
 for code in book_codes:
     seen = {}
@@ -66,6 +71,8 @@ for code in book_codes:
         global_ids[sid] = global_ids.get(sid, 0) + 1
         check(f"{code}/{sid}: has title", bool((s.get('title') or '').strip()))
         if not str(s.get('number', '')).strip(): no_number += 1  # e-Hymn source files can lack numbers (app falls back to list index)
+        key = str(s.get('key') or '').strip()
+        if key and not KEY_NOTE.search(KEY_PREFIX.sub('', key)): bad_keys.append(f"{code}/{sid}={key!r}")
         verses = s.get('verses')
         check(f"{code}/{sid}: verses is list", isinstance(verses, list) and len(verses) > 0)
         if not isinstance(verses, list): continue
@@ -84,6 +91,7 @@ for code in book_codes:
 
 dups = {k: v for k, v in global_ids.items() if v > 1}
 check('no duplicate song ids across corpus', not dups, str(list(dups)[:5]))
+check('every key is empty or names a note', not bad_keys, str(bad_keys[:5]))
 print(f"  -> {total} songs validated; {no_number} songs without a number (by design, app falls back to list index)")
 
 # 5. gzip matches plain

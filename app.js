@@ -1,5 +1,5 @@
 // ─── DATA ───
-const DATA_VERSION = 39; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
+const DATA_VERSION = 40; // ponytail: bump when the corpus changes so cached gzip/IndexedDB reload
 let CORPUS_HASH = '';
 function dataQuery() {
   const parts = [];
@@ -7,7 +7,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.85'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.86'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 const LATEST_JSON = 'https://dl.labu.lengkhawm.online/latest.json';
 let latestUpdate = null;
@@ -15,23 +15,6 @@ let updateState = 'idle';
 let updatePercent = -1;
 let updateMessage = '';
 let updateMinimized = false;
-// ─── CLOUD SYNC (Cloudflare Worker + D1) — approved changes reach every device ───
-// The API URL is baked in for production. `window.LABU_CLOUD_API` wins so a fork
-// or test harness can point at staging, and an empty value disables cloud sync
-// exactly as before: edits stay on this device and nothing is submitted.
-const CLOUD_API = String(
-  (typeof window !== 'undefined' && window.LABU_CLOUD_API !== undefined)
-    ? window.LABU_CLOUD_API
-    : 'https://api.labu.lengkhawm.online'
-).replace(/\/+$/, '');
-const CLOUD_ON = !!CLOUD_API;
-const CLOUD_POLL_MS = 5 * 60 * 1000;
-// ─── GOOGLE DRIVE SYNC (manual cloud backup/restore into the user's own Drive) ───
-// ponytail: paste your Google Cloud 'Web application' OAuth client ID here. It is a
-// public identifier (safe to commit). Leave '' to hide the Google section entirely.
-const GOOGLE_CLIENT_ID = '';
-const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
-const GOOGLE_BACKUP_FILE = 'khristian-labu-backup.json';
 let DEFAULT_SONGS = null;
 let SONGS = {};
 let GROUPS = [];
@@ -574,6 +557,11 @@ function idbPut(store, val, key) {
   }));
 }
 function corpusCacheKey() { return 'songs:' + DATA_VERSION + ':' + CORPUS_HASH; }
+function idbDel(store, key) {
+  return _store(store, 'readwrite').then(s => new Promise((res, rej) => {
+    const r = s.delete(key); r.onsuccess = () => res(); r.onerror = () => rej(r.error);
+  }));
+}
 function idbGetAll(store) {
   return _store(store, 'readonly').then(s => new Promise((res, rej) => {
     const r = s.getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error);
@@ -667,271 +655,6 @@ function recordStruct(id, op, payload) {
   const edit = { id: id, cat: null, op: op, song: payload };
   submitChange('struct', edit);
   return idbPut('edits', edit);
-}
-
-// ─── CLOUD REVIEW / PUBLISH (Supabase) ───
-// The published corpus stays songs.json; Supabase stores only the *diff* layer.
-// Load order is: base corpus → approved edits (published_edits) → this device's
-// own edits. An admin's approval appends to that layer and bumps publish_state, so
-// the next device to check gets it without a rebuild or a redeploy.
-let PUB = { version: -1, edits: [] };
-let PUB_CHORDS = {};
-let cloudAdmin = false;
-let cloudPending = [];
-let _cloudSyncing = false;
-// Cloud auth is cookie-only: the Worker sets an HttpOnly session cookie, so no
-// token is ever available to page script or localStorage.
-let _cloudSession = null;
-let _cloudCookieChecked = false;
-
-function cloudSession() {
-  return _cloudSession && _cloudSession.api === CLOUD_API ? _cloudSession : null;
-}
-function cloudSaveSession(s) {
-  _cloudSession = s ? { ...s, api: CLOUD_API } : null;
-  // Remove tokens left by older builds that persisted the session in localStorage.
-  try { localStorage.removeItem('labu_cloud_session'); } catch (e) {}
-}
-async function cloudReq(path, opts) {
-  opts = opts || {};
-  const headers = Object.assign({}, opts.headers || {});
-  const hasBody = Object.prototype.hasOwnProperty.call(opts, 'body');
-  if (hasBody) headers['Content-Type'] = 'application/json';
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), opts.timeout || 8000);
-  try {
-    const r = await fetch(CLOUD_API + path, {
-      method: opts.method || (hasBody ? 'POST' : 'GET'),
-      headers,
-      credentials: 'include',
-      body: hasBody ? JSON.stringify(opts.body) : undefined,
-      signal: ctl.signal,
-    });
-    const text = await r.text();
-    if (r.status === 401) { cloudAdmin = false; cloudSaveSession(null); }
-    if (!r.ok) throw new Error('cloud ' + r.status + ' ' + text.slice(0, 160));
-    return text ? JSON.parse(text) : null;
-  } finally { clearTimeout(timer); }
-}
-
-// Pull the approved layer (cached in localStorage so an offline start still has it).
-async function cloudLoadLayer(force) {
-  if (!CLOUD_ON) return;
-  let cached = null;
-  try { cached = JSON.parse(localStorage.getItem('labu_pub_cache') || 'null'); } catch (e) {}
-  if (cached && Array.isArray(cached.edits)) { PUB = cached; PUB_CHORDS = {}; }
-  let version;
-  try {
-    const st = await cloudReq('/api/state', { timeout: 5000 });
-    version = st ? Number(st.version) || 0 : 0;
-  } catch (e) { return; }
-  if (!force && PUB.version === version) return;
-  try {
-    const since = force ? 0 : (PUB.edits || []).reduce((max, row) => Math.max(max, Number(row && row.seq) || 0), 0);
-    const rows = await cloudReq('/api/published-edits' + (since > 0 ? '?since=' + since : ''));
-    const incoming = (rows || []).filter(x => x && x.payload);
-    const merged = since > 0 ? (PUB.edits || []).concat(incoming) : incoming;
-    const seen = new Set();
-    const edits = merged.filter(row => {
-      const seq = Number(row && row.seq);
-      if (!Number.isFinite(seq) || seq <= 0 || seen.has(seq)) return false;
-      seen.add(seq);
-      return true;
-    }).sort((a, b) => Number(a.seq) - Number(b.seq));
-    PUB = { version: version, edits: edits };
-    PUB_CHORDS = {};
-    try { localStorage.setItem('labu_pub_cache', JSON.stringify(PUB)); } catch (e) {}
-  } catch (e) { /* keep the cached layer */ }
-}
-function applyPublished() {
-  PUB_CHORDS = {};
-  (PUB.edits || []).forEach(row => {
-    if (!row || !row.payload) return;
-    if (row.kind === 'chord') {
-      if (isSafeBackupId(row.payload.id) && row.payload.chart && typeof row.payload.chart === 'object' && !Array.isArray(row.payload.chart)) {
-        PUB_CHORDS[row.payload.id] = row.payload.chart;
-      }
-    } else if (row.payload.cat !== undefined) {
-      applyEdit(row.payload);
-    }
-  });
-}
-
-// ── submissions ──
-function cloudBookName(code) {
-  if (!code) return '';
-  if (SONGS[code]) return (SONGS[code].info && SONGS[code].info.name) || code;
-  return BOOK_META_NAME[code] || code;
-}
-function cloudDescribe(kind, payload) {
-  payload = payload || {};
-  if (kind === 'chord') return 'Chord chart · ' + (payload.title || payload.id || 'song');
-  const op = payload.op;
-  if (op === 'delete') return 'Delete “' + ((payload.song && payload.song.title) || payload.id) + '”';
-  if (op === 'addGroup') return 'New main songbook “' + ((payload.song && payload.song.name) || '') + '”';
-  if (op === 'addBook') return 'New songbook “' + ((payload.song && payload.song.name) || '') + '”';
-  if (op === 'renameGroup') return 'Rename main songbook → “' + ((payload.song && payload.song.name) || '') + '”';
-  if (op === 'renameBook') return 'Rename songbook → “' + ((payload.song && payload.song.name) || '') + '”';
-  if (op === 'deleteBook') return 'Delete songbook “' + cloudBookName(payload.id) + '”';
-  if (op === 'deleteGroup') return 'Delete main songbook “' + (payload.id || '') + '”';
-  const title = (payload.song && payload.song.title) || payload.id || 'song';
-  const cat = payload.cat || payload.from;
-  return 'Edit “' + title + '”' + (cat ? ' · ' + cloudBookName(cat) : '');
-}
-function cloudOutbox() {
-  try {
-    const q = JSON.parse(localStorage.getItem('labu_cloud_outbox') || '[]');
-    return Array.isArray(q) ? q : [];
-  } catch (e) { return []; }
-}
-function cloudSetOutbox(q) {
-  try { localStorage.setItem('labu_cloud_outbox', JSON.stringify(q.slice(-100))); } catch (e) {}
-}
-async function cloudRestoreSession() {
-  if (!CLOUD_ON) return false;
-  if (cloudSession()) return true;
-  if (_cloudCookieChecked) return false;
-  _cloudCookieChecked = true;
-  try {
-    const me = await cloudReq('/api/admin/me');
-    if (me && me.user && me.isAdmin) {
-      cloudSaveSession({ email: me.user.email || me.user.login || '', user: me.user });
-      cloudAdmin = true;
-      return true;
-    }
-  } catch (e) {}
-  return false;
-}
-async function cloudCheckAdmin() {
-  if (!CLOUD_ON) return false;
-  if (!cloudSession() && !(await cloudRestoreSession())) { cloudAdmin = false; return false; }
-  if (cloudAdmin) return true;
-  try {
-    const me = await cloudReq('/api/admin/me');
-    cloudAdmin = !!(me && me.isAdmin);
-    if (cloudAdmin && me.user) {
-      const current = cloudSession() || {};
-      cloudSaveSession({
-        ...current,
-        email: me.user.email || me.user.login || current.email || '',
-        login: me.user.login || '',
-        user: me.user,
-      });
-    }
-  } catch (e) { cloudAdmin = false; }
-  return cloudAdmin;
-}
-async function cloudPublishNow(kind, payload) {
-  await cloudReq('/api/admin/publish', { body: { kind: kind, payload: payload } });
-  try { localStorage.removeItem('labu_pub_cache'); } catch (e) {}
-  PUB.version = -1; // force the next check to re-read the layer
-}
-async function cloudSendProposal(item) {
-  const s = cloudSession();
-  await cloudReq('/api/proposals', { body: {
-    kind: item.kind,
-    payload: item.payload,
-    summary: item.summary || cloudDescribe(item.kind, item.payload),
-    name: s ? (s.login || s.email || '') : '',
-    baseVersion: DATA_VERSION,
-  } });
-}
-// Fire-and-forget: the local save has already happened, so a slow/absent network
-// never blocks editing. Failures wait in an outbox and retry when back online.
-async function submitChange(kind, payload) {
-  if (!CLOUD_ON) return 'off';
-  let snapshot;
-  try { snapshot = JSON.parse(JSON.stringify(payload)); } catch (e) { snapshot = payload; }
-  const item = { kind: kind, payload: snapshot, summary: cloudDescribe(kind, snapshot), at: Date.now() };
-  try {
-    if (await cloudCheckAdmin()) {
-      await cloudPublishNow(kind, snapshot);
-      return 'published';
-    }
-    await cloudSendProposal(item);
-    // Quiet by design: a normal user's change is only staged for review, so say
-    // nothing. The local save already happened and that is all they need to see.
-    return 'review';
-  } catch (e) {
-    cloudSetOutbox(cloudOutbox().concat([item]));
-    // Also silent: the outbox flushes on its own once the network returns.
-    return 'queued';
-  }
-}
-async function cloudFlushOutbox() {
-  if (!CLOUD_ON) return;
-  let q = cloudOutbox();
-  if (!q.length) return;
-  const isAdmin = await cloudCheckAdmin();
-  for (const item of q.slice()) {
-    try {
-      if (isAdmin) await cloudPublishNow(item.kind, item.payload);
-      else await cloudSendProposal(item);
-      q = q.filter(x => x !== item);
-      cloudSetOutbox(q);
-    } catch (e) { break; }
-  }
-}
-
-// ── background check ──
-async function cloudCheckForUpdates(force, btn) {
-  if (!CLOUD_ON || _cloudSyncing) return false;
-  _cloudSyncing = true;
-  setCloudButtonBusy(btn, true, 'Syncing…');
-  let ok = false;
-  let current = false;
-  try {
-    let st;
-    try { st = await cloudReq('/api/state'); }
-    catch (e) { return false; }
-    const version = st ? Number(st.version) || 0 : 0;
-    if (!force && version === PUB.version) {
-      current = true;
-      // Nothing new to pull, but the queue may still have moved: refresh its rows.
-      if (document.getElementById('cloudPanel')) await cloudQueueLoad();
-      return false;
-    }
-    await cloudLoadLayer(force);
-    if (!songsReady) return false;
-    ok = await cloudApplyLayerToCorpus();
-    if (document.getElementById('cloudPanel')) await cloudQueueLoad();
-    return ok;
-  } finally {
-    _cloudSyncing = false;
-    // The panel repaints during a sync, so answer on whichever button is on screen.
-    const live = document.querySelector('#cloudPanel [data-action="cloudCheckForUpdates"]') || btn;
-    if (ok) flashCloudButton(live, 'Synced');
-    else if (current) flashCloudButton(live, 'Up to date');
-    else setCloudButtonBusy(live, false);
-  }
-}
-// Rebuild the in-memory corpus from the pristine IndexedDB base copy, then replay
-// the approved layer + this device's edits. IDB returns a structured clone, so the
-// base is never the already-mutated object.
-async function cloudApplyLayerToCorpus() {
-  let cache = null;
-  try { cache = await idbGet('cache', corpusCacheKey()); } catch (e) {}
-  if (!cache || !cache.data || !Object.keys(cache.data).length) return false;
-  SONGS = cache.data;
-  applyPublished();
-  try { (await idbGetAll('edits')).forEach(applyEdit); } catch (e) {}
-  GROUPS = SONGS.groups || [];
-  reindexBooks();
-  buildSearchIndex();
-  updateStats();
-  if (currentView === 'admin') renderAdminPanel();
-  else if (currentView === 'settings') renderSongbookPrefs();
-  renderGroups();
-  renderFavRecents();
-  return true;
-}
-function cloudStart() {
-  if (!CLOUD_ON) return;
-  const tick = () => { if (!document.hidden) { cloudFlushOutbox(); cloudCheckForUpdates(); } };
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
-  window.addEventListener('online', tick);
-  setInterval(tick, CLOUD_POLL_MS);
-  setTimeout(tick, 4000);
 }
 
 // ─── REVIEW / SYNC UI (Admin account) ───
@@ -1748,8 +1471,10 @@ function renderReview() {
   if (reviewFlash) {
     notice = reviewNoticeHTML(reviewFlash.type, reviewFlash.text);
   } else if (!pending) {
-    const who = proposal.reviewed_by_name ? ' by ' + esc(proposal.reviewed_by_name) : '';
-    notice = reviewNoticeHTML('info', 'This submission was ' + esc(proposal.status) + who
+    // reviewNoticeHTML escapes its text, so these go in raw — escaping them
+    // here too showed a reviewer name containing "&" as "&amp;".
+    const who = proposal.reviewed_by_name ? ' by ' + proposal.reviewed_by_name : '';
+    notice = reviewNoticeHTML('info', 'This submission was ' + proposal.status + who
       + (proposal.reviewed_at ? ' ' + cloudAgo(proposal.reviewed_at) : '') + '.'
       + (proposal.note ? ' Reason: ' + proposal.note : ''));
   }
@@ -3151,14 +2876,6 @@ function recordOpen(songId) {
   saveOpenHistory();
 }
 
-function clearRecents() {
-  recents = [];
-  localStorage.setItem('labu_recents', JSON.stringify(recents));
-  if (currentHomeGrid === 'categoryGrid') renderCategories();
-  else renderGroups();
-  renderFavRecents();
-}
-
 // ─── CATEGORIES ───
 let CAT_ORDER = ['B&P','BL','PN','SM'];
 const CAT_SVG = {
@@ -3308,11 +3025,6 @@ const SB_FALLBACK_COLORS = [
   {light:'#1D4ED8',dark:'#3B63C4'},
 ];
 function hashStr(s){let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return h;}
-function catColorOf(key,isLight){
-  const c = CAT_COLORS[key];
-  if(c) return c;
-  return SB_FALLBACK_COLORS[hashStr(key)%SB_FALLBACK_COLORS.length];
-}
 const DEFAULT_CAT_SVG='<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>';
 function catSvgOf(key){return CAT_SVG[key]||DEFAULT_CAT_SVG;}
 
@@ -4000,9 +3712,6 @@ document.getElementById('chordModal').addEventListener('click', e => {
   if (e.target === e.currentTarget) requestCloseChordEditor();
 });
 const CHORD_LINE_TOKEN_RE = /[A-G](?:#|b)?(?:maj|min|dim|aug|sus|add|m|°|ø)?\d*(?:\/[A-G](?:#|b)?)?/g;
-function transposeChordLineText(text, semis, preferFlat) {
-  return String(text || '').replace(CHORD_LINE_TOKEN_RE, token => transposeChordName(token, semis, preferFlat));
-}
 let _ceKeyTimer = null;
 function ceKeyTyping() {
   clearTimeout(_ceKeyTimer);
@@ -4058,33 +3767,6 @@ function chordVerseBlocks(song) {
   const out = [];
   (song.verses||[]).forEach(v => { if (!isRef(v)) out.push(v); });
   return out;
-}
-function chordLineText(line, specs, chart) {
-  const lyric = String(line||'');
-  const chars = Array(lyric.length).fill(' ');
-  const anchors = [];
-  if (chart && chart.free) {
-    (specs||[]).forEach(spec => anchors.push({ at: spec.at, ch: spec.ch }));
-  } else {
-    const words = lyric.trim().split(/\s+/).filter(Boolean);
-    const labels = chordAnchorMap(words, specs||[]);
-    labels.forEach((ch, idx) => {
-      let pos = 0, seen = -1, m;
-      const re = /\S+/g;
-      while ((m = re.exec(lyric))) { seen++; if (seen === idx) { pos = m.index; break; } }
-      anchors.push({ at: lyric.length > 1 ? pos / (lyric.length - 1) : 0, ch });
-    });
-  }
-  anchors.forEach(spec => {
-    const ch = String((spec && spec.ch) || '');
-    if (!ch) return;
-    const span = Math.max(0, lyric.length - 1);
-    let pos = Math.round(Math.max(0, Math.min(1, Number(spec.at) || 0)) * span);
-    while (pos < chars.length && chars[pos] !== ' ') pos++;
-    if (pos + ch.length > chars.length) pos = Math.max(0, Math.min(chars.length - ch.length, pos));
-    for (let i = 0; i < ch.length && pos + i < chars.length; i++) chars[pos+i] = ch[i];
-  });
-  return chars.join('').replace(/\s+$/, '');
 }
 /* ── lyric canvas ─────────────────────────────────────────────────── */
 function ceNoteIn(pc, preferFlat) {
@@ -4783,19 +4465,6 @@ function ceKeyDown(e) {
     });
   }
 })();
-function parseChordPlacement(chordLine, lyricLine) {
-  const lyric = String(lyricLine||'');
-  const span = Math.max(0, lyric.length - 1);
-  const specs = [];
-  const re = /[A-G](?:#|b)?(?:maj|min|dim|aug|sus|add|m|°|ø)?\d*(?:\/[A-G](?:#|b)?)?/g;
-  let m;
-  while ((m = re.exec(String(chordLine||'')))) {
-    const ch = m[0];
-    if (chordRootPc(ch) == null) continue;
-    specs.push({ at: span ? Math.min(1, Math.max(0, m.index / span)) : 0, ch });
-  }
-  return specs;
-}
 function openChordEditor() {
   const song = currentList && currentList[currentSongIdx];
   if (!song) return;
@@ -5182,7 +4851,10 @@ function parseKeyTone(text) {
   if (acc === '#' || acc === 'sharp') pc += 1;
   else if (acc === 'b' || acc === 'flat') pc -= 1;
   pc = ((pc % 12) + 12) % 12;
-  return { pc, minor: /\bminor\b/i.test(s) };
+  // "A minor", "Am" and "Amin" all mean a minor key. Without the short form,
+  // the key button played a major triad for a key written "Am".
+  const minor = /\bminor\b/i.test(s) || /^[A-Ga-g]\s*[#b]?\s*(?:m|min)\.?$/.test(s);
+  return { pc, minor };
 }
 let _keyCtx = null, _keyIn = null, _keyNoiseBuf = null, _keyVoices = [];
 function _keyAudio() {
@@ -5296,26 +4968,6 @@ function chordSoundNotes(name) {
   if (bassPc != null) notes.unshift(48 + bassPc);
   return notes;
 }
-function playChordTone(btn) {
-  const song = currentList[currentSongIdx];
-  const chart = chordChartFor(song);
-  const base = btn && btn.getAttribute('data-chord');
-  const name = chart && base ? chordLabel(chart, base) : String((btn && btn.textContent) || base || '').trim();
-  const notes = chordSoundNotes(name);
-  if (!notes) {  return; }
-  const ctx = _keyAudio();
-  if (!ctx) {  return; }
-  _keyVoices.forEach(v => { try { v.stop(); } catch (e) {} });
-  _keyVoices = [];
-  const t0 = ctx.currentTime + 0.025;
-  notes.forEach((midi, i) => _pianoNote(ctx, t0 + i * 0.045, midi, 1.9, i === 0 ? 0.18 : 0.12));
-  if (btn) {
-    btn.classList.add('playing');
-    clearTimeout(btn._chordPulse);
-    btn._chordPulse = setTimeout(() => btn.classList.remove('playing'), 900);
-  }
-}
-
 function positionChordReadLine(lineEl) {
   const song = currentList && currentList[currentSongIdx];
   const chart = _reviewPosChart || (song ? chordChartFor(song) : null);
@@ -5928,8 +5580,6 @@ function _readerViewIndex(mode, song) {
 
 // ponytail: rebuild the floating menu (fav label/state) without a full song
 // re-render, which would reset the reader scroll.
-function refreshReaderActions() { renderReaderMenu(); }
-
 // ponytail: which songbook a song belongs to, for share text (".cat" is only set on
 // favorites / recents / playlist copies of a song).
 function songBookKey(song) {
@@ -7879,7 +7529,6 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 let _escDiv = null;
 function esc(s) { if (!s) return ''; if (!_escDiv) _escDiv = document.createElement('div'); _escDiv.textContent = s; return _escDiv.innerHTML; }
 function escAttr(s) { return esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
-function escAttr(s) { return esc(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 function hl(text, q) {
   if (!text) return '';
   let h = esc(text);
@@ -8151,7 +7800,6 @@ function openSettings() {
   showView('settings');
   window.scrollTo(0, 0);
   updateSettingsUI();
-  renderGoogleSection();
   syncTabBar();
   if (push) navPush();
 }
@@ -8343,162 +7991,6 @@ async function applyBackup(data) {
     await new Promise(res => { tx.oncomplete = res; tx.onerror = res; tx.onabort = res; });
     setTimeout(() => location.reload(), 900);
   } catch (e) {  }
-}
-
-// ─── GOOGLE DRIVE BACKUP / RESTORE (the user's own Drive is the sync store) ───
-// Web uses the Google Identity Services popup; the APK (Capacitor WebView) uses the
-// native @capawesome/capacitor-google-sign-in plugin, because Google blocks its
-// sign-in popups inside embedded WebViews (disallowed_useragent).
-let _gisLoaded = null;
-function loadGis() {
-  if (window.google && window.google.accounts) return Promise.resolve();
-  if (_gisLoaded) return _gisLoaded;
-  _gisLoaded = new Promise((res, rej) => {
-    const s = document.createElement('script');
-    s.src = 'https://accounts.google.com/gsi/client';
-    s.async = true;
-    s.onload = () => res();
-    s.onerror = () => { _gisLoaded = null; rej(new Error('Could not load Google sign-in')); };
-    document.head.appendChild(s);
-  });
-  return _gisLoaded;
-}
-function decodeJwt(t) {
-  try { return JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); } catch (e) { return {}; }
-}
-let _gToken = null; // { access_token, email, name, picture }
-function _nativeGoogle() {
-  const cap = window.Capacitor;
-  if (!cap || !cap.isNativePlatform || !cap.isNativePlatform()) return null;
-  return (cap.Plugins && cap.Plugins.GoogleSignIn) || null;
-}
-function _gisToken(prompt) { // request an access token via the GIS popup (web)
-  return loadGis().then(() => new Promise((resolve, reject) => {
-    const client = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: GOOGLE_DRIVE_SCOPE + ' openid email profile',
-      prompt: prompt,
-      callback: resp => {
-        if (resp && resp.access_token) resolve(resp);
-        else reject(new Error((resp && resp.error_description) || 'Sign-in cancelled'));
-      },
-      error_callback: err => reject(new Error((err && err.message) || 'Google sign-in failed'))
-    });
-    client.requestAccessToken();
-  }));
-}
-async function _ensureGoogleToken() {
-  if (_gToken && _gToken.access_token) return _gToken;
-  if (_nativeGoogle()) {
-    const p = _nativeGoogle();
-    await p.initialize({ clientId: GOOGLE_CLIENT_ID, scopes: [GOOGLE_DRIVE_SCOPE] });
-    const res = await p.signIn();
-    if (!res || !res.accessToken) throw new Error('Google sign-in returned no access token');
-    _gToken = { access_token: res.accessToken, email: res.email || '', name: res.displayName || '', picture: res.imageUrl || '' };
-  } else {
-    let resp;
-    try { resp = await _gisToken(''); } catch (e) { resp = await _gisToken(undefined); } // silent refresh first, popup fallback
-    const id = resp.id_token ? decodeJwt(resp.id_token) : {};
-    _gToken = { access_token: resp.access_token, email: id.email || '', name: id.name || '', picture: id.picture || '' };
-  }
-  localStorage.setItem('labu_google', JSON.stringify({ email: _gToken.email, name: _gToken.name, picture: _gToken.picture }));
-  return _gToken;
-}
-async function googleSignIn() {
-  if (!GOOGLE_CLIENT_ID) {  return; }
-  try {
-    await _ensureGoogleToken();
-    renderGoogleSection();
-  } catch (e) {
-  }
-}
-async function googleSignOut() {
-  const legacy = readJSON('labu_google_token', null);
-  const legacyToken = typeof legacy === 'string' ? legacy : (legacy && legacy.access_token);
-  const token = (_gToken && _gToken.access_token) || legacyToken;
-  _gToken = null;
-  localStorage.removeItem('labu_google');
-  localStorage.removeItem('labu_google_token'); // clear tokens left by older builds
-  try {
-    if (token) {
-      await fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(token), { method: 'POST' });
-    }
-    if (_nativeGoogle()) await _nativeGoogle().signOut();
-  } catch (e) {}
-  renderGoogleSection();
-}
-function renderGoogleSection() {
-  const sec = document.getElementById('googleSection');
-  if (!sec) return;
-  sec.style.display = GOOGLE_CLIENT_ID ? '' : 'none';
-  if (!GOOGLE_CLIENT_ID) return;
-  const g = readJSON('labu_google', null, v => v && typeof v === 'object');
-  const out = document.getElementById('googleSignedOut'), inn = document.getElementById('googleSignedIn');
-  const signedIn = !!(g && (g.email || g.name));
-  out.classList.toggle('is-hidden', signedIn);
-  inn.classList.toggle('is-hidden', !signedIn);
-  if (signedIn) {
-    const av = document.getElementById('googleAvatar'); if (av) av.src = g.picture || '';
-    const nm = document.getElementById('googleName'); if (nm) nm.textContent = g.name || '';
-    const em = document.getElementById('googleEmail'); if (em) em.textContent = g.email || '';
-  }
-}
-async function _driveApi(path, opts) {
-  const t = await _ensureGoogleToken();
-  const res = await fetch('https://www.googleapis.com/drive/v3' + path, Object.assign({}, opts, {
-    headers: Object.assign({ 'Authorization': 'Bearer ' + t.access_token }, (opts && opts.headers) || {})
-  }));
-  // token expired → drop cache, fetch a fresh one, retry once
-  if (res.status === 401 && !(opts && opts._retried)) {
-    _gToken = null;
-    return _driveApi(path, Object.assign({}, opts, { _retried: true }));
-  }
-  return res;
-}
-async function _driveFindBackup() {
-  const res = await _driveApi('/files?spaces=appDataFolder&fields=files(id,name,modifiedTime)&pageSize=10');
-  if (!res.ok) throw new Error('Drive list failed (' + res.status + ')');
-  const d = await res.json();
-  return (d.files || []).find(f => f.name === GOOGLE_BACKUP_FILE) || null;
-}
-async function backupToGoogle() {
-  if (!GOOGLE_CLIENT_ID) {  return; }
-  try {
-    const body = JSON.stringify(await buildBackupPayload());
-    let file = await _driveFindBackup();
-    if (!file) {
-      const metaRes = await _driveApi('/files?fields=id', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: GOOGLE_BACKUP_FILE, parents: ['appDataFolder'] })
-      });
-      if (!metaRes.ok) throw new Error('Drive create failed (' + metaRes.status + ')');
-      file = await metaRes.json();
-    }
-    const up = await _driveApi('/files/' + file.id + '?uploadType=media', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: body
-    });
-    if (!up.ok) throw new Error('Drive upload failed (' + up.status + ')');
-  } catch (e) {
-  }
-}
-async function restoreFromGoogle() {
-  if (!GOOGLE_CLIENT_ID) {  return; }
-  try {
-    const file = await _driveFindBackup();
-    if (!file) {  return; }
-    const res = await _driveApi('/files/' + file.id + '?alt=media');
-    if (!res.ok) throw new Error('Download failed (' + res.status + ')');
-    const text = await res.text();
-    let data;
-    try { data = JSON.parse(text); } catch (e) { throw new Error('Backup file is corrupt'); }
-    if (!isValidBackup(data)) throw new Error('Not a valid backup file');
-    const when = file.modifiedTime ? ' from ' + new Date(file.modifiedTime).toLocaleString() : '';
-    confirmDangerous('Replace your current data with the Google Drive backup' + when + '?', 'Restore', () => applyBackup(data));
-  } catch (e) {
-  }
 }
 
 // ─── WHATSAPP SHARE (text) & FULL-SONG IMAGE SHARE ───
@@ -8920,8 +8412,7 @@ const CLICK_ACTIONS = {
   saveSongbook, saveBook, saveSong, ceUndo, ceRedo, requestCloseChordEditor,
   saveChordEditor, ceCloseWheel, ceWheelDelete, closeImagePreview, confirmImageShare,
   closeChordPop, playChordPop, executeExport, createPlaylistFromModal, toggleFontMenu,
-  createPlaylistFromSettings, manualCheckUpdate, googleSignIn, googleSignOut,
-  backupToGoogle, restoreFromGoogle, backupData, resetLocalEdits,
+  createPlaylistFromSettings, manualCheckUpdate, backupData, resetLocalEdits,
   toggleWaMenu: () => toggleWaMenu(),
   renderCloudPanel, cloudApproveAll, toggleSort, openChordEditor, resetChordTranspose,
   closeSolfaZoom, clearSearchHistory, clearOpenHistory, openSettings, cloudSignOut,

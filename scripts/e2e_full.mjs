@@ -9,7 +9,6 @@ const { chromium } = require('playwright');
 import http from 'http'; import fs from 'fs'; import path from 'path';
 
 const ROOT = process.cwd();
-const TEST_GOOGLE_ID = process.env.TEST_GOOGLE_ID || 'e2e-client.apps.googleusercontent.com';
 const MIME = { '.html': 'text/html', '.json': 'application/json', '.gzip': 'application/gzip', '.png': 'image/png', '.js': 'text/javascript', '.css': 'text/css', '.webmanifest': 'application/manifest+json', '.woff2': 'font/woff2' };
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split('?')[0]);
@@ -17,10 +16,6 @@ const server = http.createServer((req, res) => {
   const file = path.join(ROOT, p);
   if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
   res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
-  if (p.endsWith('app.js') && TEST_GOOGLE_ID) {
-    res.end(fs.readFileSync(file, 'utf8').replace("const GOOGLE_CLIENT_ID = '';", "const GOOGLE_CLIENT_ID = '" + TEST_GOOGLE_ID + "';"));
-    return;
-  }
   fs.createReadStream(file).pipe(res);
 });
 await new Promise(r => server.listen(0, '127.0.0.1', r));
@@ -1019,35 +1014,25 @@ await section('status bar', async () => {
   await page.close();
 });
 
-// ═══════════════ 9. SETTINGS + GOOGLE SECTION ═══════════════
-await section('settings & google', async () => {
+// ═══════════════ 9. SETTINGS & BACKUP ═══════════════
+await section('settings & backup', async () => {
   const page = await newPage();
   await waitLoaded(page);
   await openSettings(page);
   const ver = (await page.textContent('#appVersion')).trim();
   ok('version shown in settings (' + ver + ')', ver.length > 0);
-  ok('backup/restore + google buttons present', (await page.locator('#settingsView').getByText('Backup data').count()) > 0 && (await page.locator('#settingsView').getByText('Restore from backup').count()) > 0);
-  const g = await page.evaluate(() => ({
-    section: !!document.getElementById('googleSection'),
-    signedOut: getComputedStyle(document.getElementById('googleSignedOut')).display !== 'none',
-    signedIn: getComputedStyle(document.getElementById('googleSignedIn')).display !== 'none',
-    name: document.getElementById('googleName').textContent,
+  ok('backup/restore buttons present', (await page.locator('#settingsView').getByText('Backup data').count()) > 0 && (await page.locator('#settingsView').getByText('Restore from backup').count()) > 0);
+  // The key button must play a minor third for a key written "Am".
+  const keyTone = await page.evaluate(() => ({
+    am: parseKeyTone('Am'), amin: parseKeyTone('Amin'), aMinor: parseKeyTone('A minor'),
+    fm: parseKeyTone('F#m'), plain: parseKeyTone('A'), empty: parseKeyTone(''),
   }));
-  ok('google section visible', g.section);
-  ok('sign-in button when signed out', g.signedOut && !g.signedIn);
-  // simulate signed-in state via localStorage + re-render
-  await page.evaluate(() => {
-    localStorage.setItem('labu_google', JSON.stringify({ email: 'e2e@test.dev', name: 'E2E Tester', picture: '' }));
-    renderGoogleSection();
-  });
-  const g2 = await page.evaluate(() => ({
-    signedOut: getComputedStyle(document.getElementById('googleSignedOut')).display !== 'none',
-    signedIn: getComputedStyle(document.getElementById('googleSignedIn')).display !== 'none',
-    name: document.getElementById('googleName').textContent,
-    email: document.getElementById('googleEmail').textContent,
-  }));
-  ok('account row when signed in', !g2.signedOut && g2.signedIn && g2.name === 'E2E Tester' && g2.email === 'e2e@test.dev');
-  ok('backup/restore google buttons', (await page.locator('#googleSection').getByText('Back up', { exact: true }).count()) > 0 && (await page.locator('#googleSection').getByText('Restore', { exact: true }).count()) > 0);
+  ok('a key written Am is treated as minor',
+    keyTone.am?.minor === true && keyTone.amin?.minor === true && keyTone.aMinor?.minor === true
+    && keyTone.fm?.minor === true && keyTone.plain?.minor === false && keyTone.empty === null,
+    JSON.stringify(keyTone));
+  ok('Google backup is gone from settings', (await page.locator('#settingsView').getByText('Google').count()) === 0
+    && (await page.locator('#googleSection').count()) === 0);
   // payload builder includes all data
   const payload = await page.evaluate(async () => {
     favorites.push('PAYLOAD_TEST_ID');
@@ -1056,7 +1041,6 @@ await section('settings & google', async () => {
     return { hasFavs: !!p.favorites, hasRecents: Array.isArray(p.recents), hasPlaylists: Array.isArray(p.playlists), hasEdits: 'edits' in p, hasSettings: 'theme' in p, version: p.version };
   });
   ok('payload builder ok', payload.hasFavs && payload.hasRecents && payload.hasPlaylists && payload.hasEdits && payload.hasSettings, JSON.stringify(payload));
-  await page.evaluate(() => { localStorage.removeItem('labu_google'); renderGoogleSection(); });
   await page.close();
 });
 
