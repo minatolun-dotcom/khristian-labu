@@ -967,6 +967,14 @@ async function handleSetupAdmin(request) {
   }
   const name = truncate(body.name || 'Admin', 120) || 'Admin';
 
+  // Bootstrap only. Once any admin exists this door is shut, so a leaked
+  // SETUP_TOKEN can no longer mint an account; later admins go through
+  // /api/admin/users. Without this the token stayed a permanent admin door.
+  const anyAdmin = await env.DB.prepare(
+    "SELECT id FROM user WHERE role = 'admin' LIMIT 1",
+  ).first();
+  if (anyAdmin) throw new HttpError(403, 'setup already completed; manage admins from the app');
+
   const existing = await env.DB.prepare(
     'SELECT id FROM user WHERE lower(email) = ? LIMIT 1',
   ).bind(email).first();

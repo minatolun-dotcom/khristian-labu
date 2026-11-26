@@ -255,6 +255,19 @@ const afterApprove = await req('/api/published-edits');
 const publishedRow = afterApprove.body?.find(row => row.payload?.id === firstPayload.id);
 check('approved payload is present in the public overlay', !!publishedRow, JSON.stringify(afterApprove.body?.slice(-2)));
 
+// The bootstrap door has to close behind the first admin: a leaked setup token
+// must not be able to mint another one later.
+if (process.env.LABU_SETUP_TOKEN) {
+  const late = await req('/api/setup/admin', {
+    method: 'POST',
+    headers: { 'x-setup-token': process.env.LABU_SETUP_TOKEN },
+    body: JSON.stringify({ email, password: 'late-admin-password-123', name: 'Late Admin' }),
+  });
+  check('setup cannot create an admin once one exists',
+    late.status === 403 && /already completed/.test(JSON.stringify(late.body)),
+    `${late.status} ${JSON.stringify(late.body)}`);
+}
+
 const paged = await req('/api/published-edits?limit=1');
 check('the overlay honours a page size',
   paged.status === 200 && paged.body?.length === 1

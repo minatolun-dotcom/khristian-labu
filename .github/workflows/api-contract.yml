@@ -78,4 +78,5 @@ jobs:
 
           LABU_TEST_EMAIL=ci-admin@example.test \
           LABU_TEST_PASSWORD=ci-admin-password-123 \
+          LABU_SETUP_TOKEN=ci-setup-token \
             node scripts/test_staging_api.mjs
