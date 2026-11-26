@@ -80,6 +80,28 @@ try {
   const approveCalls = [];
   const rejectCalls = [];
   const staleIds = new Set();
+  // Lets a test pretend the published layer differs from the synced corpus.
+  let serverOriginalSong = null;
+  // Mirrors the Worker's replay of the published layer for one song.
+  const replayPublished = id => {
+    let song = null;
+    let cat = null;
+    let deleted = false;
+    let chart = null;
+    for (const row of published) {
+      const payload = row.payload || {};
+      if (payload.id !== id) continue;
+      if (row.kind === 'song') {
+        if (payload.op === 'delete') { song = null; cat = null; deleted = true; continue; }
+        song = payload.song || null;
+        cat = typeof payload.cat === 'string' ? payload.cat : null;
+        deleted = false;
+      } else if (row.kind === 'chord' && payload.chart) {
+        chart = payload.chart;
+      }
+    }
+    return { rev: 'mock:rev', song, cat, deleted, chart };
+  };
   let adminDirectory = [
     { id: 'u1', name: 'Owner', login: 'minatolun@gmail.com', email: 'minatolun@gmail.com', username: '', isOwner: true, isSelf: false },
     { id: 'u2', name: 'Second Admin', login: '@secondadmin', email: '', username: 'secondadmin', isOwner: false, isSelf: false },
@@ -164,7 +186,13 @@ try {
     if (proposalDetail) {
       if (!isAdmin) return json({ error: 'admin access required' }, 403);
       const found = proposals.find(p => p.id === Number(proposalDetail[1]));
-      return found ? json(found) : json({ error: 'proposal not found' }, 404);
+      if (!found) return json({ error: 'proposal not found' }, 404);
+      const target = found.target || (found.payload && found.payload.id) || '';
+      const state = replayPublished(target);
+      if (serverOriginalSong && found.kind === 'song' && state.song) {
+        state.song = { ...state.song, verses: [{ type: 'v', lines: [serverOriginalSong] }] };
+      }
+      return json({ ...found, published: state, stale: staleIds.has(found.id) });
     }
     if (path === '/api/admin/proposals') {
       if (!isAdmin) return json({ error: 'admin access required' }, 403);
@@ -526,9 +554,10 @@ try {
     approvedLive.verses === 2 && approvedLive.second === 'A line of the approved song'
     && approvedLive.chorus === 'New chorus line', JSON.stringify(approvedLive));
   check('approval keeps the decision on the page', await page.evaluate(() =>
-    !document.getElementById('reviewBar').hidden === false));
+    document.getElementById('reviewNotice').textContent.includes('Approved')));
   check('a decided submission is no longer offered for decision', await page.evaluate(() =>
-    document.getElementById('reviewBar').hidden));
+    document.querySelector('#reviewBar .review-bar-approve').hidden
+    && document.querySelector('#reviewBar .review-bar-reject').hidden));
   await page.locator('#reviewView .review-back').click();
   await page.waitForSelector('#adminAccountView.active', { timeout: 5000 });
   await page.waitForFunction(() => document.getElementById('cloudPanel').textContent.includes('Review queue'), null, { timeout: 5000 });
@@ -598,12 +627,13 @@ try {
     edits: PUB.edits.length,
     text: document.getElementById('reviewBody').textContent,
     notice: document.getElementById('reviewNotice').textContent,
-    bar: document.getElementById('reviewBar').hidden,
+    decisionsHidden: document.querySelector('#reviewBar .review-bar-approve').hidden
+      && document.querySelector('#reviewBar .review-bar-reject').hidden,
   }));
   check('rejection records the reason', rejectCalls.length === 1 && rejectCalls[0].note === 'changes the meaning of verse one'
     && rejectCalls[0].ids[0] === 23, JSON.stringify(rejectCalls));
-  check('rejection publishes nothing and hides the decision bar',
-    afterReject.edits === publishedBeforeReject && afterReject.bar && afterReject.notice.includes('Rejected'),
+  check('rejection publishes nothing and hides the decision buttons',
+    afterReject.edits === publishedBeforeReject && afterReject.decisionsHidden && afterReject.notice.includes('Rejected'),
     JSON.stringify({ before: publishedBeforeReject, after: afterReject.edits }));
   check('a rejected submission never reaches the corpus preview', !afterReject.text.includes('A rejected replacement')
     || afterReject.notice.includes('Rejected'));
@@ -612,24 +642,46 @@ try {
   await page.waitForFunction(() => document.getElementById('cloudPanel').textContent.includes('Review queue'), null, { timeout: 5000 });
 
 
-  // Stale submission: the server refuses the overwrite and the page explains it.
+  // Stale submission: the conflict is reported when the review opens, before any tap.
   staleIds.add(24);
   await page.evaluate(() => renderCloudPanel());
   const editsBeforeStale = await page.evaluate(() => PUB.edits.length);
   await page.locator('#cloudPanel [data-action="reviewOpen"][data-proposal-id="24"]').click();
   await page.waitForFunction(() => document.getElementById('reviewTitle').textContent === 'Cloud Approved Hymn', null, { timeout: 5000 });
+  const staleState = await page.evaluate(() => ({
+    warn: !!document.querySelector('#reviewNotice.is-warn'),
+    notice: document.getElementById('reviewNotice').textContent,
+    approveDisabled: document.querySelector('#reviewBar .review-bar-approve').disabled,
+    edits: PUB.edits.length,
+    bar: document.getElementById('reviewBar').hidden,
+  }));
+  check('a stale submission is called out as soon as the review opens',
+    staleState.warn && /changed after/i.test(staleState.notice) && staleState.edits === editsBeforeStale,
+    JSON.stringify(staleState));
+  check('a stale submission cannot be approved at all', staleState.approveDisabled && !staleState.bar, JSON.stringify(staleState));
+  await page.locator('#reviewView .review-back').click();
+  await page.waitForSelector('#adminAccountView.active', { timeout: 5000 });
+  await page.waitForFunction(() => document.getElementById('cloudPanel').textContent.includes('Review queue'), null, { timeout: 5000 });
+
+  // Race: the song changes after the review opened, so only the Worker can catch it.
+  staleIds.clear();
+  await page.evaluate(() => renderCloudPanel());
+  await page.locator('#cloudPanel [data-action="reviewOpen"][data-proposal-id="24"]').click();
+  await page.waitForFunction(() => document.getElementById('reviewTitle').textContent === 'Cloud Approved Hymn', null, { timeout: 5000 });
+  await page.locator('#reviewTabs [data-tab="proposed"]').click();
+  staleIds.add(24);
   await page.locator('#reviewBar .review-bar-approve').click();
   const staleShown = await page.waitForFunction(() =>
     document.querySelector('#reviewNotice.is-error') !== null, null, { timeout: 10000 }).then(() => true).catch(() => false);
-  const staleState = await page.evaluate(() => ({
+  const staleRace = await page.evaluate(() => ({
     notice: document.getElementById('reviewNotice').textContent,
     edits: PUB.edits.length,
     bar: document.getElementById('reviewBar').hidden,
   }));
-  check('a stale submission is refused instead of overwriting', staleShown
-    && /changed after|stale|conflict/i.test(staleState.notice) && staleState.edits === editsBeforeStale,
-    JSON.stringify(staleState));
-  check('the reviewer keeps the decision bar after a conflict', !staleState.bar);
+  check('a submission that goes stale mid-review is refused by the Worker', staleShown
+    && /changed after|stale|conflict/i.test(staleRace.notice) && staleRace.edits === editsBeforeStale,
+    JSON.stringify(staleRace));
+  check('the reviewer keeps the decision bar after a conflict', !staleRace.bar);
   staleIds.clear();
   await page.locator('#reviewView .review-back').click();
   await page.waitForSelector('#adminAccountView.active', { timeout: 5000 });
@@ -647,6 +699,79 @@ try {
   check('song history keeps the rejection reason',
     historyText.includes('changes the meaning of verse one'), historyText.slice(0, 200));
   await page.locator('#reviewHistoryModal [data-action="closeReviewHistory"]').last().click();
+
+  // "Original" is the server's published layer, so a device that has not synced
+  // cannot show the reviewer an outdated before-picture.
+  await page.evaluate(() => renderCloudPanel());
+  serverOriginalSong = 'A line only the published layer has';
+  // #23 is already rejected, so it is not in the pending list: open it directly.
+  await page.evaluate(() => openReview(23));
+  // openReview paints the new id before the fetch resolves, so wait for the
+  // loaded title (it is 'Loading…' until then) rather than the id alone.
+  await page.waitForFunction(() => document.getElementById('reviewKicker').textContent.includes('#23')
+    && document.getElementById('reviewTitle').textContent === 'Cloud Approved Hymn', null, { timeout: 5000 });
+  await page.locator('#reviewTabs [data-tab="original"]').click();
+  const serverOriginal = await page.evaluate(() => ({
+    text: document.getElementById('reviewBody').textContent,
+    local: SONGS['B&P'].songs.find(s => s.id === 'cloud_base_approved').verses[0].lines[0],
+  }));
+  check('Original renders the published layer, not the device copy',
+    serverOriginal.text.includes('A line only the published layer has') && !serverOriginal.text.includes(serverOriginal.local),
+    JSON.stringify(serverOriginal).slice(0, 160));
+  serverOriginalSong = null;
+  await page.locator('#reviewView .review-back').click();
+  await page.waitForSelector('#adminAccountView.active', { timeout: 5000 });
+  await page.waitForFunction(() => document.getElementById('cloudPanel').textContent.includes('Review queue'), null, { timeout: 5000 });
+
+  // Proposals written before revision tracking: flagged, confirmed, then chained.
+  proposals.push({
+    id: 25, kind: 'song', status: 'pending', submitter_name: '', created_at: Date.now() - 300e3,
+    summary: 'Edit “Cloud Approved Hymn”', target: 'cloud_base_approved', base_rev: null,
+    payload: { id: 'cloud_base_approved', cat: 'B&P', op: 'update',
+      song: { ...reviewBase, verses: [{ type: 'v', lines: ['A line from a pre-tracking submission'] }] } },
+  });
+  await page.evaluate(() => renderCloudPanel());
+  const legacyBadges = await page.evaluate(() => document.querySelectorAll('#cloudPanel .cloud-badge.is-legacy').length);
+  check('the queue flags submissions that predate revision tracking', legacyBadges === 1, String(legacyBadges));
+  const approveCallsBeforeLegacy = approveCalls.length;
+  await page.locator('#cloudPanel [data-action="reviewOpen"][data-proposal-id="25"]').click();
+  await page.waitForFunction(() => document.getElementById('reviewKicker').textContent.includes('#25')
+    && document.getElementById('reviewTitle').textContent === 'Cloud Approved Hymn', null, { timeout: 5000 });
+  const legacyNotice = await page.evaluate(() => ({
+    warn: !!document.querySelector('#reviewNotice.is-warn'),
+    text: document.getElementById('reviewNotice').textContent,
+    approveDisabled: document.querySelector('#reviewBar .review-bar-approve').disabled,
+  }));
+  check('a pre-tracking submission says its changes cannot be checked',
+    legacyNotice.warn && /revision tracking/i.test(legacyNotice.text) && !legacyNotice.approveDisabled,
+    JSON.stringify(legacyNotice));
+  await page.locator('#reviewBar .review-bar-approve').click();
+  await page.waitForSelector('#confirmModal.open');
+  check('approving a pre-tracking submission asks for confirmation',
+    /before revision tracking/i.test(await page.textContent('#confirmModal')));
+  await page.locator('#confirmModal .modal-footer [data-action="closeModal"]').click();
+  check('cancelling that confirmation approves nothing',
+    approveCalls.length === approveCallsBeforeLegacy, String(approveCalls.length));
+  await page.locator('#reviewBar .review-bar-approve').click();
+  await page.waitForSelector('#confirmModal.open');
+  await page.locator('#confirmBtn').click();
+  await page.waitForFunction(() => document.getElementById('reviewNotice').textContent.includes('Approved'), null, { timeout: 10000 });
+  check('the confirmed pre-tracking approval publishes', approveCalls.some(call => call.ids.includes(25)), JSON.stringify(approveCalls.at(-1)));
+  const nextOffered = await page.evaluate(() => {
+    const btn = document.querySelector('#reviewBar .review-bar-next');
+    return { hidden: btn.hidden, text: btn.textContent };
+  });
+  check('a decided review offers the next pending submission',
+    !nextOffered.hidden && /Review next pending \(1\)/.test(nextOffered.text), JSON.stringify(nextOffered));
+  await page.locator('#reviewBar .review-bar-next').click();
+  await page.waitForFunction(() => document.getElementById('reviewKicker').textContent.includes('#24')
+    && document.getElementById('reviewTitle').textContent === 'Cloud Approved Hymn', null, { timeout: 5000 });
+  check('the next pending submission opens in place', await page.evaluate(() =>
+    document.getElementById('reviewTitle').textContent === 'Cloud Approved Hymn'
+    && document.querySelector('#reviewView').classList.contains('active')));
+  await page.locator('#reviewView .review-back').click();
+  await page.waitForSelector('#adminAccountView.active', { timeout: 5000 });
+  await page.waitForFunction(() => document.getElementById('cloudPanel').textContent.includes('Review queue'), null, { timeout: 5000 });
 
   await page.locator('#cloudPanel [data-action="openSyncHistory"]').click();
   await page.waitForSelector('#syncHistoryModal.open');

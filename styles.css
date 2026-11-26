@@ -2114,6 +2114,8 @@ body[data-view="review"] nav{display:none;}
 .review-notice[hidden]{display:none;}
 .review-notice.is-ok{border-color:rgba(76,154,106,0.55);color:var(--green);}
 .review-notice.is-error{border-color:rgba(224,96,85,0.55);color:var(--rose);}
+.review-notice.is-warn{border-color:rgba(224,168,85,0.55);color:var(--amber);background:rgba(224,168,85,0.08);}
+.review-notice + .review-notice{margin-top:0.45rem;}
 .review-body{margin-top:0.6rem;}
 .review-body.is-plain{margin-top:0.4rem;}
 .rv-pane{display:flex;flex-direction:column;gap:0.7rem;}
@@ -2192,6 +2194,8 @@ body[data-view="review"] nav{display:none;}
 .review-bar[hidden]{display:none;}
 .review-bar .btn{flex:1;min-height:46px;font-size:0.88rem;}
 .review-bar .review-bar-approve{flex:1.45;}
+.review-bar .review-bar-approve:disabled{opacity:0.45;}
+.review-bar .review-bar-next{flex:1;}
 .review-bar .btn.is-busy{opacity:1;}
 
 /* reject + history modals */
@@ -2220,6 +2224,7 @@ body[data-view="review"] nav{display:none;}
 .cloud-badge.is-approved{background:rgba(76,154,106,0.18);color:var(--green);}
 .cloud-badge.is-rejected{background:rgba(224,96,85,0.18);color:var(--rose);}
 .cloud-badge.is-combined{background:rgba(110,134,201,0.2);color:var(--blue);}
+.cloud-badge.is-legacy{background:rgba(224,168,85,0.18);color:var(--amber);}
 .cloud-item-actions{display:flex;flex-wrap:wrap;gap:0.35rem;align-items:center;}
 .cloud-item-actions .btn{min-height:38px;font-size:0.8rem;}
 .cloud-reason{font-size:0.78rem;line-height:1.4;color:var(--rose);}
@@ -2233,6 +2238,7 @@ body[data-view="review"] nav{display:none;}
   .review-bar{left:50%;right:auto;transform:translateX(-50%);width:min(940px,calc(100% - 2.5rem));bottom:18px;border:1px solid var(--border);border-radius:16px;justify-content:flex-end;padding:0.6rem 0.75rem;}
   .review-bar .btn{flex:0 0 auto;min-width:170px;min-height:42px;}
   .review-bar .review-bar-approve{flex:0 0 auto;min-width:220px;}
+  .review-bar .review-bar-next{flex:0 0 auto;min-width:220px;}
   .df-row p{font-size:0.95rem;}
   .rv-song-head h2{font-size:1.3rem;}
   .cloud-item{flex-wrap:nowrap;align-items:center;}

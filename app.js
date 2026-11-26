@@ -1298,13 +1298,15 @@ function lyricDiffCounts(blocks) {
 }
 
 // ── review model ──
-function proposalCategories(proposal) {
+function proposalCategories(proposal, publishedSong) {
   const payload = (proposal && proposal.payload) || {};
   const out = [];
   if (proposal.kind === 'chord') { out.push({ id: 'chords', label: 'Chords' }); return out; }
   if (proposal.kind === 'struct') { out.push({ id: 'structure', label: 'Songbooks' }); return out; }
   if (payload.op === 'delete') { out.push({ id: 'delete', label: 'Deletes the song' }); return out; }
-  const found = songInCorpus(payload.id);
+  // A song published by an earlier approval may not be in the bundled corpus;
+  // the server's published snapshot is the better "before" in that case.
+  const found = publishedSong ? { song: publishedSong } : songInCorpus(payload.id);
   if (!found) { out.push({ id: 'new', label: 'New song' }); return out; }
   const next = payload.song || {};
   const prev = found.song;
@@ -1317,24 +1319,38 @@ function proposalCategories(proposal) {
   if (!out.length) out.push({ id: 'nochange', label: 'No visible change' });
   return out;
 }
-function buildReview(proposal) {
+function buildReview(proposal, published) {
   const id = proposalTargetId(proposal);
   const found = songInCorpus(id);
+  const pub = published && typeof published === 'object' ? published : null;
+  const publishedSong = pub && pub.song && typeof pub.song === 'object' ? pub.song : null;
+  // "Original" is the published layer as the server replays it, so a device that
+  // has not synced yet cannot show a stale before-picture. Fall back to the
+  // synced corpus only when the server has nothing published for this song.
+  const originalSong = publishedSong || (found ? found.song : null);
+  const originalCat = publishedSong
+    ? (pub.cat || (found && found.cat) || (proposal.payload && proposal.payload.cat) || '')
+    : (found ? found.cat : ((proposal.payload && proposal.payload.cat) || ''));
+  const localChart = found ? chordChartFor(found.song) : null;
   const review = {
     proposal: proposal,
     id: id,
-    cats: proposalCategories(proposal),
-    originalSong: found ? found.song : null,
-    originalCat: found ? found.cat : ((proposal.payload && proposal.payload.cat) || ''),
-    originalChart: found ? chordChartFor(found.song) : null,
+    published: pub,
+    cats: [],
+    originalSong: originalSong,
+    originalCat: originalCat,
+    originalChart: (pub && pub.chart) ? pub.chart : localChart,
     proposedSong: null,
     proposedChart: null,
     deleted: false,
     deferred: false,
     invalid: '',
+    stale: false,
+    legacy: false,
     diff: [],
     chordDiff: null,
   };
+  review.cats = proposalCategories(proposal, publishedSong);
   if (proposal.kind === 'song') {
     const payload = proposal.payload || {};
     if (payload.op === 'delete') review.deleted = true;
@@ -1342,7 +1358,7 @@ function buildReview(proposal) {
     else review.invalid = 'This submission does not contain a valid song.';
     if (!review.invalid && !review.originalSong && !review.deleted) review.deferred = true; // a brand-new song
     review.proposedChart = review.originalChart;
-    if (!review.invalid && !review.deferred) review.proposalCats = proposalCategories(proposal);
+    if (!review.invalid && !review.deferred) review.proposalCats = review.cats;
   } else if (proposal.kind === 'chord') {
     const chart = proposal.payload && proposal.payload.chart;
     if (chart && typeof chart === 'object' && Array.isArray(chart.lines)) review.proposedChart = chart;
@@ -1566,8 +1582,10 @@ async function openReview(id, push) {
   document.getElementById('reviewBar').hidden = true;
   document.getElementById('reviewBody').innerHTML = '<div class="rv-loading"><span class="btn-spinner" aria-hidden="true"></span><span>Loading submission…</span></div>';
   let proposal = null;
+  let published = null;
   try {
     proposal = await cloudReq('/api/admin/proposals/' + Number(id));
+    if (proposal && proposal.published && typeof proposal.published === 'object') published = proposal.published;
   } catch (error) {
     // Older Workers have no detail route; the queue row already carries the patch.
     proposal = cloudPending.concat(cloudReviewed).find(p => Number(p.id) === Number(id)) || null;
@@ -1575,11 +1593,42 @@ async function openReview(id, push) {
   }
   if (!reviewCurrent) {
     if (!proposal) reviewCurrent = { error: 'This submission could not be loaded. It may already have been reviewed.' };
-    else reviewCurrent = buildReview(proposal);
+    else {
+      reviewCurrent = buildReview(proposal, published);
+      reviewCurrent.stale = !!(proposal.stale);
+      // Proposals written before revision tracking existed have no fingerprint.
+      // The Worker answers with `legacy` (and still checks the publish clock).
+      reviewCurrent.legacy = proposal.legacy != null
+        ? !!proposal.legacy
+        : proposal.status === 'pending' && proposal.base_rev == null;
+    }
   }
+  const loaded = reviewCurrent;
   renderReview();
   // Deep link back into a review after a reload/back gesture.
   navReplaceReview(id);
+  // Chaining to the next submission needs the queue; a direct link has none yet.
+  if (loaded && !cloudPending.length) {
+    cloudReq('/api/admin/proposals').then(rows => {
+      if (!Array.isArray(rows) || reviewCurrent !== loaded || cloudPending.length) return;
+      cloudPending = rows;
+      if (loaded.proposal && loaded.proposal.status !== 'pending') renderReview();
+    }).catch(() => {});
+  }
+}
+function nextPendingProposal(excludeId) {
+  const hit = cloudPending.find(p => p && p.status === 'pending' && Number(p.id) !== Number(excludeId));
+  return hit || null;
+}
+function cloudPendingLength() {
+  return cloudPending.filter(p => p && p.status === 'pending').length;
+}
+function reviewNext() {
+  const cur = reviewCurrent;
+  const next = nextPendingProposal(cur && cur.proposal ? cur.proposal.id : null);
+  if (!next) return;
+  reviewFlash = null;
+  openReview(next.id);
 }
 function navReplaceReview(id) {
   if (_restoring) return;
@@ -1628,8 +1677,22 @@ function renderReview() {
   metaEl.textContent = metaBits.join(' · ');
   catsEl.innerHTML = reviewCatChipsHTML(cur.cats);
   summaryEl.textContent = cur.invalid ? cur.invalid : reviewSummaryText(cur);
-  bar.hidden = !pending;
+  const nextPending = pending ? null : nextPendingProposal(cur.proposal.id);
+  bar.hidden = !pending && !nextPending;
   document.querySelectorAll('#reviewBar .btn').forEach(btn => { btn.disabled = false; });
+  const rejectBtn = document.querySelector('#reviewBar .review-bar-reject');
+  const approveBtn = document.querySelector('#reviewBar .review-bar-approve');
+  const nextBtn = document.querySelector('#reviewBar .review-bar-next');
+  if (rejectBtn) rejectBtn.hidden = !pending;
+  if (approveBtn) {
+    approveBtn.hidden = !pending;
+    // A stale submission is refused by the Worker; do not offer the tap at all.
+    approveBtn.disabled = !!cur.stale;
+  }
+  if (nextBtn) {
+    nextBtn.hidden = !nextPending;
+    if (nextPending) nextBtn.textContent = 'Review next pending (' + cloudPendingLength() + ')';
+  }
   let notice = '';
   if (reviewFlash) {
     notice = reviewNoticeHTML(reviewFlash.type, reviewFlash.text);
@@ -1640,8 +1703,18 @@ function renderReview() {
       + (proposal.note ? ' Reason: ' + proposal.note : ''));
   }
   if (cur.invalid) notice = reviewNoticeHTML('error', cur.invalid);
+  let noticeType = notice ? 'info' : '';
+  if (notice) noticeType = /is-error/.test(notice) ? 'error' : 'info';
+  if (pending && cur.stale) {
+    notice = reviewNoticeHTML('warn', 'This song changed after the submission was made (another approval or a direct edit). Approving it would overwrite that change, so the Worker will refuse it — sync the songbook and ask for a fresh submission, or reject this one.');
+    noticeType = 'warn';
+  } else if (pending && cur.legacy) {
+    const legacyNote = reviewNoticeHTML('warn', 'Submitted before revision tracking, so there is no fingerprint to compare. Nothing has been published for this song since, but check Original before approving — if that is wrong the Worker will refuse it.');
+    notice = notice ? legacyNote + notice : legacyNote;
+    noticeType = 'warn';
+  }
   noticeEl.hidden = !notice;
-  if (notice) { noticeEl.className = 'review-notice' + (/is-error/.test(notice) ? ' is-error' : ' is-info'); noticeEl.innerHTML = notice; }
+  if (notice) { noticeEl.className = 'review-notice is-' + noticeType; noticeEl.innerHTML = notice; }
   else { noticeEl.className = 'review-notice'; noticeEl.textContent = ''; }
   if (reviewTab === 'original') {
     body.innerHTML = '<div class="rv-pane"><div class="rv-pane-head">Published now</div>'
@@ -1709,6 +1782,24 @@ function closeReview(push) {
 async function reviewApprove(btn) {
   const cur = reviewCurrent;
   if (reviewBusy || !cur || !cur.proposal || cur.proposal.status !== 'pending') return;
+  if (cur.stale) {
+    reviewFlash = { type: 'error', text: 'This song changed after the submission was made, so it cannot be approved as reviewed. Sync the songbook and ask for a fresh submission, or reject this one.' };
+    renderReview();
+    return;
+  }
+  if (cur.legacy) {
+    confirmDangerous(
+      'Submission #' + cur.proposal.id + ' was made before revision tracking, so this build cannot detect whether “' + proposalSongTitle(cur.proposal) + '” changed since. Approve only if the Original tab looks right.',
+      'Approve anyway',
+      () => { reviewApproveNow(btn); },
+    );
+    return;
+  }
+  await reviewApproveNow(btn);
+}
+async function reviewApproveNow(btn) {
+  const cur = reviewCurrent;
+  if (reviewBusy || !cur || !cur.proposal || cur.proposal.status !== 'pending') return;
   reviewBusy = true;
   const noticeEl = document.getElementById('reviewNotice');
   const approveBtn = document.querySelector('#reviewBar .review-bar-approve');
@@ -1720,8 +1811,9 @@ async function reviewApprove(btn) {
     cloudPending = cloudPending.filter(p => p.id !== cur.proposal.id);
     await cloudAfterReview('approved');
     reviewFlash = { type: 'ok', text: 'Approved. The change is published and every device will pick it up on its next sync.' };
+    // Refresh the queue first so "Review next pending" counts the remaining rows.
+    await renderCloudPanel();
     renderReview();
-    renderCloudPanel();
   } catch (error) {
     reviewFlash = { type: 'error', text: reviewErrorFrom(error) };
     renderReview();
@@ -1768,8 +1860,8 @@ async function confirmReviewReject(btn) {
     closeModal('reviewRejectModal');
     reviewRejectId = null;
     reviewFlash = { type: 'ok', text: 'Rejected. Nothing was published.' };
+    await renderCloudPanel();
     renderReview();
-    renderCloudPanel();
   } catch (error) {
     if (err) err.textContent = reviewErrorFrom(error);
   } finally {
@@ -1829,6 +1921,10 @@ function cloudItemBadgesHTML(proposal, combined) {
   }
   proposalCategories(proposal).forEach(cat => badges.push('<span class="cloud-badge">' + esc(cat.label) + '</span>'));
   if (combined) badges.push('<span class="cloud-badge is-combined">Lyrics + chords</span>');
+  // Written before migration 0003: approval cannot check whether the song moved.
+  if (proposal.status === 'pending' && proposal.base_rev == null) {
+    badges.push('<span class="cloud-badge is-legacy">pre-tracking</span>');
+  }
   return badges.join('');
 }
 async function cloudSetFilter(status) {
@@ -8711,6 +8807,7 @@ const CLICK_ACTIONS = {
   reviewHistory: el => openReviewHistory(el.dataset.songId),
   closeReviewHistory,
   setReviewTab: el => setReviewTab(el.dataset.tab),
+  reviewNext: () => reviewNext(),
   closeReview: () => closeReview(),
   reviewApprove: el => reviewApprove(el),
   reviewReject: el => reviewReject(el),

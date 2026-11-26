@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   baseRev,
   canonical,
+  changedSince,
   payloadTarget,
   publishedChartFrom,
   publishedSongFrom,
@@ -145,6 +146,24 @@ await checkAsync('fingerprints do not leak the payload', async () => {
   assert.match(id, /^[0-9a-f]{64}$/);
   const rev = await baseRev('song', { id: 'S1', cat: 'B&P', op: 'update', song: song('S1', 'Secret title') }, []);
   assert.equal(rev, '');
+});
+
+check('a legacy submission is safe while nothing published after it', () => {
+  const rows = [
+    { ...songRow(1, 'S1', 'B&P', song('S1', 'Before')), published_at: 1000 },
+    { ...songRow(2, 'OTHER', 'B&P', song('OTHER', 'Unrelated')), published_at: 5000 },
+  ];
+  assert.equal(changedSince(rows, 'S1', 2000), false);
+});
+
+check('a legacy submission conflicts when its song published afterwards', () => {
+  const rows = [
+    { ...songRow(1, 'S1', 'B&P', song('S1', 'Before')), published_at: 1000 },
+    { ...songRow(2, 'S1', 'B&P', song('S1', 'After')), published_at: 3000 },
+  ];
+  assert.equal(changedSince(rows, 'S1', 2000), true);
+  // Rows without a payload id (structure edits) never count as a song change.
+  assert.equal(changedSince([{ seq: 9, kind: 'struct', payload: { op: 'addBook' }, published_at: 4000 }], 'S1', 2000), false);
 });
 
 console.log(`\n${passed}/${passed + failures.length} PASS`);

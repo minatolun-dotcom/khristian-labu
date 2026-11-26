@@ -109,13 +109,31 @@ proposal waited.
   corpus it already has.
 - **Proposed** is the proposal payload, rendered by the same reader functions
   (`reviewSongHTML`/`chordSheetHTML`), never by a second renderer.
+- `GET /api/admin/proposals/:id` returns the proposal plus `published`
+  (`{rev, song, cat, deleted, chart}`, replayed from the same rows), so the page
+  renders "Original" from the server rather than from a device that may not have
+  synced. It also returns `legacy` and `stale`, so a conflict is visible before
+  the reviewer taps anything.
 - **`base_rev`** is a SHA-256 fingerprint of the published revision a proposal
   was written against, computed at submission and stored on the row
   (`proposals.base_rev`, migration `0003_review.sql`). An approval recomputes it:
   if it differs, the request fails with `409 the song changed after this was
-  submitted` and nothing is written. Proposals created before this migration have
-  `base_rev = NULL` and are approved without the check (documented trade-off for
-  backward compatibility).
+  submitted` and nothing is written.
+- **Proposals written before migration `0003` (`base_rev = NULL`)** have no
+  fingerprint, so the approval falls back to the publish clock: `published_edits`
+  records `published_at`, and if any row for that song landed after the
+  submission the approval is refused with the same `409`. If nothing for that
+  song was published since, the row is still approvable (backward compatible);
+  the page labels it "pre-tracking" and asks for confirmation first.
+
+To exercise the legacy path locally, create a proposal, clear its fingerprint in
+D1, then publish an edit for the same song — the detail reports `stale: true` and
+the approval returns 409:
+
+```sh
+npx wrangler d1 execute labu-staging --local --config workers/api/wrangler.jsonc \
+  --command "UPDATE proposals SET base_rev = NULL WHERE id = <id>"
+```
 - Approval writes the reviewed payload into `published_edits`, marks the
   proposal approved, and bumps `publish_state.version` in one `env.DB.batch`
   (atomic). The version bump is guarded by `WHERE version = <read version>`, so a

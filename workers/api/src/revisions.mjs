@@ -90,6 +90,19 @@ export async function baseRev(kind, payload, rows) {
   return '';
 }
 
+// Proposals written before fingerprints existed cannot be compared, but the
+// published layer still records when each revision landed. If nothing for this
+// song was published after the submission, approving it cannot overwrite a
+// later change, so the legacy row can be approved safely.
+export function changedSince(rows, id, at) {
+  const since = Number(at) || 0;
+  return (rows || []).some(row => {
+    if (!row || !row.payload) return false;
+    if (id && row.payload.id !== id) return false;
+    return Number(row.published_at) > since;
+  });
+}
+
 // Which of the given proposals would overwrite something that moved on.
 // `rowsForTarget` is called with the song id and returns that song's published
 // edit rows. A proposal submitted before fingerprints existed (base_rev is null)

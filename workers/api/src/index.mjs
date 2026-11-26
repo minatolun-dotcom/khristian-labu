@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { getMigrations } from 'better-auth/db/migration';
 import { auth } from './auth.mjs';
-import { baseRev, canonical, payloadTarget, sha256Text, staleProposals } from './revisions.mjs';
+import { baseRev, canonical, changedSince, payloadTarget, publishedChartFrom, publishedSongFrom, sha256Text, staleProposals } from './revisions.mjs';
 
 const KINDS = new Set(['song', 'struct', 'chord']);
 const OWNER_EMAIL = 'minatolun@gmail.com';
@@ -241,7 +241,7 @@ async function publishedRowsFor(target) {
   // Rows written before the `target` column existed carry NULL and may belong to
   // any song, so they are replayed too and filtered by the caller.
   const rows = await env.DB.prepare(`
-    SELECT seq, kind, payload, target
+    SELECT seq, kind, payload, target, published_at
     FROM published_edits
     WHERE target = ? OR target IS NULL
     ORDER BY seq ASC
@@ -250,6 +250,7 @@ async function publishedRowsFor(target) {
     seq: Number(row.seq),
     kind: row.kind,
     payload: JSON.parse(row.payload),
+    published_at: Number(row.published_at) || 0,
   }));
 }
 
@@ -526,6 +527,10 @@ async function handleAdminProposalCounts(request) {
   return json(counts);
 }
 
+// The detail carries the side the reviewer cannot see from the patch: what the
+// published layer says right now. The page renders "Original" from this, not
+// from the device's synced corpus, and `stale` is decided here before any
+// decision is attempted, so an outdated submission is flagged on open.
 async function handleAdminProposal(request, id) {
   await requireAdmin(request);
   const row = await env.DB.prepare(`
@@ -534,7 +539,33 @@ async function handleAdminProposal(request, id) {
     FROM proposals WHERE id = ?
   `).bind(Number(id)).first();
   if (!row) throw new HttpError(404, 'proposal not found');
-  return json(adminProposal(row));
+  const proposal = adminProposal(row);
+  const target = proposal.target || payloadTarget(proposal.kind, proposal.payload);
+  const rows = target ? await publishedRowsFor(target) : [];
+  const rev = await baseRev(proposal.kind, proposal.payload, rows);
+  const published = {
+    rev,
+    song: null,
+    cat: null,
+    deleted: false,
+    chart: null,
+  };
+  if (proposal.kind === 'song') {
+    const state = publishedSongFrom(rows, target);
+    published.song = state.song;
+    published.cat = state.cat;
+    published.deleted = state.deleted;
+  } else if (proposal.kind === 'chord') {
+    published.chart = publishedChartFrom(rows, target);
+  }
+  // base_rev is null on proposals written before migration 0003. There is no
+  // fingerprint to compare, but the published layer's timestamps still answer
+  // the question that matters: did this song change after the submission?
+  const legacy = proposal.base_rev == null && proposal.status === 'pending';
+  const stale = legacy
+    ? changedSince(rows, target, proposal.created_at)
+    : proposal.base_rev != null && rev !== proposal.base_rev;
+  return json({ ...proposal, published, legacy, stale });
 }
 
 // GET /api/admin/song-revisions?id=<songId>
@@ -776,7 +807,7 @@ async function handleApprove(request) {
   const placeholders = ids.map(() => '?').join(',');
 
   const rows = await env.DB.prepare(`
-    SELECT id, kind, payload, base_rev FROM proposals
+    SELECT id, kind, payload, base_rev, created_at FROM proposals
     WHERE id IN (${placeholders}) AND status = 'pending'
     ORDER BY id ASC
   `).bind(...ids).all();
@@ -785,6 +816,7 @@ async function handleApprove(request) {
     kind: row.kind,
     payloadText: row.payload,
     base_rev: row.base_rev == null ? null : String(row.base_rev),
+    created_at: Number(row.created_at) || 0,
     payload: null,
   }));
   if (pending.length !== ids.length) {
@@ -811,6 +843,17 @@ async function handleApprove(request) {
     return cache.get(id);
   };
   const stale = await staleProposals(pending, rowsFor);
+  // Legacy rows have no fingerprint, but if anything for their song was
+  // published after the submission they would overwrite it, so they are refused
+  // the same way. Only rows with nothing published since stay approvable.
+  for (const row of pending) {
+    if (row.base_rev != null) continue;
+    const target = payloadTarget(row.kind, row.payload);
+    if (!target) continue;
+    if (changedSince(await rowsFor(target), target, row.created_at)) {
+      stale.push({ id: row.id, expected: null, current: 'changed since submission' });
+    }
+  }
   if (stale.length) {
     throw new HttpError(409, 'the song changed after this was submitted; sync and review it again');
   }

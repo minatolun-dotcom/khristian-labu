@@ -157,6 +157,10 @@ check('proposal detail returns the patch and its revision fingerprint',
   detail.status === 200 && detail.body?.payload?.id === firstPayload.id
   && detail.body?.target === firstPayload.id && 'base_rev' in (detail.body || {}),
   JSON.stringify(detail.body).slice(0, 200));
+check('proposal detail carries the published side for a before/after preview',
+  detail.status === 200 && detail.body?.published && typeof detail.body.published === 'object'
+  && 'rev' in detail.body.published && 'song' in detail.body.published && 'chart' in detail.body.published,
+  JSON.stringify(detail.body?.published).slice(0, 200));
 
 const counts = await req('/api/admin/proposals/counts', { headers: authHeaders });
 check('queue counters report each status',
@@ -184,6 +188,12 @@ const directEdit = await req('/api/admin/publish', {
   }),
 });
 check('admin direct edit publishes for the staleness test', directEdit.status === 200, JSON.stringify(directEdit.body));
+const staleDetail = await req(`/api/admin/proposals/${staleProposal.body.id}`, { headers: authHeaders });
+check('review detail reports a conflict before any decision is attempted',
+  staleDetail.status === 200 && staleDetail.body?.stale === true
+  && staleDetail.body?.published?.rev !== staleDetail.body?.base_rev
+  && staleDetail.body?.published?.song?.title === 'Stale Base edited later',
+  JSON.stringify({ stale: staleDetail.body?.stale, published: staleDetail.body?.published?.rev, base: staleDetail.body?.base_rev }));
 const staleApprove = await req('/api/admin/approve', {
   method: 'POST',
   headers: authHeaders,

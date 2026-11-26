@@ -115,8 +115,14 @@ flowchart LR
   positioning code), so the proposed preview is the exact content approval
   publishes — including chord alignment on a phone.
 - **`base_rev`** (SHA-256 of the published revision at submission) is recomputed
-  on approval. A mismatch returns `409` and the page explains it; no silent merge
-  ever happens. Legacy proposals without a fingerprint skip the gate.
+  on approval. A mismatch returns `409` and the page says so before the reviewer
+  taps Approve, so no silent merge ever happens.
+- The submission detail also carries the published side (`published`), so
+  "Original" comes from the server's replay instead of the device's synced
+  corpus. Proposals written before the fingerprint existed fall back to the
+  publish clock: if anything for that song was published after the submission,
+  approval is refused the same way; otherwise the row stays approvable with a
+  "pre-tracking" note and one confirmation.
 - Approval/rejection reuse the existing endpoints and `published_edits` audit
   trail; decisions add reviewer, timestamp and rejection reason. Queue counters,
   per-song history and every review route are admin-only.
