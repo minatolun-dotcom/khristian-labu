@@ -160,6 +160,15 @@ function afterPaint() {
 }
 async function init() {
   const bootStart = performance.now();
+  // A stalled corpus fetch must never leave the boot cover up forever — on a weak
+  // connection a 1.4 MB download can hang for minutes with no error. The download
+  // keeps running; this only releases the screen so the app (and retry) is usable.
+  const bootWatchdog = setTimeout(() => {
+    const hero = document.getElementById('heroDesc');
+    if (hero && /Loading songs/.test(hero.textContent || '')) hero.textContent = 'Still loading songs — check your connection';
+    console.warn('[Khristian Labu] boot exceeded 12s; releasing the splash');
+    hideBootLoader().catch(() => {});
+  }, 12000);
   syncSafeAreaBottom(); // native --safe-area-inset-bottom may land after first paint; re-sync on load
   window.addEventListener('load', syncSafeAreaBottom);
   const ld = document.getElementById('heroDesc');
@@ -206,6 +215,7 @@ async function init() {
   // screen into view. It also guarantees the cover cannot flash on a warm start.
   const minVisible = 620 - (performance.now() - bootStart);
   if (minVisible > 0) await new Promise(r => setTimeout(r, minVisible));
+  clearTimeout(bootWatchdog);
   await hideBootLoader();
   // Check after the boot cover is gone so the centered update dialog is never hidden behind it.
   checkForUpdate();
@@ -8538,4 +8548,8 @@ document.addEventListener('keydown', event => {
   fn(el, event);
 });
 
-init();
+init().catch(err => {
+  console.error('[Khristian Labu] boot failed:', err);
+  hideBootLoader().catch(() => {});
+  showLoadError(err);
+});
