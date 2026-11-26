@@ -7,7 +7,7 @@ function dataQuery() {
   if (CORPUS_HASH) parts.push('h=' + encodeURIComponent(CORPUS_HASH));
   return parts.length ? '?' + parts.join('&') : '';
 }
-const APP_VERSION = '1.5.84'; // ponytail: bump on release so the update checker can compare
+const APP_VERSION = '1.5.85'; // ponytail: bump on release so the update checker can compare
 const REPO = 'minatolun-dotcom/khristian-labu'; // ponytail: single source for update-check URLs
 const LATEST_JSON = 'https://dl.labu.lengkhawm.online/latest.json';
 let latestUpdate = null;
@@ -200,6 +200,7 @@ async function init() {
   history.replaceState(buildState(), '');
   window.addEventListener('popstate', e => applyState(e.state));
   initHomeActions();
+  initAdminPullToRefresh();
   // approved-change sync: pull the layer, retry queued submissions, poll on focus
   cloudStart();
   // ponytail: Android hardware Back has no default handler -> app closes. Mirror web behavior:
@@ -878,22 +879,30 @@ async function cloudCheckForUpdates(force, btn) {
   _cloudSyncing = true;
   setCloudButtonBusy(btn, true, 'Syncing…');
   let ok = false;
+  let current = false;
   try {
     let st;
     try { st = await cloudReq('/api/state'); }
     catch (e) { return false; }
     const version = st ? Number(st.version) || 0 : 0;
-    if (!force && version === PUB.version) return false;
+    if (!force && version === PUB.version) {
+      current = true;
+      // Nothing new to pull, but the queue may still have moved: refresh its rows.
+      if (document.getElementById('cloudPanel')) await cloudQueueLoad();
+      return false;
+    }
     await cloudLoadLayer(force);
     if (!songsReady) return false;
     ok = await cloudApplyLayerToCorpus();
+    if (document.getElementById('cloudPanel')) await cloudQueueLoad();
     return ok;
   } finally {
     _cloudSyncing = false;
-    if (btn) {
-      if (ok) flashCloudButton(btn, 'Synced');
-      else setCloudButtonBusy(btn, false);
-    }
+    // The panel repaints during a sync, so answer on whichever button is on screen.
+    const live = document.querySelector('#cloudPanel [data-action="cloudCheckForUpdates"]') || btn;
+    if (ok) flashCloudButton(live, 'Synced');
+    else if (current) flashCloudButton(live, 'Up to date');
+    else setCloudButtonBusy(live, false);
   }
 }
 // Rebuild the in-memory corpus from the pristine IndexedDB base copy, then replay
@@ -936,41 +945,31 @@ function cloudAgo(value) {
   if (h < 24) return h + ' h ago';
   return Math.round(h / 24) + ' d ago';
 }
-async function renderCloudPanel() {
-  const box = document.getElementById('cloudPanel');
-  if (!box) return;
-  if (!CLOUD_ON) { box.hidden = true; box.innerHTML = ''; return; }
-  box.hidden = false;
-  let s = cloudSession();
-  if (!s && !(await cloudRestoreSession())) {
-    box.innerHTML = '<div class="cloud-bar"><span class="cloud-state">Cloud review · admin sign-in required</span><button class="btn btn-ghost" data-action="openAdminAccount">Admin account</button></div>';
-    return;
-  }
-  s = cloudSession();
-  if (!(await cloudCheckAdmin())) {
-    box.innerHTML = '<div class="cloud-bar"><span class="cloud-state">This signed-in account is not an admin.</span><button class="btn btn-ghost" data-action="openAdminAccount">Admin account</button></div>';
-    return;
-  }
-  let pending;
-  try {
-    pending = (await cloudReq('/api/admin/proposals')) || [];
-  } catch (e) {
-    box.innerHTML = '<div class="cloud-bar"><span class="cloud-state">Review queue unavailable — check your connection.</span><button class="btn btn-ghost" data-action="renderCloudPanel">Retry</button></div>';
-    return;
-  }
-  cloudPending = pending;
-  cloudCounts.pending = pending.length;
-  try {
-    const counts = await cloudReq('/api/admin/proposals/counts');
-    if (counts) cloudCounts = Object.assign({}, cloudCounts, counts);
-  } catch (e) { /* older Worker: the pending count still comes from the list */ }
-  if (cloudStatusFilter !== 'pending') {
-    try { cloudReviewed = (await cloudReq('/api/admin/proposals?status=' + cloudStatusFilter)) || []; }
-    catch (e) { cloudReviewed = []; }
-  } else {
-    cloudReviewed = [];
-  }
-  const items = cloudStatusFilter === 'pending' ? cloudPending : cloudReviewed;
+// The queue paints from this cache before the network answers, so coming back to
+// the admin page or switching a filter never shows an empty card first.
+const cloudQueueCache = { pending: null, approved: null, rejected: null };
+let _cloudQueueSeq = 0;
+function cloudQueueItems() {
+  if (cloudStatusFilter === 'pending') return cloudPending;
+  return cloudQueueCache[cloudStatusFilter] || cloudReviewed || [];
+}
+// Optimistic bookkeeping: the row leaves the queue and the counters move before
+// the server answers, so Approve/Reject feels immediate instead of waiting on a
+// full layer download.
+function cloudQueueDecide(id, decision) {
+  const row = cloudPending.find(p => p && p.id === id) || null;
+  cloudPending = cloudPending.filter(p => !p || p.id !== id);
+  cloudQueueCache.pending = cloudPending;
+  const n = row ? 1 : 0;
+  cloudCounts.pending = Math.max(0, (Number(cloudCounts.pending) || 0) - n);
+  if (decision === 'approved') cloudCounts.approved = (Number(cloudCounts.approved) || 0) + n;
+  if (decision === 'rejected') cloudCounts.rejected = (Number(cloudCounts.rejected) || 0) + n;
+  // The decided lists are now wrong; they refill when their tab is next opened.
+  cloudQueueCache.approved = null;
+  cloudQueueCache.rejected = null;
+}
+function cloudQueueHTML(loading) {
+  const items = cloudQueueItems();
   const kindMap = cloudPendingTargetKinds();
   const combinedShown = new Set();
   let html = '<div class="cloud-bar"><span class="cloud-state">Review queue</span>'
@@ -984,7 +983,9 @@ async function renderCloudPanel() {
       + label + ' <b>' + n + '</b></button>';
   });
   html += '</div>';
-  if (!items.length) {
+  if (loading && !items.length) {
+    html += '<div class="cloud-loading"><span class="btn-spinner" aria-hidden="true"></span><span>Loading ' + cloudStatusFilter + '…</span></div>';
+  } else if (!items.length) {
     html += cloudStatusFilter === 'pending'
       ? '<div class="cloud-empty">Nothing waiting. Approved changes are already live on every device.</div>'
       : '<div class="cloud-empty">No ' + cloudStatusFilter + ' submissions yet.</div>';
@@ -1022,7 +1023,57 @@ async function renderCloudPanel() {
     });
     html += '</div>';
   }
-  box.innerHTML = html;
+  return html;
+}
+function paintCloudPanel(box) {
+  if (!box) return;
+  box.innerHTML = cloudQueueHTML(!cloudQueueCache.pending);
+}
+// One round of parallel reads; the panel is repainted from whatever came back.
+async function cloudQueueLoad() {
+  const seq = ++_cloudQueueSeq;
+  const status = cloudStatusFilter;
+  const jobs = [
+    cloudReq('/api/admin/proposals').catch(() => null),
+    cloudReq('/api/admin/proposals/counts').catch(() => null),
+  ];
+  if (status !== 'pending') jobs.push(cloudReq('/api/admin/proposals?status=' + status).catch(() => null));
+  const [pending, counts, reviewed] = await Promise.all(jobs);
+  if (seq !== _cloudQueueSeq) return false; // a newer load owns the panel now
+  const box = document.getElementById('cloudPanel');
+  if (!Array.isArray(pending) && !counts) {
+    if (box) box.innerHTML = '<div class="cloud-bar"><span class="cloud-state">Review queue unavailable — check your connection.</span><button class="btn btn-ghost" type="button" data-action="renderCloudPanel">Retry</button></div>';
+    return false;
+  }
+  if (Array.isArray(pending)) {
+    cloudPending = pending;
+    cloudQueueCache.pending = pending;
+  }
+  if (counts) cloudCounts = Object.assign({}, cloudCounts, counts);
+  if (status !== 'pending') {
+    cloudReviewed = Array.isArray(reviewed) ? reviewed : [];
+    cloudQueueCache[status] = cloudReviewed;
+  }
+  if (seq !== _cloudQueueSeq) return false;
+  paintCloudPanel(box);
+  return true;
+}
+async function renderCloudPanel() {
+  const box = document.getElementById('cloudPanel');
+  if (!box) return;
+  if (!CLOUD_ON) { box.hidden = true; box.innerHTML = ''; return; }
+  box.hidden = false;
+  let s = cloudSession();
+  if (!s && !(await cloudRestoreSession())) {
+    box.innerHTML = '<div class="cloud-bar"><span class="cloud-state">Cloud review · admin sign-in required</span><button class="btn btn-ghost" data-action="openAdminAccount">Admin account</button></div>';
+    return;
+  }
+  if (!(await cloudCheckAdmin())) {
+    box.innerHTML = '<div class="cloud-bar"><span class="cloud-state">This signed-in account is not an admin.</span><button class="btn btn-ghost" data-action="openAdminAccount">Admin account</button></div>';
+    return;
+  }
+  paintCloudPanel(box);   // cached queue now, network refresh behind it
+  await cloudQueueLoad();
 }
 // ─── ADMIN REVIEW ───
 // A submission is a patch (a complete proposed song, or a complete chord chart),
@@ -1807,13 +1858,15 @@ async function reviewApproveNow(btn) {
   noticeEl.hidden = true;
   try {
     await cloudReq('/api/admin/approve', { body: { ids: [cur.proposal.id] } });
+    const title = proposalSongTitle(cur.proposal);
     cur.proposal.status = 'approved';
-    cloudPending = cloudPending.filter(p => p.id !== cur.proposal.id);
-    await cloudAfterReview('approved');
-    reviewFlash = { type: 'ok', text: 'Approved. The change is published and every device will pick it up on its next sync.' };
-    // Refresh the queue first so "Review next pending" counts the remaining rows.
-    await renderCloudPanel();
-    renderReview();
+    cloudQueueDecide(cur.proposal.id, 'approved');
+    reviewFlash = null;
+    // The decision lands in the published layer in the background; the admin is
+    // sent back to the queue where that decision is visible straight away.
+    cloudAfterReview();
+    closeReview();
+    showAdminAccountMsg('Approved “' + title + '”. Published — every device picks it up on its next sync.');
   } catch (error) {
     reviewFlash = { type: 'error', text: reviewErrorFrom(error) };
     renderReview();
@@ -1851,17 +1904,15 @@ async function confirmReviewReject(btn) {
   setCloudButtonBusy(btn, true, 'Rejecting…');
   try {
     await cloudReq('/api/admin/reject', { body: { ids: [id], note: note } });
-    cloudPending = cloudPending.filter(p => p.id !== id);
-    if (reviewCurrent && reviewCurrent.proposal && reviewCurrent.proposal.id === id) {
-      reviewCurrent.proposal.status = 'rejected';
-      reviewCurrent.proposal.note = note;
-      reviewCurrent.proposal.reviewed_at = Date.now();
-    }
+    const title = reviewCurrent && reviewCurrent.proposal ? proposalSongTitle(reviewCurrent.proposal) : 'Submission #' + id;
+    cloudQueueDecide(id, 'rejected');
     closeModal('reviewRejectModal');
     reviewRejectId = null;
-    reviewFlash = { type: 'ok', text: 'Rejected. Nothing was published.' };
-    await renderCloudPanel();
-    renderReview();
+    reviewFlash = null;
+    // Same as approving: back to the queue, with the rejection noted there.
+    closeReview();
+    showAdminAccountMsg('Rejected “' + title + '”. Nothing was published.');
+    cloudQueueLoad();
   } catch (error) {
     if (err) err.textContent = reviewErrorFrom(error);
   } finally {
@@ -1930,7 +1981,9 @@ function cloudItemBadgesHTML(proposal, combined) {
 async function cloudSetFilter(status) {
   if (!['pending', 'approved', 'rejected'].includes(status)) return;
   cloudStatusFilter = status;
-  await renderCloudPanel();
+  // Cached rows for this tab paint immediately; the refresh lands behind them.
+  paintCloudPanel(document.getElementById('cloudPanel'));
+  await cloudQueueLoad();
 }
 
 function cloudErrorText(error) {
@@ -2034,17 +2087,26 @@ function flashCloudButton(btn, label) {
     btn.textContent = idle;
   }, 1200);
 }
-async function cloudAfterReview(msg) {
-  await cloudLoadLayer(true);
-  await cloudApplyLayerToCorpus();
-  renderCloudPanel();
+// An approval appends rows to the published layer, so the reload is incremental
+// (since the last seq this device holds) instead of re-downloading the whole
+// layer, and it runs after the queue has already moved.
+async function cloudAfterReview() {
+  if (!songsReady) return;
+  try {
+    await cloudLoadLayer(false);
+    await cloudApplyLayerToCorpus();
+  } catch (e) { /* the queue already shows the decision; the next poll retries */ }
+  paintCloudPanel(document.getElementById('cloudPanel'));
+  cloudQueueLoad();
 }
 async function cloudApprove(id, btn) {
   setCloudButtonBusy(btn, true, 'Approving…');
   try { await cloudReq('/api/admin/approve', { body: { ids: [id] } }); }
   catch (e) { setCloudButtonBusy(btn, false); showAdminAccountMsg(reviewErrorFrom(e)); return; }
-  cloudPending = cloudPending.filter(p => p.id !== id);
-  await cloudAfterReview('Approved — syncing to all devices');
+  cloudQueueDecide(id, 'approved');
+  paintCloudPanel(document.getElementById('cloudPanel')); // the row goes now
+  showAdminAccountMsg('Approved — syncing to all devices');
+  cloudAfterReview();
 }
 async function cloudApproveAll(btn) {
   const ids = cloudPending.map(p => p.id);
@@ -2052,15 +2114,18 @@ async function cloudApproveAll(btn) {
   setCloudButtonBusy(btn, true, 'Approving…');
   try { await cloudReq('/api/admin/approve', { body: { ids: ids } }); }
   catch (e) { setCloudButtonBusy(btn, false); showAdminAccountMsg(reviewErrorFrom(e)); await renderCloudPanel(); return; }
-  cloudPending = [];
-  await cloudAfterReview('Approved ' + ids.length + ' — syncing to all devices');
+  ids.forEach(id => cloudQueueDecide(id, 'approved'));
+  paintCloudPanel(document.getElementById('cloudPanel'));
+  showAdminAccountMsg('Approved ' + ids.length + ' — syncing to all devices');
+  cloudAfterReview();
 }
 async function cloudReject(id, btn) {
   setCloudButtonBusy(btn, true, 'Rejecting…');
   try { await cloudReq('/api/admin/reject', { body: { ids: [id] } }); }
   catch (e) { setCloudButtonBusy(btn, false); showAdminAccountMsg(reviewErrorFrom(e)); return; }
-  cloudPending = cloudPending.filter(p => p.id !== id);
-  renderCloudPanel();
+  cloudQueueDecide(id, 'rejected');
+  paintCloudPanel(document.getElementById('cloudPanel'));
+  cloudAfterReview();
 }
 
 // ponytail: fetch the gzipped corpus (small + fast on slow mobile links).
@@ -6511,7 +6576,9 @@ async function renderAdminAccount() {
     await cloudRestoreSession();
     session = cloudSession();
   }
-  if (!session || !(await cloudCheckAdmin())) {
+  // An admin that was already verified skips the round trip: the card paints on
+  // the same frame as the tap instead of after /api/admin/me answers.
+  if (!session || (!cloudAdmin && !(await cloudCheckAdmin()))) {
     box.innerHTML = '<div class="glass-card settings-panel">'
       + '<div class="sc-head"><span class="sc-ic">' + ADMIN_SHIELD + '</span><span>Admin sign in</span></div>'
       + '<div class="form-group"><label for="adminAccountLogin">Email or username</label><input type="text" id="adminAccountLogin" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="you@example.com or @username"></div>'
@@ -6601,6 +6668,88 @@ function openAdminAccount(push) {
   renderAdminAccount();
   if (push !== false) navPush();
   window.scrollTo(0, 0);
+}
+
+// ─── pull to refresh (admin account) ───
+// Re-reading the page was the only way to see a decision made on another device;
+// a short pull from the top now re-validates the session and reloads the queue in
+// place, with the same spinner the sync buttons use.
+const ADMIN_PTR_THRESHOLD = 64;
+let _adminPtrPulling = false;
+function initAdminPullToRefresh() {
+  const view = document.getElementById('adminAccountView');
+  if (!view || view.dataset.ptrBound) return;
+  view.dataset.ptrBound = '1';
+  const indicator = () => document.getElementById('adminPtr');
+  const page = () => view.querySelector('.admin-account-page');
+  // The hint and the page move together by the same offset, so the hint always sits
+  // in the gap the page leaves above it instead of overlapping the first label.
+  const setPull = px => {
+    const el = indicator();
+    const ready = px >= ADMIN_PTR_THRESHOLD;
+    const shift = Math.min(px * 0.5, 40);
+    view.classList.toggle('is-pulling', px > 0);
+    if (el) {
+      el.classList.toggle('is-ready', ready);
+      el.style.transform = px ? 'translateY(' + Math.round(shift - 34) + 'px)' : '';
+      const label = el.querySelector('.ptr-label');
+      if (label) label.textContent = ready ? 'Release to refresh' : 'Pull to refresh';
+    }
+    const body = page();
+    if (body) body.style.transform = px ? 'translateY(' + Math.round(shift) + 'px)' : '';
+  };
+  let startY = 0;
+  let dist = 0;
+  view.addEventListener('touchstart', e => {
+    if (currentView !== 'adminAccount' || e.touches.length !== 1) return;
+    if (window.scrollY > 0 || view.classList.contains('is-refreshing')) return;
+    if (e.target.closest('input, textarea, select, .cloud-list')) { startY = 0; return; }
+    startY = e.touches[0].clientY;
+    _adminPtrPulling = true;
+    dist = 0;
+  }, { passive: true });
+  view.addEventListener('touchmove', e => {
+    if (!_adminPtrPulling || !startY || e.touches.length !== 1) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0) {
+      if (dist) { dist = 0; setPull(0); }
+      return;
+    }
+    if (window.scrollY > 0) { startY = 0; _adminPtrPulling = false; setPull(0); return; }
+    dist = Math.min(dy * 0.6, ADMIN_PTR_THRESHOLD + 20);
+    setPull(dist);
+    if (dist > 6 && e.cancelable) e.preventDefault();
+  }, { passive: false });
+  const finish = async () => {
+    if (!_adminPtrPulling) return;
+    _adminPtrPulling = false;
+    startY = 0;
+    if (dist < ADMIN_PTR_THRESHOLD) { dist = 0; setPull(0); return; }
+    dist = 0;
+    setPull(0); // drop the inline offsets; the .is-refreshing state takes over
+    const el = indicator();
+    const label = el ? el.querySelector('.ptr-label') : null;
+    view.classList.add('is-refreshing');
+    if (label) label.textContent = 'Refreshing…';
+    try {
+      await refreshAdminAccount();
+    } finally {
+      view.classList.remove('is-refreshing');
+      setPull(0);
+    }
+  };
+  view.addEventListener('touchend', finish);
+  view.addEventListener('touchcancel', finish);
+}
+// Force a fresh look at the server: the cookie is re-validated, admin rights are
+// re-checked and the queue is refetched, all while the page stays put.
+async function refreshAdminAccount() {
+  _cloudCookieChecked = false;
+  cloudAdmin = false;
+  cloudQueueCache.pending = null;
+  cloudQueueCache.approved = null;
+  cloudQueueCache.rejected = null;
+  await renderAdminAccount();
 }
 async function adminAccountSignIn() {
   const input = document.getElementById('adminAccountLogin');

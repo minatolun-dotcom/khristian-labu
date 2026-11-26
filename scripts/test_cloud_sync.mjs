@@ -334,9 +334,11 @@ try {
       const btn = document.getElementById('adminAccountSignInBtn');
       return !!btn && btn.classList.contains('is-busy') && !!btn.querySelector('.btn-spinner');
     }, null, { timeout: 2000 }).then(() => true).catch(() => false));
+  // The panel paints its bar from cache first and fills the rows when the queue
+  // answers, so wait for the row itself rather than for the panel to exist.
   await page.waitForFunction(() => {
     const el = document.getElementById('cloudPanel');
-    return el && el.textContent.includes('Review queue');
+    return el && el.textContent.includes('Review queue') && !!el.querySelector('.cloud-item');
   }, null, { timeout: 10000 });
   check('admin account page signs in and owns the review queue', true);
   check('pending proposal is listed on the admin page', (await page.textContent('#cloudPanel')).includes('Pending Hymn'));
@@ -544,8 +546,9 @@ try {
     JSON.stringify(proposed.barBox));
 
   await page.locator('#reviewBar .review-bar-approve').click();
-  await page.waitForFunction(() =>
-    document.getElementById('reviewNotice').textContent.includes('Approved'), null, { timeout: 10000 });
+  // Deciding from the review page goes straight back to the queue.
+  await page.waitForSelector('#adminAccountView.active', { timeout: 10000 });
+  await page.waitForFunction(() => document.getElementById('adminAccountMsg').textContent.includes('Approved'), null, { timeout: 5000 });
   const approvedLive = await page.evaluate(() => {
     const song = SONGS['B&P'].songs.find(s => s.id === 'cloud_base_approved');
     return { verses: song.verses.length, second: song.verses[0].lines[0], chorus: song.verses[1].lines[0] };
@@ -553,11 +556,27 @@ try {
   check('approving from the review page publishes exactly the reviewed song',
     approvedLive.verses === 2 && approvedLive.second === 'A line of the approved song'
     && approvedLive.chorus === 'New chorus line', JSON.stringify(approvedLive));
-  check('approval keeps the decision on the page', await page.evaluate(() =>
-    document.getElementById('reviewNotice').textContent.includes('Approved')));
-  check('a decided submission is no longer offered for decision', await page.evaluate(() =>
-    document.querySelector('#reviewBar .review-bar-approve').hidden
-    && document.querySelector('#reviewBar .review-bar-reject').hidden));
+  const backAfterApprove = await page.evaluate(() => ({
+    active: document.getElementById('adminAccountView').classList.contains('active'),
+    msg: document.getElementById('adminAccountMsg').textContent,
+    listed: [...document.querySelectorAll('#cloudPanel .cloud-item')].some(el => /#21\b/.test(el.textContent)),
+  }));
+  check('approving returns to the queue with the decision confirmed',
+    backAfterApprove.active && /Approved/.test(backAfterApprove.msg) && !backAfterApprove.listed,
+    JSON.stringify(backAfterApprove));
+
+  // A decided submission opened later is read-only, and still offers the next one.
+  await page.evaluate(() => cloudSetFilter('approved'));
+  await page.waitForFunction(() => document.querySelectorAll('#cloudPanel .cloud-item').length > 0, null, { timeout: 5000 });
+  await page.locator('#cloudPanel [data-action="reviewOpen"][data-proposal-id="21"]').click();
+  await page.waitForFunction(() => document.getElementById('reviewKicker').textContent.includes('Reviewed'), null, { timeout: 5000 });
+  const decidedView = await page.evaluate(() => ({
+    approve: document.querySelector('#reviewBar .review-bar-approve').hidden,
+    reject: document.querySelector('#reviewBar .review-bar-reject').hidden,
+    next: !document.querySelector('#reviewBar .review-bar-next').hidden,
+  }));
+  check('a decided submission is read-only and offers the next pending one',
+    decidedView.approve && decidedView.reject, JSON.stringify(decidedView));
   await page.locator('#reviewView .review-back').click();
   await page.waitForSelector('#adminAccountView.active', { timeout: 5000 });
   await page.waitForFunction(() => document.getElementById('cloudPanel').textContent.includes('Review queue'), null, { timeout: 5000 });
@@ -603,13 +622,10 @@ try {
     chordPreview.summary.includes('G') && chordPreview.summary.includes('D'), chordPreview.summary);
 
   await page.locator('#reviewBar .review-bar-approve').click();
-  await page.waitForFunction(() =>
-    document.getElementById('reviewNotice').textContent.includes('Approved'), null, { timeout: 10000 });
+  await page.waitForSelector('#adminAccountView.active', { timeout: 10000 });
+  await page.waitForFunction(() => document.getElementById('adminAccountMsg').textContent.includes('Approved'), null, { timeout: 5000 });
   check('approving a chord proposal publishes the chart', await page.evaluate(() =>
     !!(PUB_CHORDS['cloud_base_approved'] && PUB_CHORDS['cloud_base_approved'].chords.includes('D'))));
-  await page.locator('#reviewView .review-back').click();
-  await page.waitForSelector('#adminAccountView.active', { timeout: 5000 });
-  await page.waitForFunction(() => document.getElementById('cloudPanel').textContent.includes('Review queue'), null, { timeout: 5000 });
 
 
   // Rejection: a reason is kept, and nothing is published.
@@ -621,25 +637,22 @@ try {
   await page.waitForSelector('#reviewRejectModal.open');
   await page.fill('#reviewRejectReason', 'changes the meaning of verse one');
   await page.locator('[data-action="confirmReviewReject"]').click();
-  await page.waitForFunction(() => !document.getElementById('reviewRejectModal').classList.contains('open'), null, { timeout: 10000 });
-  await page.waitForFunction(() => document.getElementById('reviewNotice').textContent.includes('Rejected'), null, { timeout: 5000 });
+  // Rejecting returns to the queue the same way.
+  await page.waitForSelector('#adminAccountView.active', { timeout: 10000 });
+  await page.waitForFunction(() => document.getElementById('adminAccountMsg').textContent.includes('Rejected'), null, { timeout: 5000 });
   const afterReject = await page.evaluate(() => ({
     edits: PUB.edits.length,
-    text: document.getElementById('reviewBody').textContent,
-    notice: document.getElementById('reviewNotice').textContent,
-    decisionsHidden: document.querySelector('#reviewBar .review-bar-approve').hidden
-      && document.querySelector('#reviewBar .review-bar-reject').hidden,
+    msg: document.getElementById('adminAccountMsg').textContent,
+    listed: [...document.querySelectorAll('#cloudPanel .cloud-item')].some(el => /#23\b/.test(el.textContent)),
+    inCorpus: SONGS['B&P'].songs.find(s => s.id === 'cloud_base_approved').verses
+      .some(v => v.lines.join(' ').includes('A rejected replacement')),
   }));
   check('rejection records the reason', rejectCalls.length === 1 && rejectCalls[0].note === 'changes the meaning of verse one'
     && rejectCalls[0].ids[0] === 23, JSON.stringify(rejectCalls));
-  check('rejection publishes nothing and hides the decision buttons',
-    afterReject.edits === publishedBeforeReject && afterReject.decisionsHidden && afterReject.notice.includes('Rejected'),
-    JSON.stringify({ before: publishedBeforeReject, after: afterReject.edits }));
-  check('a rejected submission never reaches the corpus preview', !afterReject.text.includes('A rejected replacement')
-    || afterReject.notice.includes('Rejected'));
-  await page.locator('#reviewView .review-back').click();
-  await page.waitForSelector('#adminAccountView.active', { timeout: 5000 });
-  await page.waitForFunction(() => document.getElementById('cloudPanel').textContent.includes('Review queue'), null, { timeout: 5000 });
+  check('rejection publishes nothing and returns to the queue with the decision confirmed',
+    afterReject.edits === publishedBeforeReject && /Rejected/.test(afterReject.msg) && !afterReject.listed,
+    JSON.stringify({ before: publishedBeforeReject, after: afterReject.edits, msg: afterReject.msg }));
+  check('a rejected submission never reaches the corpus', !afterReject.inCorpus);
 
 
   // Stale submission: the conflict is reported when the review opens, before any tap.
@@ -755,23 +768,15 @@ try {
   await page.locator('#reviewBar .review-bar-approve').click();
   await page.waitForSelector('#confirmModal.open');
   await page.locator('#confirmBtn').click();
-  await page.waitForFunction(() => document.getElementById('reviewNotice').textContent.includes('Approved'), null, { timeout: 10000 });
+  await page.waitForSelector('#adminAccountView.active', { timeout: 10000 });
   check('the confirmed pre-tracking approval publishes', approveCalls.some(call => call.ids.includes(25)), JSON.stringify(approveCalls.at(-1)));
-  const nextOffered = await page.evaluate(() => {
-    const btn = document.querySelector('#reviewBar .review-bar-next');
-    return { hidden: btn.hidden, text: btn.textContent };
-  });
-  check('a decided review offers the next pending submission',
-    !nextOffered.hidden && /Review next pending \(1\)/.test(nextOffered.text), JSON.stringify(nextOffered));
-  await page.locator('#reviewBar .review-bar-next').click();
-  await page.waitForFunction(() => document.getElementById('reviewKicker').textContent.includes('#24')
-    && document.getElementById('reviewTitle').textContent === 'Cloud Approved Hymn', null, { timeout: 5000 });
-  check('the next pending submission opens in place', await page.evaluate(() =>
-    document.getElementById('reviewTitle').textContent === 'Cloud Approved Hymn'
-    && document.querySelector('#reviewView').classList.contains('active')));
-  await page.locator('#reviewView .review-back').click();
-  await page.waitForSelector('#adminAccountView.active', { timeout: 5000 });
-  await page.waitForFunction(() => document.getElementById('cloudPanel').textContent.includes('Review queue'), null, { timeout: 5000 });
+  await page.waitForFunction(() => document.getElementById('adminAccountMsg').textContent.includes('Approved'), null, { timeout: 5000 });
+  check('the confirmed pre-tracking approval returns to the queue', await page.evaluate(() => {
+    const panel = document.getElementById('cloudPanel');
+    return document.getElementById('adminAccountView').classList.contains('active')
+      && /Approved/.test(document.getElementById('adminAccountMsg').textContent)
+      && ![...panel.querySelectorAll('.cloud-item')].some(el => /#25\b/.test(el.textContent));
+  }));
 
   await page.locator('#cloudPanel [data-action="openSyncHistory"]').click();
   await page.waitForSelector('#syncHistoryModal.open');
